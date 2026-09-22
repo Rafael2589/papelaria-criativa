@@ -48,7 +48,7 @@ const CONFIG_EMPRESA = {
      Aparece no topo do menu e no rodapé das Configurações. Troque a cada publicação.
      MANTENHA O FORMATO 'vDD/MM-X' — é ele que o sistema usa para comparar as máquinas
      da loja e avisar quando alguma ficou para trás.                                  */
-  versao: 'v22/09-D',
+  versao: 'v22/09-E',
 
   /* 4) NUVEM (Supabase)  ------------------------------------------------------------
      Cole aqui a Project URL e a chave PUBLISHABLE do projeto Supabase DESTA empresa
@@ -12466,7 +12466,7 @@ let _etiqQT; function etiqListD(){ clearTimeout(_etiqQT); _etiqQT=setTimeout(fun
    meia folha (2 por folha, A5) e 1/4 de folha (4 por folha, A6).
    Cores da marca: as da logo da Papelaria Criativa — roxo, magenta, amarelo e azul.
 =================================================================== */
-const BAN_COR={ navy:'#9900CC', navy2:'#5E0080', amarelo:'#FED700', amarelo2:'#E6C200', magenta:'#FF00A2', azul:'#0033FF', branco:'#ffffff', cinza:'#5b6472', preto:'#111827' };   // navy/navy2 = roxo da logo (nomes mantidos)
+const BAN_COR={ navy:'#9900CC', navy2:'#5E0080', amarelo:'#FED700', amarelo2:'#E6C200', magenta:'#FF00A2', azul:'#0033FF', lilas:'#EFDDFA', rosa:'#FFDDF0', branco:'#ffffff', cinza:'#5b6472', preto:'#111827' };   // navy/navy2 = roxo da logo (nomes mantidos)
 const BAN_ETIQ=['OFERTA','PROMOÇÃO','QUEIMA DE ESTOQUE','SÓ HOJE','PREÇO BAIXO','IMPERDÍVEL'];
 const BAN_UNID=['un','m²','m','saco','cx','pç','kg','lata','galão','barra','rolo','par','milheiro'];
 const BAN_FORMATOS={ a4:{nome:'Folha A4 inteira',porFolha:1,esc:1,pagina:'A4 portrait',colunas:1},
@@ -12548,7 +12548,7 @@ function banCartazCSS(esc, prefix){ const P=prefix||'.ban-cz'; const C=BAN_COR; 
   const s=x=>(x*k).toFixed(2)+'mm';
   return `${P}{width:${W.toFixed(2)}mm;height:${H.toFixed(2)}mm;box-sizing:border-box;background:${C.branco};color:${C.preto};font-family:Arial,Helvetica,sans-serif;display:flex;flex-direction:column;overflow:hidden;position:relative;border:${s(1.6)} solid ${C.navy};text-transform:none}
 ${P} *{box-sizing:border-box;text-transform:none;line-height:1.1}
-${P} .bz-top{background:${C.branco};color:${C.navy};padding:${s(5)} ${s(9)};display:flex;align-items:center;justify-content:space-between;gap:${s(6)};min-height:${s(40)};position:relative}
+${P} .bz-top{background:linear-gradient(120deg,${C.lilas} 0%,${C.rosa} 100%);color:${C.navy};padding:${s(5)} ${s(9)};display:flex;align-items:center;justify-content:space-between;gap:${s(6)};min-height:${s(40)};position:relative}
 ${P} .bz-logo img{max-height:${s(31)};max-width:${s(92)};object-fit:contain;display:block;border-radius:${s(1.5)}}
 ${P} .bz-logo .bz-logotxt{font-weight:900;font-size:${s(12)};letter-spacing:${s(0.3)};color:${C.magenta}}
 ${P} .bz-logo .bz-logosub{font-size:${s(3.8)};color:${C.navy};letter-spacing:${s(0.4)};margin-top:${s(1)}}
