@@ -48,7 +48,7 @@ const CONFIG_EMPRESA = {
      Aparece no topo do menu e no rodapé das Configurações. Troque a cada publicação.
      MANTENHA O FORMATO 'vDD/MM-X' — é ele que o sistema usa para comparar as máquinas
      da loja e avisar quando alguma ficou para trás.                                  */
-  versao: 'v22/09-G',
+  versao: 'v22/09-H',
 
   /* 4) NUVEM (Supabase)  ------------------------------------------------------------
      Cole aqui a Project URL e a chave PUBLISHABLE do projeto Supabase DESTA empresa
@@ -15205,12 +15205,79 @@ function cpKpis(){ const t=finTotais('pagar', cpNoFiltro); const per=cpFiltroLab
 function crKpis(){ const boletos=(FIN.recTab==='boletos'); const suf=boletos?' (boletos)':'';
   const t=boletos?finTotais('receber',crEhBoleto):finTotais('receber');
   const scope=boletos?'boletos':'all';
-  return `<div class="kpis">
+  const venc=crVencidoTotal(scope); const nVenc=crVencidosArr(scope).length;
+  return `<div class="kpis" style="grid-template-columns:repeat(auto-fit,minmax(215px,1fr))">
   ${kpiCard('Total em aberto'+suf,BRL(t.aberto),'clock','#f59e0b')}
+  ${kpiCard('Total vencido'+suf,BRL(venc),'alert','#dc2626',
+    nVenc?'<span style="color:var(--neg);font-weight:600">\u25b8 ver '+NUM(nVenc)+' t\u00edtulo(s) vencido(s) por cliente</span>':'nenhum t\u00edtulo em atraso',
+    nVenc?{onclick:'crVencidosDetalhe(\''+scope+'\')',title:'Ver os t\u00edtulos vencidos agrupados por cliente'}:null)}
   ${kpiCard('Total recebido'+suf,BRL(t.liquidado),'money','#15803d','<span style="color:var(--pos);font-weight:600">▸ ver quem pagou, quando e a forma</span>',{onclick:'crRecebidosDetalhe(\''+scope+'\')',title:'Ver detalhamento dos recebimentos'})}
   ${kpiCard('Juros recebidos'+suf,BRL(t.juros),'up','#dc2626','quando se recebe acima do valor')}
   ${kpiCard('Descontos concedidos'+suf,BRL(t.desconto),'pct','#0d9488','quando se recebe abaixo do valor')}
 </div>`; }
+/* ===== VENCIDOS: total do card e detalhamento por cliente =====
+   Vencido = título ainda EM ABERTO cujo vencimento já passou. O saldo considera
+   as baixas parciais, igual ao card "Total em aberto". */
+function crVencidoEh(f){ return !!(f && f.tipo==='receber' && f.status==='aberto' && f.vencimento && f.vencimento<today()); }
+function crVencidosArr(scope){ return DB.all('financeiro').filter(f=>crVencidoEh(f)
+  && (scope==='boletos' ? crEhBoleto(f) : scope==='ficha' ? crEhFicha(f) : true)); }
+function crVencidoSaldo(f){ const base=(+((f.valorOriginal!=null?f.valorOriginal:f.valor))||0);
+  return Math.max(0, Math.round((base-(+f.pagoParcial||0))*100)/100); }
+function crVencidoTotal(scope){ return Math.round(crVencidosArr(scope).reduce((s,f)=>s+crVencidoSaldo(f),0)*100)/100; }
+function crDiasAtraso(venc){ try{ return Math.max(0, Math.round((pDate(today())-pDate(venc))/86400000)); }catch(e){ return 0; } }
+function crVencNomeCli(f){ if(f.clienteId){ const c=DB.get('clientes',f.clienteId); if(c&&c.nome) return c.nome; } return f.clienteNome||'Sem cliente'; }
+function crVencFoneCli(f){ if(!f.clienteId) return ''; const c=DB.get('clientes',f.clienteId); return c?((c.celular||c.telefone||'')+''):''; }
+/* Agrupa por cliente, do maior saldo para o menor. */
+function crVencidosPorCliente(scope){ const m={};
+  crVencidosArr(scope).forEach(f=>{ const nome=crVencNomeCli(f); const k=(f.clienteId||nome);
+    const g=m[k]=m[k]||{nome, fone:crVencFoneCli(f), itens:[], total:0, atraso:0};
+    const saldo=crVencidoSaldo(f), dias=crDiasAtraso(f.vencimento);
+    g.itens.push({id:f.id, venc:f.vencimento, dias, desc:f.descricao||'', forma:f.forma||'', valor:saldo});
+    g.total=Math.round((g.total+saldo)*100)/100; if(dias>g.atraso) g.atraso=dias; });
+  const arr=Object.values(m); arr.forEach(g=>g.itens.sort((a,b)=>(a.venc<b.venc?-1:1)));
+  return arr.sort((a,b)=>b.total-a.total); }
+let CRVENF={q:'',scope:'all'};
+function crVencidosDetalhe(scope){ CRVENF={q:'',scope:scope||'all'};
+  openModal(`<div class="modal-head"><h3>${ico('alert')} Títulos vencidos por cliente</h3><button class="btn-icon btn-ghost" onclick="closeModal()">${ico('x')}</button></div>
+   <div class="modal-body" style="max-height:72vh;overflow:auto">
+     <p class="t-mut" style="font-size:12.5px;margin:0 0 10px">Quem está em atraso, <b>quanto deve</b>, <b>há quantos dias</b> e quais títulos. Do maior saldo para o menor.</p>
+     <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:12px">
+       <input id="crven-q" class="pill-filter" placeholder="Buscar por cliente..." oninput="crVencidosRender()" style="flex:1;min-width:180px">
+       <div class="spacer"></div>
+       <button class="btn btn-ghost btn-sm" onclick="crVencidosCSV()">${ico('dl')} Exportar CSV</button>
+     </div>
+     <div id="crven-body"></div>
+   </div>`, true);
+  crVencidosRender(); }
+function crVencidosFiltrados(){ const q=normTxt(CRVENF.q||'');
+  return crVencidosPorCliente(CRVENF.scope).filter(g=>!q||normTxt(g.nome).includes(q)); }
+function crVencidosRender(){ const qi=document.getElementById('crven-q'); if(qi) CRVENF.q=qi.value;
+  const grupos=crVencidosFiltrados(); const body=document.getElementById('crven-body'); if(!body) return;
+  const total=Math.round(grupos.reduce((s,g)=>s+g.total,0)*100)/100;
+  const nTit=grupos.reduce((s,g)=>s+g.itens.length,0);
+  body.innerHTML=`<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;flex-wrap:wrap;gap:6px">
+      <b style="font-size:13px">${NUM(grupos.length)} cliente(s) · ${NUM(nTit)} título(s)</b>
+      <b class="tnum" style="font-size:16px;color:var(--neg)">Total vencido: ${BRL(total)}</b></div>
+    ${grupos.length?grupos.map((g,i)=>`
+      <div class="card" style="padding:10px 12px;margin-bottom:10px">
+        <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;cursor:pointer" onclick="crVencToggle(${i})">
+          <div><b style="font-size:13.5px">${esc(g.nome)}</b>
+            <div class="t-mut" style="font-size:11.5px">${NUM(g.itens.length)} título(s) · atraso de até <b>${NUM(g.atraso)}</b> dia(s)${g.fone?' · '+esc(g.fone):''}</div></div>
+          <b class="tnum" style="font-size:15px;color:var(--neg)">${BRL(g.total)}</b>
+        </div>
+        <div id="crven-g${i}" style="display:${g.total>0&&grupos.length<=3?'block':'none'};margin-top:8px">
+          <div class="tbl-wrap"><table style="width:100%;font-size:12px"><thead><tr><th>Vencimento</th><th class="t-right">Dias</th><th>Descrição</th><th>Forma</th><th class="t-right">Valor</th></tr></thead><tbody>
+            ${g.itens.map(it=>`<tr><td class="tnum">${fDate(it.venc)}</td><td class="t-right tnum" style="color:var(--neg);font-weight:700">${NUM(it.dias)}</td><td>${esc(it.desc||'—')}</td><td class="t-mut">${esc(it.forma||'—')}</td><td class="t-right tnum t-strong">${BRL(it.valor)}</td></tr>`).join('')}
+          </tbody></table></div>
+        </div>
+      </div>`).join(''):`<div class="empty" style="padding:26px">${ico('check')}<h4>Nenhum título vencido</h4><p class="t-mut">Está tudo em dia por aqui.</p></div>`}`; }
+function crVencToggle(i){ const el=document.getElementById('crven-g'+i); if(el) el.style.display=(el.style.display==='none'?'block':'none'); }
+function crVencidosCSV(){ const grupos=crVencidosFiltrados();
+  const rows=[['Cliente','Telefone','Vencimento','Dias em atraso','Descricao','Forma','Valor']];
+  grupos.forEach(g=>g.itens.forEach(it=>rows.push([g.nome,g.fone,fDate(it.venc),it.dias,it.desc,it.forma,BRL(it.valor)])));
+  const csv=rows.map(r=>r.map(c=>/[;,\n"]/.test(''+c)?'"'+(''+c).replace(/"/g,'""')+'"':c).join(';')).join('\r\n');
+  const blob=new Blob(['﻿'+csv],{type:'text/csv;charset=utf-8'}); const url=URL.createObjectURL(blob);
+  const a=document.createElement('a'); a.href=url; a.download='titulos-vencidos-'+today()+'.csv'; document.body.appendChild(a); a.click(); a.remove(); setTimeout(()=>URL.revokeObjectURL(url),800); }
 /* ===== Detalhamento do "Total recebido": quem pagou, quando e a forma =====
    Reconcilia com o card: soma os títulos RECEBIDOS (valor) + as baixas PARCIAIS dos ainda abertos. */
 function crRecebidosLinhas(scope){
