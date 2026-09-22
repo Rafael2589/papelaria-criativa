@@ -48,7 +48,7 @@ const CONFIG_EMPRESA = {
      Aparece no topo do menu e no rodapé das Configurações. Troque a cada publicação.
      MANTENHA O FORMATO 'vDD/MM-X' — é ele que o sistema usa para comparar as máquinas
      da loja e avisar quando alguma ficou para trás.                                  */
-  versao: 'v22/09-B',
+  versao: 'v22/09-C',
 
   /* 4) NUVEM (Supabase)  ------------------------------------------------------------
      Cole aqui a Project URL e a chave PUBLISHABLE do projeto Supabase DESTA empresa
@@ -480,10 +480,11 @@ tbody tr:hover{background:var(--surface-2)}
 
 /* ---- central de relatórios ---- */
 .bi-banner{display:flex;align-items:center;gap:18px;padding:20px 22px;border-radius:var(--r-lg);cursor:pointer;margin-bottom:26px;
-  background:linear-gradient(120deg,#0f1f3a,#1e3a5f);color:#fff;box-shadow:var(--sh);transition:.16s;border:1px solid rgba(255,255,255,.06)}
-.bi-banner:hover{transform:translateY(-2px);box-shadow:0 12px 28px rgba(15,31,58,.28)}
-.bi-ico{width:48px;height:48px;border-radius:12px;display:grid;place-items:center;background:rgba(245,158,11,.2)}
-.bi-ico svg{width:26px;height:26px;color:var(--amber)}
+  background:linear-gradient(120deg,#0033FF 0%,#9900CC 55%,#FF00A2 100%);color:#fff;box-shadow:var(--sh);transition:.16s;border:1px solid rgba(255,255,255,.06);border-bottom:4px solid #FED700}
+/* Cores da logo da Papelaria Criativa: azul #0033FF, roxo #9900CC, magenta #FF00A2, amarelo #FED700 */
+.bi-banner:hover{transform:translateY(-2px);box-shadow:0 12px 28px rgba(153,0,204,.30)}
+.bi-ico{width:48px;height:48px;border-radius:12px;display:grid;place-items:center;background:rgba(254,215,0,.22)}
+.bi-ico svg{width:26px;height:26px;color:#FED700}
 .bi-tx{flex:1}.bi-tx h3{font-size:17px;font-weight:700;letter-spacing:-.3px}.bi-tx p{font-size:13px;opacity:.8;margin-top:3px}
 .bi-go{display:flex;align-items:center;gap:6px;font-size:13px;font-weight:600;background:rgba(255,255,255,.12);padding:9px 15px;border-radius:9px;white-space:nowrap}
 .bi-go svg{width:15px;height:15px}
