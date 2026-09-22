@@ -48,7 +48,7 @@ const CONFIG_EMPRESA = {
      Aparece no topo do menu e no rodapé das Configurações. Troque a cada publicação.
      MANTENHA O FORMATO 'vDD/MM-X' — é ele que o sistema usa para comparar as máquinas
      da loja e avisar quando alguma ficou para trás.                                  */
-  versao: 'v22/09-P',
+  versao: 'v22/09-Q',
 
   /* 4) NUVEM (Supabase)  ------------------------------------------------------------
      Cole aqui a Project URL e a chave PUBLISHABLE do projeto Supabase DESTA empresa
@@ -7182,10 +7182,32 @@ function prodReativarRapido(id){ const p=DB.get('produtos',id); if(!p) return;
   toast('Produto reativado','ok'); renderProdTable();
 }
 
-function prodTable(prods){ prods=(prods||[]).slice();
+/* ===== ORDENAÇÃO DA LISTA DE PRODUTOS =====
+   Clicar no título da coluna ordena; clicar de novo inverte (crescente ↔ decrescente).
+   A ordenação acontece ANTES do corte de linhas da tela, senão ordenaria só o pedaço
+   que já estava à vista. Sem coluna escolhida, vale a ordem de relevância da busca. */
+let PROD_ORD={col:'',dir:1};
+const PROD_ORD_VAL={
+  nome:      p=>(p.nome||'').toLowerCase(),
+  categoria: p=>(p.categoria||'').toLowerCase(),
+  custo:     p=>+p.custo||0,
+  preco:     p=>+p.preco||0,
+  margem:    p=>{ const v=+p.preco||0; return v?((v-(+p.custo||0))/v*100):-1; },
+  embalagem: p=>(p.embalagemVenda&&+p.qtdPorEmbalagem>0)?(+p.qtdPorEmbalagem):-1,
+  estoque:   p=>+p.estoque||0 };
+function prodOrdenar(col){ if(PROD_ORD.col===col){ PROD_ORD.dir=-PROD_ORD.dir; } else { PROD_ORD={col:col,dir:1}; }
+  try{ renderProdTable(); }catch(e){} }
+function prodOrdSeta(col){ if(PROD_ORD.col!==col) return '<span class="ord-seta" style="opacity:.28">↕</span>';
+  return '<span class="ord-seta" style="color:var(--brand,#2563eb)">'+(PROD_ORD.dir>0?'▲':'▼')+'</span>'; }
+function prodOrdTh(col,label,dir){ return `<th class="${dir||''}" style="cursor:pointer;user-select:none;white-space:nowrap" title="Ordenar por ${esc(label)}" onclick="prodOrdenar('${col}')">${esc(label)} ${prodOrdSeta(col)}</th>`; }
+function prodOrdAplicar(arr){ const f=PROD_ORD_VAL[PROD_ORD.col]; if(!f) return arr;
+  const d=PROD_ORD.dir; return arr.slice().sort((a,b)=>{ const x=f(a), y=f(b);
+    if(typeof x==='string'||typeof y==='string') return d*String(x).localeCompare(String(y),'pt-BR');
+    return d*((x||0)-(y||0)); }); }
+function prodTable(prods){ prods=prodOrdAplicar((prods||[]).slice());
   if(!prods.length) return `<div class="empty">${ico('box')}<h4>Nenhum produto</h4></div>`;
   const LIM=listLim('prod'); const totalN=prods.length; let nota=''; if(totalN>LIM){ prods=prods.slice(0,LIM); nota=listNota('prod', LIM, totalN, 'produtos'); }
-  return nota+`<table><thead><tr><th>Produto</th><th>Categoria</th><th class="t-right">Custo</th><th class="t-right">Venda</th><th class="t-right">Margem</th><th class="t-right">Embalagem</th><th class="t-right">Estoque</th><th></th></tr></thead><tbody>
+  return nota+`<table><thead><tr>${prodOrdTh('nome','Produto')}${prodOrdTh('categoria','Categoria')}${prodOrdTh('custo','Custo','t-right')}${prodOrdTh('preco','Venda','t-right')}${prodOrdTh('margem','Margem','t-right')}${prodOrdTh('embalagem','Embalagem','t-right')}${prodOrdTh('estoque','Estoque','t-right')}<th></th></tr></thead><tbody>
   ${prods.map(p=>{ const margem=(p.preco-p.custo)/p.preco*100; const crit=p.estoque<=p.estoqueMinimo;
     return `<tr>
     <td><div class="prod-cell"><div class="prod-thumb" style="background:${p.cor}">${esc(p.nome[0])}</div>
