@@ -48,7 +48,7 @@ const CONFIG_EMPRESA = {
      Aparece no topo do menu e no rodapé das Configurações. Troque a cada publicação.
      MANTENHA O FORMATO 'vDD/MM-X' — é ele que o sistema usa para comparar as máquinas
      da loja e avisar quando alguma ficou para trás.                                  */
-  versao: 'v22/09-I',
+  versao: 'v22/09-K',
 
   /* 4) NUVEM (Supabase)  ------------------------------------------------------------
      Cole aqui a Project URL e a chave PUBLISHABLE do projeto Supabase DESTA empresa
@@ -2110,10 +2110,12 @@ const NAV=[
     {id:'ecommerce',label:'Vendas Online',icon:'cart',title:'E-commerce — Vendas Online',sub:'Pedidos de marketplaces e site, etiquetas e NF simplificada'},
     {id:'ecalc',label:'Calculadora de Preço',icon:'money',title:'Calculadora de Preço — Marketplaces',sub:'Preço de venda ideal no Mercado Livre, Shopee e Amazon'},
     {id:'vendmobile',label:'Link do Vendedor',icon:'people',title:'Link do Vendedor (celular)',sub:'Tirar pedidos pelo celular/tablet'} ]},
-  {g:'Locação de Máquinas',icon:'gear',items:[
+  /* Locação de Máquinas: grupo FORA DO MENU nesta loja (não é o ramo dela).
+     As telas e os dados continuam no arquivo — para reativar, basta descomentar. */
+  /* {g:'Locação de Máquinas',icon:'gear',items:[
     {id:'maquinas',label:'Máquinas',icon:'gear',title:'Máquinas para Locação',sub:'Cadastro e tabela de períodos'},
     {id:'aluguel',label:'Contratos / Orçamentos',icon:'doc',title:'Aluguel de Máquinas',sub:'Contratos e orçamentos de locação'},
-    {id:'aluguelrel',label:'Relatório de Locação',icon:'target',title:'Relatório de Locação de Máquinas',sub:'Receita, contratos e situação por período'} ]},
+    {id:'aluguelrel',label:'Relatório de Locação',icon:'target',title:'Relatório de Locação de Máquinas',sub:'Receita, contratos e situação por período'} ]}, */
   {g:'Compras',icon:'truck',items:[
     {id:'pedcompra',label:'Lista de Pedidos',icon:'cart',title:'Lista de Pedidos de Compra',sub:'Monte a lista a partir da sugestão e dos produtos em falta'},
     {id:'sugcompra',label:'Sugestão de Compra',icon:'bulb',title:'Sugestão de Compra',sub:'Reposição automática de estoque'},
@@ -3604,6 +3606,8 @@ function viewDash(){
       ${dashDebCard('boletos')}
     </div>
     ${(()=>{ const enc=contratosEncerrando(7); const has=enc.length>0;
+      /* Loja sem locação de máquinas (módulo fora do menu): não mostra o quadro. */
+      if(!has && !DB.all('contratosAluguel').length) return '';
       return `<div class="card card-pad" style="margin-bottom:18px;${has?'border:1px solid var(--amber);background:var(--amber-soft)':''}">
       <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px"><b>${ico('clock')} Máquinas com contrato de locação vencendo (7 dias)</b>${has?`<span class="tag warn">${enc.length}</span>`:`<span class="tag pos">0</span>`}</div>
       ${has?`<div style="display:flex;flex-direction:column;gap:6px">${enc.map(({c,d})=>`<div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;font-size:13px">
@@ -25673,12 +25677,20 @@ function importCliArquivo(file, opts){ opts=opts||{}; if(!file) return; const re
     }catch(err){ if(res) res.innerHTML='<span style="color:var(--neg)">Falha ao importar: '+esc(String(err))+'</span>'; } }, 30);
   }catch(err){ if(res) res.innerHTML='<span style="color:var(--neg)">Falha ao ler a planilha: '+esc(String(err))+'</span>'; } };
   reader.readAsBinaryString(file); }
+/* ARQUIVO .CSV NÃO PASSA PELO XLSX. A biblioteca lê "13,69" como 1.369 — trata a vírgula
+   como separador de milhar — e os preços entravam 100x maiores. Para .csv/.txt usamos o
+   leitor próprio (impCsvLinhas), que entrega o texto como está e deixa impProdNum
+   converter no padrão brasileiro. Planilhas .xlsx/.xls continuam no XLSX, onde o número
+   já vem numérico de verdade. */
 function importProdArquivo(file, opts){ opts=opts||{}; if(!file) return; const res=document.getElementById('imp-prod-res');
-  if(typeof XLSX==='undefined'){ if(res) res.innerHTML=`<span style="color:var(--neg)">Biblioteca de planilha não carregada. Verifique a conexão e recarregue.</span>`; return; }
+  const ehTexto=/\.(csv|txt)$/i.test(file.name||'');
+  if(!ehTexto && typeof XLSX==='undefined'){ if(res) res.innerHTML=`<span style="color:var(--neg)">Biblioteca de planilha não carregada. Verifique a conexão e recarregue.</span>`; return; }
   const reader=new FileReader();
   reader.onload=e=>{ try{
-    const wb=XLSX.read(e.target.result,{type:'binary'}); const ws=wb.Sheets[wb.SheetNames[0]];
-    const rows=XLSX.utils.sheet_to_json(ws,{header:1,defval:''}).filter(r=>r.some(c=>String(c).trim()!==''));
+    const rows = ehTexto
+      ? impCsvLinhas(String(e.target.result)).filter(r=>r.some(c=>String(c).trim()!==''))
+      : (()=>{ const wb=XLSX.read(e.target.result,{type:'binary'}); const ws=wb.Sheets[wb.SheetNames[0]];
+               return XLSX.utils.sheet_to_json(ws,{header:1,defval:''}).filter(r=>r.some(c=>String(c).trim()!=='')); })();
     if(rows.length<2){ if(res) res.innerHTML=`<span style="color:var(--neg)">Planilha vazia ou sem dados.</span>`; return; }
     const heads=rows[0].map(impProdKey); if(!heads.includes('nome')){ if(res) res.innerHTML=`<span style="color:var(--neg)">Não encontrei a coluna <b>nome</b>. Confira os títulos na primeira linha.</span>`; return; }
     const substituir = opts.inclusao ? false : confirm('Importar '+(rows.length-1)+' produto(s).\n\nDeseja SUBSTITUIR todo o catálogo por esta planilha?\n\n• OK = apaga os produtos atuais e importa tudo (recomendado para corrigir preços e dados fiscais).\n• Cancelar = apenas ATUALIZA/mescla por SKU.');
@@ -25718,7 +25730,7 @@ function importProdArquivo(file, opts){ opts=opts||{}; if(!file) return; const r
     toast(`Produtos: ${novos} novos, ${atual} atualizados`,'ok');
   }catch(err){ if(res) res.innerHTML=`<span style="color:var(--neg)">Erro ao ler a planilha: ${esc(err.message)}</span>`; }
   };
-  reader.readAsBinaryString(file);
+  if(ehTexto) reader.readAsText(file,'utf-8'); else reader.readAsBinaryString(file);
 }
 /* ===== BACKUP PROTEGIDO POR SENHA (AES-GCM 256, chave derivada por PBKDF2-SHA256) =====
    O .json de backup carrega a base inteira (CPF/CNPJ, endereços, telefones). Com a senha
