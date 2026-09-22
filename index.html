@@ -48,7 +48,7 @@ const CONFIG_EMPRESA = {
      Aparece no topo do menu e no rodapé das Configurações. Troque a cada publicação.
      MANTENHA O FORMATO 'vDD/MM-X' — é ele que o sistema usa para comparar as máquinas
      da loja e avisar quando alguma ficou para trás.                                  */
-  versao: 'v22/09-O',
+  versao: 'v22/09-P',
 
   /* 4) NUVEM (Supabase)  ------------------------------------------------------------
      Cole aqui a Project URL e a chave PUBLISHABLE do projeto Supabase DESTA empresa
@@ -3956,7 +3956,7 @@ function cartDisc(idx,v){ const it=CART.itens[idx]; if(!it)return; const lista=i
 function cartTamStep(idx,delta){ const it=CART.itens[idx]; if(!it||!it.madeira)return;
   let t=madeiraSnap((+it.tamanho||0.5)+delta); if(t<0.5)t=0.5; it.tamanho=t;
   it.preco=Math.round((+it.precoMetro||0)*t*100)/100; it.precoLista=it.preco; it.custo=Math.round((+it.custoMetro||0)*t*100)/100; cartChanged(); }
-function cartDel(idx){ CART.itens.splice(idx,1); cartChanged(); }
+function cartDel(idx){ CART.itens.splice(idx,1); kitAposMudanca('pdv'); cartChanged(); }
 function cartChanged(){ if(CART.pagamentos&&CART.pagamentos.length===1) CART.pagamentos[0].valor=cartTotalValue(); renderPDV(); }
 function cartTotals(){
   const brutoLista=CART.itens.reduce((s,i)=>s+i.qtd*Math.max(+i.precoLista||0,+i.preco||0),0);
@@ -4271,6 +4271,7 @@ function addToCart(id){ const p=DB.get('produtos',id); if(!p) return;
 function chgQty(idx,d){ const it=CART.itens[idx]; if(!it) return;
   if(it.embalagem){ it.pacotes=(it.pacotes||1)+d; if(it.pacotes<=0) CART.itens.splice(idx,1); else it.qtd=Math.round(it.pacotes*it.qtdPorEmbalagem*1000)/1000; }
   else { it.qtd+=d; if(it.qtd<=0) CART.itens.splice(idx,1); }
+  kitAposMudanca('pdv');
   if(CART.pagamentos&&CART.pagamentos.length===1) CART.pagamentos[0].valor=cartTotalValue(); renderPDV(); }
 function clearCart(){ kitsPerguntaReset(); CART.itens=[]; CART.desconto=0; CART.descPct=0; CART.clienteId=null; CART.pagamentos=[]; CART.canal='Balcão'; CART.entrega=false; CART.frete=0; CART.distanciaKm=0; CART.enderecoEntrega=''; CART.obs=''; CART.fromOrcId=null; CART.fromOrcNumero=null; CART.faturaPedidoId=null; CART.faturaPedidoNumero=null; CART.origemTroca=false; CART.creditoAplicado=0; CART.devolucaoVendaId=null; CART.vendedorId=null; CART.vendedorNome=null; CART.contratoId=null; renderPDV(); }
 /* ---- importar orçamento para o PDV ---- */
@@ -19212,6 +19213,16 @@ function kitPrecoDoItem(k,it,p){ if(k.modo!=='item') return null;
   const v=+((it&&it.precoKit)||0); return v>0?Math.round(v*100)/100:(+((p&&p.preco)||0)||0); }
 function kitQtdMin(k){ const soma=(k.itens||[]).reduce((s,it)=>s+(+it.qtd||1),0);
   return k.mix ? Math.max(1, +k.qtdMin||soma) : soma; }
+/* Quantas vezes o kit cabe no que está lançado (mapa produtoId → quantidade). */
+function kitVezes(k,m){ if(!k||!(k.itens||[]).length) return 0;
+  if(k.mix){ const tot=(k.itens||[]).reduce((s,it)=>s+(m[it.produtoId]||0),0); return Math.floor(tot/kitQtdMin(k)); }
+  return (k.itens||[]).reduce((min,it)=>Math.min(min, Math.floor((m[it.produtoId]||0)/(+it.qtd||1))), Infinity)||0; }
+/* Como tratar o que passa do mínimo:
+     'todos'    → tudo o que for do kit sai com o preço do kit (mínimo 3, levou 4 → os 4)
+     'multiplo' → só os kits fechados (mínimo 3, levou 4 → 3 com desconto, 1 na tabela) */
+function kitExcedenteTxt(k){ return (k.excedente==='multiplo')
+  ? 'Desconto a cada kit completo (o que sobra fica no preço de tabela)'
+  : 'Passando do mínimo, as unidades a mais também entram no desconto'; }
 function kitCalc(k){ let bruto=0, somaItem=0;
   (k.itens||[]).forEach(it=>{ const p=DB.get('produtos',it.produtoId); if(!p) return; const q=+it.qtd||1;
     bruto+=(+p.preco||0)*q; somaItem+=(kitPrecoDoItem(k,it,p)||0)*q; });
@@ -19222,9 +19233,9 @@ function kitCalc(k){ let bruto=0, somaItem=0;
   total=Math.max(0,Math.round(total*100)/100);
   const fator = bruto>0? total/bruto : 1;
   return {bruto, total, economia:Math.round((bruto-total)*100)/100, fator, pct: bruto>0?Math.round((1-fator)*1000)/10:0}; }
-function kitRegraTxt(k){ return k.mix
+function kitRegraTxt(k){ return (k.mix
   ? 'Vale pela quantidade total: '+NUM(kitQtdMin(k))+' unidade(s) entre os produtos da lista'
-  : 'Um de cada (na quantidade pedida)'; }
+  : 'Um de cada (na quantidade pedida)') + ' · ' + ((k.excedente==='multiplo')?'a cada kit completo':'excedente também com desconto'); }
 function kitTipoTxt(k){ return k.modo==='preco'?'Preço fechado':k.modo==='item'?'Preço por item':((k.valor||0)+'% de desconto'); }
 function viewKits(){ const kits=DB.all('kitsPromo');
   document.getElementById('view').innerHTML=`
@@ -19242,8 +19253,9 @@ function viewKits(){ const kits=DB.all('kitsPromo');
    </tbody></table></div></div>`; }
 function kitForm(id){ const k=id?DB.get('kitsPromo',id):null;
   KITF = k ? {id:k.id, nome:k.nome, modo:k.modo||'percent', valor:k.valor||0, ativo:k.ativo!==false, mix:!!k.mix, qtdMin:+k.qtdMin||0,
+              excedente:k.excedente||'todos',
               itens:(k.itens||[]).map(it=>({produtoId:it.produtoId,qtd:it.qtd||1,precoKit:+it.precoKit||0}))}
-           : {id:null, nome:'', modo:'percent', valor:10, ativo:true, mix:false, qtdMin:0, itens:[]};
+           : {id:null, nome:'', modo:'percent', valor:10, ativo:true, mix:false, qtdMin:0, excedente:'todos', itens:[]};
   openModal(kitFormHTML(), true); }
 function kitFormHTML(){ const k=KITF;
   return `<div class="modal-head"><h3>${k.id?'Editar kit':'Novo kit promocional'}</h3><button class="btn-icon btn-ghost" onclick="closeModal()">${ico('x')}</button></div>
@@ -19265,6 +19277,11 @@ function kitFormHTML(){ const k=KITF;
          Marcado, vale a <b>soma das quantidades</b> dos produtos da lista — 3 canetas iguais, ou 1 de cada, fecham o mesmo kit.</div>
        ${k.mix?`<div class="field" style="max-width:220px;margin:10px 0 0"><label>Quantidade mínima (total)</label>
          <input type="number" min="1" step="1" value="${k.qtdMin||kitQtdMin(k)}" oninput="KITF.qtdMin=Math.max(1,+this.value||1);kitFormRefresh()"></div>`:''}
+       <div class="field" style="margin:12px 0 0"><label>Quando passar do mínimo</label>
+         <select onchange="KITF.excedente=this.value;kitFormRefresh()">
+           <option value="todos" ${k.excedente!=='multiplo'?'selected':''}>Continuar dando desconto nas unidades a mais (mín. 3, levou 4 → os 4 com desconto)</option>
+           <option value="multiplo" ${k.excedente==='multiplo'?'selected':''}>Dar o desconto a cada kit completo (mín. 3, levou 4 → 3 com desconto, 1 na tabela)</option>
+         </select></div>
      </div>
      <div class="field"><label>Produtos do kit</label>
        <div style="position:relative"><input id="kit-search" class="no-upper" placeholder="Buscar produto para adicionar..." autocomplete="off" oninput="kitSearch(this.value)" onkeydown="ddKeyNav(event,'kit-dd')"><div id="kit-dd" class="wiz-assoc-dd" style="display:none;margin-top:4px;max-height:340px;overflow:auto"></div></div></div>
@@ -19307,6 +19324,7 @@ function kitDelItem(i){ KITF.itens.splice(i,1); kitFormRefresh(); }
 function kitSave(){ if(!(KITF.nome||'').trim()){ toast('Informe o nome do kit','err'); return; } if(!KITF.itens.length){ toast('Adicione ao menos um produto','err'); return; }
   if(KITF.modo==='item' && KITF.itens.some(i=>!(+i.precoKit>0))){ toast('Informe o preço no kit de cada produto','err'); return; }
   const obj={nome:KITF.nome.trim(), modo:KITF.modo, valor:+KITF.valor||0, ativo:!!KITF.ativo, mix:!!KITF.mix, qtdMin:+KITF.qtdMin||0,
+    excedente:(KITF.excedente==='multiplo'?'multiplo':'todos'),
     itens:KITF.itens.map(i=>({produtoId:i.produtoId,qtd:+i.qtd||1,precoKit:+i.precoKit||0}))};
   if(KITF.id) DB.update('kitsPromo',KITF.id,obj); else DB.insert('kitsPromo',obj);
   toast('Kit salvo','ok'); closeModal(); viewKits(); }
@@ -19339,6 +19357,9 @@ function kitCompleto(k,m){ if(!k||!(k.itens||[]).length) return false;
 function kitSugerir(destino){ try{
   const arr = destino==='pdv'?CART.itens:ORC.itens; const m=kitMapaItens(arr);
   const kits=DB.all('kitsPromo').filter(k=>k.ativo!==false && (k.itens||[]).length);
+  /* Kit que deixou de estar completo volta a poder ser oferecido: se o operador apagar
+     um item e lançar de novo, a pergunta aparece outra vez. */
+  kits.forEach(k=>{ if(!kitCompleto(k,m) && !arr.some(i=>i.kitId===k.id)) window._kitsSug.delete(k.id); });
   for(const k of kits){ if(window._kitsSug.has(k.id)) continue;
     if(kitCompleto(k,m) && !arr.some(i=>i.kitId===k.id)){ window._kitsSug.add(k.id); kitPerguntar(destino,k.id); break; } }
 }catch(e){} }
@@ -19392,17 +19413,34 @@ function kitAplicarNosItens(destino, kitId){ const k=DB.get('kitsPromo',kitId); 
     const idx=arr.indexOf(li);
     arr.splice(idx+1,0,Object.assign({},li,{qtd:limite,precoLista:lista,preco:novo,kitId:k.id,kitNome:k.nome}));
     mexidos++; return limite; };
-  if(k.mix){ let falta=kitQtdMin(k);
+  const livre=kitMapaItens(arr); const vezes=Math.max(1, kitVezes(k,livre)||1);
+  const tudo=(k.excedente!=='multiplo');          // 'todos' = excedente também entra no desconto
+  if(k.mix){ let falta = tudo ? Infinity : vezes*kitQtdMin(k);
     for(let i=0;i<arr.length && falta>0;i++){ const li=arr[i]; if(li.kitId) continue;
       const it=(k.itens||[]).find(x=>x.produtoId===(li.id||li.produtoId)); if(!it) continue;
       falta-=aplica(li,falta,it); }
   } else {
-    (k.itens||[]).forEach(it=>{ let falta=+it.qtd||1;
+    (k.itens||[]).forEach(it=>{ let falta = tudo ? Infinity : vezes*(+it.qtd||1);
       for(let i=0;i<arr.length && falta>0;i++){ const li=arr[i]; if(li.kitId) continue;
         if((li.id||li.produtoId)!==it.produtoId) continue;
         falta-=aplica(li,falta,it); } });
   }
   return mexidos; }
+/* O operador apagou um item ou baixou a quantidade: se o kit não fecha mais, o desconto
+   sai sozinho e as linhas voltam ao preço de tabela. */
+function kitRevisar(destino){ const arr=(destino==='pdv')?CART.itens:ORC.itens;
+  const ids=[]; arr.forEach(i=>{ if(i.kitId && ids.indexOf(i.kitId)<0) ids.push(i.kitId); });
+  const desfeitos=[];
+  ids.forEach(id=>{ const k=DB.get('kitsPromo',id);
+    const m={}; arr.forEach(i=>{ if(i.kitId!==id) return; const pid=i.id||i.produtoId; if(!pid) return; m[pid]=(m[pid]||0)+(+i.qtd||0); });
+    if(k && kitCompleto(k,m)) return;
+    arr.forEach(i=>{ if(i.kitId!==id) return;
+      const lista=+((i.precoLista!=null?i.precoLista:i.preco))||0; i.preco=lista; delete i.kitId; delete i.kitNome; });
+    desfeitos.push(k?k.nome:'promocional'); try{ window._kitsSug.delete(id); }catch(e){} });
+  if(desfeitos.length) toast('Kit "'+desfeitos[0]+'" desfeito — os preços voltaram à tabela','err');
+  return desfeitos.length; }
+/* Chamado depois de apagar item ou mudar quantidade: desfaz o que quebrou e oferece o que fechou. */
+function kitAposMudanca(destino){ try{ kitRevisar(destino); kitSugerir(destino); }catch(e){} }
 function kitConfirmar(destino, kitId){ const k=DB.get('kitsPromo',kitId); const n=kitAplicarNosItens(destino,kitId);
   closeModal();
   if(!n){ toast('Não consegui aplicar o kit nas linhas lançadas','err'); return; }
@@ -19549,6 +19587,7 @@ function orcEmbAjustar(it, qtdDesejada){ const q=+it.qtdPorEmbalagem||0; if(!(it
   it.pacotes=pacotes; it.qtd=qtd; return mudou; }
 function orcQty(ix,v){ const it=ORC.itens[ix]; const desejada=Math.max(0.001,numBR(v)); it.qtd=desejada;
   if(it.embalagem&&it.qtdPorEmbalagem>0){ const un=itemUn(it); if(orcEmbAjustar(it, desejada)) toast(fmtQ(desejada)+' '+un+' → '+NUM(it.pacotes)+' '+(it.embalagemTipo||'Caixa')+'(s) = '+fmtQ(it.qtd)+' '+un+' (vendido em '+(it.embalagemTipo||'caixa').toLowerCase()+'s fechadas)','ok'); }
+  kitAposMudanca('orc');
   orcRefreshItens(); orcTotals(); }
 function orcEmbQtd(ix,v){ const it=ORC.itens[ix]; const q=Math.max(0.001,numBR(v)); it.qtdPorEmbalagem=q; it.embalagem=true; const antes=it.qtd; orcEmbAjustar(it, antes);
   if(Math.abs(it.qtd-antes)>0.0005) toast('Embalagem de '+fmtQ(q)+' '+itemUn(it)+': '+NUM(it.pacotes)+' '+(it.embalagemTipo||'Caixa')+'(s) = '+fmtQ(it.qtd)+' '+itemUn(it),'ok');
@@ -19578,7 +19617,7 @@ function orcRemoverDescontos(){
   const bv=document.getElementById('orc-desc-btn-valor'), bp=document.getElementById('orc-desc-btn-pct');
   if(bv&&bp){ bv.className='btn btn-sm btn-amber'; bp.className='btn btn-sm btn-ghost'; }
   orcRefreshItens(); orcTotals(); toast('Descontos removidos — nenhum desconto será aplicado até você informar um novo','ok'); }
-function orcDel(ix){ ORC.itens.splice(ix,1); orcRefreshItens(); orcTotals(); }
+function orcDel(ix){ ORC.itens.splice(ix,1); kitAposMudanca('orc'); orcRefreshItens(); orcTotals(); }
 function orcRefreshItens(idxNovo, sempreRolar){ const it=document.getElementById('orc-items'); if(it)it.innerHTML=orcItemsTable();
   const nIt=(ORC.itens||[]).length;
   // rola quando: veio um índice, a lista cresceu, ou foi pedido explicitamente
