@@ -48,7 +48,7 @@ const CONFIG_EMPRESA = {
      Aparece no topo do menu e no rodapé das Configurações. Troque a cada publicação.
      MANTENHA O FORMATO 'vDD/MM-X' — é ele que o sistema usa para comparar as máquinas
      da loja e avisar quando alguma ficou para trás.                                  */
-  versao: 'v22/09-K',
+  versao: 'v22/09-O',
 
   /* 4) NUVEM (Supabase)  ------------------------------------------------------------
      Cole aqui a Project URL e a chave PUBLISHABLE do projeto Supabase DESTA empresa
@@ -2083,8 +2083,10 @@ const NAV=[
     {id:'calcobra',label:'Calculadora de Obra',icon:'calc2',title:'Calculadora de Material por Obra',sub:'Estime materiais por m² e gere orçamento'},
     {id:'veiculos',label:'Veículos',icon:'truck',title:'Veículos da Empresa',sub:'Frota, combustível e responsável'} ]},
   {g:'CRM',icon:'funnel',items:[
-    {id:'waatend',label:'Atendimento WhatsApp',icon:'quote',title:'Atendimento WhatsApp',sub:'Caixa de entrada da API oficial — conversas, atendentes e modelos'},
-    {id:'crmwa',label:'CRM WhatsApp',icon:'quote',title:'CRM de vendas por WhatsApp',sub:'Funil de negociações e atendimento'},
+    /* Atendimento WhatsApp e CRM WhatsApp: FORA DO MENU por enquanto (as telas continuam
+       no arquivo — para voltar, é só descomentar as duas linhas abaixo). */
+    /* {id:'waatend',label:'Atendimento WhatsApp',icon:'quote',title:'Atendimento WhatsApp',sub:'Caixa de entrada da API oficial — conversas, atendentes e modelos'}, */
+    /* {id:'crmwa',label:'CRM WhatsApp',icon:'quote',title:'CRM de vendas por WhatsApp',sub:'Funil de negociações e atendimento'}, */
     {id:'prospec',label:'Prospecção de clientes',icon:'cli',title:'Prospecção de clientes',sub:'Busca automática na internet por segmento, CEP ou raio'},
     {id:'funil',label:'Funil de Orçamentos',icon:'funnel',title:'Funil de Orçamentos',sub:'Pipeline comercial'},
     {id:'orcrel',label:'Relatório de Orçamentos',icon:'rep',title:'Relatório de Orçamentos',sub:'Tempo de espera e valores por proposta'},
@@ -4270,7 +4272,7 @@ function chgQty(idx,d){ const it=CART.itens[idx]; if(!it) return;
   if(it.embalagem){ it.pacotes=(it.pacotes||1)+d; if(it.pacotes<=0) CART.itens.splice(idx,1); else it.qtd=Math.round(it.pacotes*it.qtdPorEmbalagem*1000)/1000; }
   else { it.qtd+=d; if(it.qtd<=0) CART.itens.splice(idx,1); }
   if(CART.pagamentos&&CART.pagamentos.length===1) CART.pagamentos[0].valor=cartTotalValue(); renderPDV(); }
-function clearCart(){ CART.itens=[]; CART.desconto=0; CART.descPct=0; CART.clienteId=null; CART.pagamentos=[]; CART.canal='Balcão'; CART.entrega=false; CART.frete=0; CART.distanciaKm=0; CART.enderecoEntrega=''; CART.obs=''; CART.fromOrcId=null; CART.fromOrcNumero=null; CART.faturaPedidoId=null; CART.faturaPedidoNumero=null; CART.origemTroca=false; CART.creditoAplicado=0; CART.devolucaoVendaId=null; CART.vendedorId=null; CART.vendedorNome=null; CART.contratoId=null; renderPDV(); }
+function clearCart(){ kitsPerguntaReset(); CART.itens=[]; CART.desconto=0; CART.descPct=0; CART.clienteId=null; CART.pagamentos=[]; CART.canal='Balcão'; CART.entrega=false; CART.frete=0; CART.distanciaKm=0; CART.enderecoEntrega=''; CART.obs=''; CART.fromOrcId=null; CART.fromOrcNumero=null; CART.faturaPedidoId=null; CART.faturaPedidoNumero=null; CART.origemTroca=false; CART.creditoAplicado=0; CART.devolucaoVendaId=null; CART.vendedorId=null; CART.vendedorNome=null; CART.contratoId=null; renderPDV(); }
 /* ---- importar orçamento para o PDV ---- */
 function pdvImportContrato(){
   const lista=DB.all('contratosAluguel').filter(c=>c.tipo==='Contrato' && !c.pagoVendaId).sort((a,b)=>((b.criadoEm||'')+'').localeCompare((a.criadoEm||'')+''));
@@ -19006,6 +19008,7 @@ function orcEditor(id, modo){
   ORC.tipo=ex?(ex.tipo||'Orçamento'):tipoNovo; ORC.canal=ex?(ex.canal||''):'';
   ORC.numero=ex?ex.numero:orcNumeroLivreTipo(ORC.tipo);   // Pedido usa sua própria sequência
   ORC.numeroPrevisto=!ex;   // enquanto não salvar, o número é só uma previsão
+  kitsPerguntaReset();                       // orçamento novo/aberto: pode oferecer os kits de novo
   ORC.itens=ex?ex.itens.map(i=>({...i})):[]; ORC.clienteId=ex?ex.clienteId:null; ORC.clienteNome=ex?ex.clienteNome:'Consumidor';
   ORC.enderecoPendente=ex?!!ex.enderecoPendente:false;
   ORC.enderecoEntrega=ex?(ex.enderecoEntrega||''):''; ORC.entrega=ex?!!ex.entrega:false; ORC.entregaEscolha=ex?!!ex.entrega:null; ORC.frete=ex?(ex.frete||0):0; ORC.distanciaKm=ex?(ex.distanciaKm||0):0; ORC.creditoUsar=ex?(+ex.creditoUsar||0):0;
@@ -19052,7 +19055,7 @@ function orcEditor(id, modo){
     </div>
 
     <div class="pdv-grid">
-      <div class="card"><div class="card-head"><div><h3>Itens do ${ORC.tipo.toLowerCase()}</h3><div class="ch-sub">Ajuste quantidades e preços</div></div><button class="btn btn-ghost btn-sm" onclick="obraModal()">${ico('calc')} Calcular por área (m²)</button></div>
+      <div class="card"><div class="card-head"><div><h3>Itens do ${ORC.tipo.toLowerCase()}</h3><div class="ch-sub">Ajuste quantidades e preços</div></div></div>
         <div class="tbl-wrap orc-items-scroll" id="orc-items">${orcItemsTable()}</div><div id="orc-sugestoes">${orcSugestoesHTML()}</div></div>
       <div class="cart-side">
         <div class="card card-pad">
@@ -19196,60 +19199,115 @@ function itemEmbInfo(it, prod){
            plural, sufixo, qtdPorEmbalagem:q, tipo }; }
 /* ===================== KITS PROMOCIONAIS ===================== */
 let KITF=null;
-function kitCalc(k){ let bruto=0; (k.itens||[]).forEach(it=>{ const p=DB.get('produtos',it.produtoId); if(p) bruto+=(+p.preco||0)*(+it.qtd||1); });
+/* ===== CÁLCULO DO KIT =====
+   Três modos:
+     percent → desconto em % sobre a soma dos produtos
+     preco   → preço fechado para o kit inteiro
+     item    → cada produto do kit assume um preço próprio (campo por item)
+   Regra de quantidade:
+     mix=false → precisa da quantidade pedida DE CADA produto (um de cada, por padrão)
+     mix=true  → vale a SOMA das quantidades dos produtos do kit (ex.: 3 canetas
+                 quaisquer da lista fecham o kit), a partir de qtdMin. */
+function kitPrecoDoItem(k,it,p){ if(k.modo!=='item') return null;
+  const v=+((it&&it.precoKit)||0); return v>0?Math.round(v*100)/100:(+((p&&p.preco)||0)||0); }
+function kitQtdMin(k){ const soma=(k.itens||[]).reduce((s,it)=>s+(+it.qtd||1),0);
+  return k.mix ? Math.max(1, +k.qtdMin||soma) : soma; }
+function kitCalc(k){ let bruto=0, somaItem=0;
+  (k.itens||[]).forEach(it=>{ const p=DB.get('produtos',it.produtoId); if(!p) return; const q=+it.qtd||1;
+    bruto+=(+p.preco||0)*q; somaItem+=(kitPrecoDoItem(k,it,p)||0)*q; });
   bruto=Math.round(bruto*100)/100;
-  let total = k.modo==='preco' ? (+k.valor||0) : Math.round(bruto*(1-(+k.valor||0)/100)*100)/100;
+  let total = k.modo==='preco' ? (+k.valor||0)
+            : k.modo==='item'  ? Math.round(somaItem*100)/100
+            : Math.round(bruto*(1-(+k.valor||0)/100)*100)/100;
   total=Math.max(0,Math.round(total*100)/100);
   const fator = bruto>0? total/bruto : 1;
   return {bruto, total, economia:Math.round((bruto-total)*100)/100, fator, pct: bruto>0?Math.round((1-fator)*1000)/10:0}; }
+function kitRegraTxt(k){ return k.mix
+  ? 'Vale pela quantidade total: '+NUM(kitQtdMin(k))+' unidade(s) entre os produtos da lista'
+  : 'Um de cada (na quantidade pedida)'; }
+function kitTipoTxt(k){ return k.modo==='preco'?'Preço fechado':k.modo==='item'?'Preço por item':((k.valor||0)+'% de desconto'); }
 function viewKits(){ const kits=DB.all('kitsPromo');
   document.getElementById('view').innerHTML=`
    <div class="bi-banner" style="margin-bottom:16px"><div>${ico('gift')}</div>
-     <div><b>Kits promocionais</b><p>Monte combos de produtos com <b>preço fechado</b> ou <b>desconto</b>. No PDV e no orçamento, use o botão <b>Kits</b> para aplicar de uma vez.</p></div></div>
+     <div><b>Kits promocionais</b><p>Monte combos com <b>desconto</b>, <b>preço fechado</b> ou <b>preço por item</b>. No PDV e no orçamento, quando os produtos do kit são lançados o sistema <b>pergunta</b> se aplica.</p></div></div>
    <div class="toolbar"><div class="spacer"></div><button class="btn btn-amber btn-sm" onclick="kitForm()">${ico('plus')} Novo kit</button></div>
-   <div class="card"><div class="tbl-wrap"><table><thead><tr><th>Kit</th><th>Itens</th><th class="t-right">De</th><th class="t-right">Por</th><th class="t-right">Economia</th><th></th></tr></thead><tbody>
+   <div class="card"><div class="tbl-wrap"><table><thead><tr><th>Kit</th><th>Itens</th><th>Regra</th><th class="t-right">De</th><th class="t-right">Por</th><th class="t-right">Economia</th><th></th></tr></thead><tbody>
    ${kits.length?kits.map(k=>{ const c=kitCalc(k); return `<tr>
-     <td><b>${esc(k.nome)}</b>${k.ativo===false?' <span class="tag neg">inativo</span>':''}<div class="t-mut" style="font-size:11.5px">${k.modo==='preco'?'Preço fechado':((k.valor||0)+'% de desconto')}</div></td>
+     <td><b>${esc(k.nome)}</b>${k.ativo===false?' <span class="tag neg">inativo</span>':''}<div class="t-mut" style="font-size:11.5px">${kitTipoTxt(k)}</div></td>
      <td class="t-mut" style="font-size:12px">${(k.itens||[]).map(it=>{const p=DB.get('produtos',it.produtoId);return (it.qtd>1?it.qtd+'× ':'')+esc(p?p.nome:'—');}).join(', ')}</td>
+     <td class="t-mut" style="font-size:11.5px">${esc(kitRegraTxt(k))}</td>
      <td class="t-right tnum">${BRL(c.bruto)}</td><td class="t-right tnum"><b>${BRL(c.total)}</b></td>
      <td class="t-right tnum" style="color:var(--pos)">−${BRL(c.economia)}</td>
-     <td class="t-right"><button class="btn-icon btn-ghost" onclick="kitForm('${k.id}')" title="Editar">${ico('edit')}</button><button class="btn-icon btn-ghost" onclick="kitDel('${k.id}')" title="Remover">${ico('trash')}</button></td></tr>`;}).join(''):`<tr><td colspan="6"><div class="empty" style="padding:34px">${ico('gift')}<h4>Nenhum kit cadastrado</h4><p class="t-mut">Crie o primeiro combo promocional.</p></div></td></tr>`}
+     <td class="t-right"><button class="btn-icon btn-ghost" onclick="kitForm('${k.id}')" title="Editar">${ico('edit')}</button><button class="btn-icon btn-ghost" onclick="kitDel('${k.id}')" title="Excluir" style="color:var(--neg)">${ico('trash')}</button></td></tr>`;}).join(''):`<tr><td colspan="7" class="empty">Nenhum kit cadastrado</td></tr>`}
    </tbody></table></div></div>`; }
 function kitForm(id){ const k=id?DB.get('kitsPromo',id):null;
-  KITF = k ? {id:k.id, nome:k.nome, modo:k.modo||'percent', valor:k.valor||0, ativo:k.ativo!==false, itens:(k.itens||[]).map(it=>({produtoId:it.produtoId,qtd:it.qtd||1}))}
-           : {id:null, nome:'', modo:'percent', valor:10, ativo:true, itens:[]};
+  KITF = k ? {id:k.id, nome:k.nome, modo:k.modo||'percent', valor:k.valor||0, ativo:k.ativo!==false, mix:!!k.mix, qtdMin:+k.qtdMin||0,
+              itens:(k.itens||[]).map(it=>({produtoId:it.produtoId,qtd:it.qtd||1,precoKit:+it.precoKit||0}))}
+           : {id:null, nome:'', modo:'percent', valor:10, ativo:true, mix:false, qtdMin:0, itens:[]};
   openModal(kitFormHTML(), true); }
 function kitFormHTML(){ const k=KITF;
   return `<div class="modal-head"><h3>${k.id?'Editar kit':'Novo kit promocional'}</h3><button class="btn-icon btn-ghost" onclick="closeModal()">${ico('x')}</button></div>
    <div class="modal-body">
-     <div class="field"><label>Nome do kit *</label><input id="kit-nome" class="cad-upper" value="${esc(k.nome)}" placeholder="Ex.: Kit pintura completo" oninput="KITF.nome=this.value"></div>
+     <div class="field"><label>Nome do kit *</label><input id="kit-nome" class="cad-upper" value="${esc(k.nome)}" placeholder="Ex.: Kit volta às aulas" oninput="KITF.nome=this.value"></div>
      <div class="field-row">
-       <div class="field"><label>Tipo</label><select onchange="KITF.modo=this.value;kitFormRefresh()"><option value="percent" ${k.modo==='percent'?'selected':''}>Desconto (%)</option><option value="preco" ${k.modo==='preco'?'selected':''}>Preço fechado (R$)</option></select></div>
-       <div class="field"><label id="kit-vlabel">${k.modo==='preco'?'Preço do kit (R$)':'Desconto (%)'}</label><input type="number" step="0.01" min="0" value="${k.valor}" oninput="KITF.valor=+this.value||0;kitFormRefresh()"></div>
+       <div class="field"><label>Tipo</label><select onchange="KITF.modo=this.value;kitFormRedesenhar()">
+         <option value="percent" ${k.modo==='percent'?'selected':''}>Desconto (%)</option>
+         <option value="preco" ${k.modo==='preco'?'selected':''}>Preço fechado do kit (R$)</option>
+         <option value="item" ${k.modo==='item'?'selected':''}>Preço por item (R$ em cada produto)</option></select></div>
+       <div class="field">${k.modo==='item'
+          ? `<label>Preço de cada produto</label><div class="t-mut" style="font-size:12px;padding-top:9px">Informe na coluna <b>Preço no kit</b>, na lista de produtos abaixo.</div>`
+          : `<label id="kit-vlabel">${k.modo==='preco'?'Preço do kit (R$)':'Desconto (%)'}</label><input type="number" step="0.01" min="0" value="${k.valor}" oninput="KITF.valor=+this.value||0;kitFormRefresh()">`}</div>
+     </div>
+     <div class="card card-pad" style="background:var(--surface-2);margin-bottom:12px">
+       <label style="display:flex;align-items:center;gap:8px;cursor:pointer"><input type="checkbox" ${k.mix?'checked':''} onchange="KITF.mix=this.checked;kitFormRedesenhar()" style="width:16px;height:16px">
+         <b style="font-size:13px">Pode completar com mais de uma unidade do mesmo produto</b></label>
+       <div class="t-mut" style="font-size:12px;margin-top:5px;line-height:1.5">Desmarcado, o kit só fecha com a quantidade pedida <b>de cada produto</b>.
+         Marcado, vale a <b>soma das quantidades</b> dos produtos da lista — 3 canetas iguais, ou 1 de cada, fecham o mesmo kit.</div>
+       ${k.mix?`<div class="field" style="max-width:220px;margin:10px 0 0"><label>Quantidade mínima (total)</label>
+         <input type="number" min="1" step="1" value="${k.qtdMin||kitQtdMin(k)}" oninput="KITF.qtdMin=Math.max(1,+this.value||1);kitFormRefresh()"></div>`:''}
      </div>
      <div class="field"><label>Produtos do kit</label>
-       <div style="position:relative"><input id="kit-search" class="no-upper" placeholder="Buscar produto para adicionar..." autocomplete="off" oninput="kitSearch(this.value)" onkeydown="ddKeyNav(event,'kit-dd')"><div id="kit-dd" class="wiz-assoc-dd" style="display:none;position:absolute;left:0;right:0"></div></div></div>
+       <div style="position:relative"><input id="kit-search" class="no-upper" placeholder="Buscar produto para adicionar..." autocomplete="off" oninput="kitSearch(this.value)" onkeydown="ddKeyNav(event,'kit-dd')"><div id="kit-dd" class="wiz-assoc-dd" style="display:none;margin-top:4px;max-height:340px;overflow:auto"></div></div></div>
      <div id="kit-itens">${kitItensHTML()}</div>
      <div id="kit-resumo" style="margin-top:10px">${kitResumoHTML()}</div>
      <label style="display:flex;align-items:center;gap:8px;margin-top:12px;cursor:pointer"><input type="checkbox" ${k.ativo?'checked':''} onchange="KITF.ativo=this.checked" style="width:16px;height:16px"> Kit ativo</label>
    </div>
    <div class="modal-foot"><button class="btn btn-ghost" onclick="closeModal()">Cancelar</button><button class="btn btn-amber" onclick="kitSave()">${ico('check')} Salvar kit</button></div>`; }
-function kitFormRefresh(){ const l=document.getElementById('kit-vlabel'); if(l) l.textContent=KITF.modo==='preco'?'Preço do kit (R$)':'Desconto (%)'; const r=document.getElementById('kit-resumo'); if(r) r.innerHTML=kitResumoHTML(); }
+/* Mudança de tipo ou da regra de quantidade muda a estrutura do formulário: redesenha tudo. */
+function kitFormRedesenhar(){ openModal(kitFormHTML(), true); }
+function kitFormRefresh(){ const l=document.getElementById('kit-vlabel'); if(l) l.textContent=KITF.modo==='preco'?'Preço do kit (R$)':'Desconto (%)';
+  const it=document.getElementById('kit-itens'); if(it) it.innerHTML=kitItensHTML();
+  const r=document.getElementById('kit-resumo'); if(r) r.innerHTML=kitResumoHTML(); }
 function kitItensHTML(){ if(!KITF.itens.length) return '<div class="t-mut" style="font-size:12.5px;padding:6px 0">Nenhum produto adicionado.</div>';
-  return `<table style="width:100%;font-size:13px"><tbody>${KITF.itens.map((it,i)=>{ const p=DB.get('produtos',it.produtoId)||{}; return `<tr>
-    <td style="padding:4px 0">${esc(p.nome||'—')}<div class="t-mut" style="font-size:11px">${BRL(p.preco||0)}</div></td>
-    <td style="width:90px"><input type="number" min="1" value="${it.qtd||1}" onchange="KITF.itens[${i}].qtd=Math.max(1,+this.value||1);kitFormRefresh()" style="width:70px"></td>
-    <td style="width:36px;text-align:right"><button class="btn-icon btn-ghost" onclick="kitDelItem(${i})" style="color:var(--neg)">${ico('trash')}</button></td></tr>`;}).join('')}</tbody></table>`; }
+  const porItem=(KITF.modo==='item');
+  return `<table style="width:100%;font-size:13px"><thead><tr><th style="text-align:left">Produto</th><th style="width:90px">Qtd</th>${porItem?'<th style="width:120px">Preço no kit</th>':''}<th style="width:36px"></th></tr></thead><tbody>${KITF.itens.map((it,i)=>{ const p=DB.get('produtos',it.produtoId)||{}; return `<tr>
+    <td style="padding:4px 0">${esc(p.nome||'—')}<div class="t-mut" style="font-size:11px">tabela ${BRL(p.preco||0)}</div></td>
+    <td><input type="number" min="1" value="${it.qtd||1}" onchange="KITF.itens[${i}].qtd=Math.max(1,+this.value||1);kitFormRefresh()" style="width:70px"></td>
+    ${porItem?`<td><input type="number" step="0.01" min="0" value="${(+it.precoKit||p.preco||0)}" onchange="KITF.itens[${i}].precoKit=Math.max(0,+this.value||0);kitFormRefresh()" style="width:100px"></td>`:''}
+    <td style="text-align:right"><button class="btn-icon btn-ghost" onclick="kitDelItem(${i})" style="color:var(--neg)">${ico('trash')}</button></td></tr>`;}).join('')}</tbody></table>`; }
 function kitResumoHTML(){ if(!KITF.itens.length) return ''; const c=kitCalc(KITF);
-  return `<div class="card card-pad" style="background:var(--surface-2)"><div class="cart-total-line"><span>Soma dos produtos</span><span class="tnum">${BRL(c.bruto)}</span></div><div class="cart-total-line"><span>Preço do kit</span><span class="tnum"><b>${BRL(c.total)}</b></span></div><div class="cart-total-line"><span class="t-mut">Economia (${c.pct}%)</span><span class="tnum" style="color:var(--pos)">−${BRL(c.economia)}</span></div></div>`; }
+  return `<div class="card card-pad" style="background:var(--surface-2)"><div class="cart-total-line"><span>Soma dos produtos</span><span class="tnum">${BRL(c.bruto)}</span></div><div class="cart-total-line"><span>Preço do kit</span><span class="tnum"><b>${BRL(c.total)}</b></span></div><div class="cart-total-line"><span>Economia do cliente</span><span class="tnum" style="color:var(--pos)">${BRL(c.economia)} (${c.pct}%)</span></div><div class="t-mut" style="font-size:11.5px;margin-top:6px">${esc(kitRegraTxt(KITF))}</div></div>`; }
+/* A lista de resultados NÃO flutua mais sobre o modal: ela abre logo abaixo da busca,
+   com rolagem própria, porque flutuando era cortada pelo rodapé e só dava para ver
+   dois ou três produtos. Mostra até 50 e traz código e estoque para diferenciar
+   variações parecidas (azul, preta, vermelha…). */
 function kitSearch(q){ q=(q||'').trim(); const dd=document.getElementById('kit-dd'); if(!dd) return; if(q.length<2){ dd.style.display='none'; return; }
-  const res=DB.all('produtos').filter(p=>matchTokens((p.nome||'')+' '+(p.sku||'')+' '+(p.codigoBarras||''),q)).slice(0,30);
-  dd.innerHTML=res.length?res.map(p=>`<div onclick="kitAddItem('${p.id}')" style="padding:8px 10px;cursor:pointer;border-bottom:1px solid var(--line-2)"><b>${esc(p.nome)}</b> <span class="t-mut">${BRL(p.preco||0)}</span></div>`).join(''):'<div style="padding:8px 10px" class="t-mut">Nenhum produto</div>';
-  dd.style.display='block'; }
-function kitAddItem(pid){ if(!KITF.itens.some(i=>i.produtoId===pid)) KITF.itens.push({produtoId:pid,qtd:1}); const s=document.getElementById('kit-search'); if(s)s.value=''; const dd=document.getElementById('kit-dd'); if(dd)dd.style.display='none'; document.getElementById('kit-itens').innerHTML=kitItensHTML(); kitFormRefresh(); }
-function kitDelItem(i){ KITF.itens.splice(i,1); document.getElementById('kit-itens').innerHTML=kitItensHTML(); kitFormRefresh(); }
+  const res=DB.all('produtos').filter(p=>matchTokens((p.nome||'')+' '+(p.sku||'')+' '+(p.codigoBarras||''),q)).slice(0,50);
+  dd.innerHTML=res.length?res.map(p=>`<div onclick="kitAddItem('${p.id}')" style="padding:9px 10px;cursor:pointer;border-bottom:1px solid var(--line-2);display:flex;justify-content:space-between;gap:10px;align-items:center">
+      <span style="min-width:0"><b style="font-size:13px">${esc(p.nome)}</b><div class="t-mut" style="font-size:11px">${esc(p.sku||'')}${p.unidade?' · '+esc(p.unidade):''} · estoque ${NUM(+p.estoque||0)}</div></span>
+      <b class="tnum" style="white-space:nowrap">${BRL(p.preco||0)}</b></div>`).join('')
+    :'<div style="padding:10px" class="t-mut">Nenhum produto encontrado.</div>';
+  dd.style.display='block';
+  try{ dd.scrollTop=0; dd.scrollIntoView({block:'nearest'}); }catch(e){} }
+function kitAddItem(pid){ if(!KITF.itens.some(i=>i.produtoId===pid)){ const p=DB.get('produtos',pid);
+    KITF.itens.push({produtoId:pid,qtd:1,precoKit:+((p&&p.preco)||0)||0}); }
+  const s=document.getElementById('kit-search'); if(s)s.value=''; const dd=document.getElementById('kit-dd'); if(dd)dd.style.display='none';
+  kitFormRefresh(); }
+function kitDelItem(i){ KITF.itens.splice(i,1); kitFormRefresh(); }
 function kitSave(){ if(!(KITF.nome||'').trim()){ toast('Informe o nome do kit','err'); return; } if(!KITF.itens.length){ toast('Adicione ao menos um produto','err'); return; }
-  const obj={nome:KITF.nome.trim(), modo:KITF.modo, valor:+KITF.valor||0, ativo:!!KITF.ativo, itens:KITF.itens.map(i=>({produtoId:i.produtoId,qtd:+i.qtd||1}))};
+  if(KITF.modo==='item' && KITF.itens.some(i=>!(+i.precoKit>0))){ toast('Informe o preço no kit de cada produto','err'); return; }
+  const obj={nome:KITF.nome.trim(), modo:KITF.modo, valor:+KITF.valor||0, ativo:!!KITF.ativo, mix:!!KITF.mix, qtdMin:+KITF.qtdMin||0,
+    itens:KITF.itens.map(i=>({produtoId:i.produtoId,qtd:+i.qtd||1,precoKit:+i.precoKit||0}))};
   if(KITF.id) DB.update('kitsPromo',KITF.id,obj); else DB.insert('kitsPromo',obj);
   toast('Kit salvo','ok'); closeModal(); viewKits(); }
 function kitDel(id){ if(!confirm('Remover este kit?'))return; DB.remove('kitsPromo',id); viewKits(); }
@@ -19270,15 +19328,86 @@ function kitAplicar(destino, kitId){ const k=DB.get('kitsPromo',kitId); if(!k) r
   closeModal(); toast('Kit "'+k.nome+'" aplicado — desconto de '+c.pct+'% em '+add+' produto(s)','ok');
   if(destino==='pdv'){ if(typeof renderPDV==='function') renderPDV(); } else { orcRefreshItens(); orcTotals(); } }
 window._kitsSug = window._kitsSug || new Set();
+/* Kit completo no carrinho → PERGUNTA se aplica (Sim/Não). Só contam as linhas que
+   ainda não pertencem a um kit. Respeita a regra de quantidade do cadastro:
+   "um de cada" ou "soma das quantidades" (mix). */
+function kitMapaItens(arr){ const m={}; (arr||[]).forEach(i=>{ if(i.kitId) return; const id=i.id||i.produtoId; if(!id) return;
+    m[id]=(m[id]||0)+(+i.qtd||0); }); return m; }
+function kitCompleto(k,m){ if(!k||!(k.itens||[]).length) return false;
+  if(k.mix){ const tot=(k.itens||[]).reduce((s,it)=>s+(m[it.produtoId]||0),0); return tot>=kitQtdMin(k); }
+  return (k.itens||[]).every(it=>(m[it.produtoId]||0)>=(+it.qtd||1)); }
 function kitSugerir(destino){ try{
-  const arr = destino==='pdv'?CART.itens:ORC.itens; const m={}; arr.forEach(i=>{ const id=i.id||i.produtoId; m[id]=(m[id]||0)+(+i.qtd||0); });
+  const arr = destino==='pdv'?CART.itens:ORC.itens; const m=kitMapaItens(arr);
   const kits=DB.all('kitsPromo').filter(k=>k.ativo!==false && (k.itens||[]).length);
   for(const k of kits){ if(window._kitsSug.has(k.id)) continue;
-    const completo=(k.itens||[]).every(it=>(m[it.produtoId]||0)>=(+it.qtd||1));
-    const jaAplicado=arr.some(i=>i.kitId===k.id);
-    if(completo && !jaAplicado){ const c=kitCalc(k); window._kitsSug.add(k.id);
-      toast('Estes produtos formam o "'+k.nome+'" — economize '+BRL(c.economia)+' ('+c.pct+'%). Toque em "Kits" para aplicar.','ok'); break; } }
+    if(kitCompleto(k,m) && !arr.some(i=>i.kitId===k.id)){ window._kitsSug.add(k.id); kitPerguntar(destino,k.id); break; } }
 }catch(e){} }
+/* Recomeçou a venda/orçamento: pode perguntar de novo. */
+function kitsPerguntaReset(){ try{ window._kitsSug=new Set(); }catch(e){} }
+/* A pergunta. "Não" não volta a perguntar por este kit enquanto a tela estiver aberta. */
+function kitPerguntar(destino, kitId){ const k=DB.get('kitsPromo',kitId); if(!k) return; const c=kitCalc(k);
+  const linhas=(k.itens||[]).map(it=>{ const p=DB.get('produtos',it.produtoId); if(!p) return '';
+    const pk=kitPrecoDoItem(k,it,p);
+    return `<div style="display:flex;justify-content:space-between;gap:10px;padding:5px 0;border-bottom:1px solid var(--line-2);font-size:12.5px">
+      <span>${esc(p.nome)} <span class="t-mut">× ${NUM(+it.qtd||1)}</span></span>
+      <span class="tnum">${pk!=null?`<s class="t-mut">${BRL(p.preco||0)}</s> ${BRL(pk)}`:BRL((+p.preco||0)*(+it.qtd||1))}</span></div>`; }).join('');
+  openModal(`<div class="modal-head"><h3>${ico('gift')} Aplicar o kit "${esc(k.nome)}"?</h3>
+      <button class="btn-icon btn-ghost" onclick="kitRecusar()">${ico('x')}</button></div>
+    <div class="modal-body">
+      <p style="font-size:13.5px;margin:0 0 4px">Os produtos lançados formam este kit. Aplicando, eles ficam com
+        <b>${k.modo==='item'?'o preço de kit':c.pct+'% de desconto'}</b> e o cliente economiza <b style="color:var(--pos)">${BRL(c.economia)}</b>.</p>
+      <p class="t-mut" style="font-size:11.5px;margin:0 0 10px">${esc(kitRegraTxt(k))}</p>
+      <div style="margin-bottom:10px">${linhas}</div>
+      <div style="display:flex;justify-content:space-between;font-size:13.5px">
+        <span class="t-mut">Sem o kit: <s>${BRL(c.bruto)}</s></span>
+        <b style="font-size:16px;color:var(--pos)">Com o kit: ${BRL(c.total)}</b></div>
+    </div>
+    <div class="modal-foot">
+      <button class="btn btn-ghost" onclick="kitRecusar()">Não, manter os preços</button>
+      <button class="btn btn-amber" onclick="kitConfirmar('${destino}','${k.id}')">${ico('check')} Sim, aplicar o desconto</button>
+    </div>`); }
+function kitRecusar(){ closeModal(); }
+/* Aplica o preço do kit NAS LINHAS QUE JÁ ESTÃO no carrinho (não lança os produtos de novo).
+   Linha com quantidade maior que a pedida é dividida: a parte do kit sai com o preço do kit
+   e o restante continua no preço de tabela. Linhas de embalagem fechada e de madeira têm
+   preço composto: entram inteiras ou ficam de fora. */
+function kitAplicarNosItens(destino, kitId){ const k=DB.get('kitsPromo',kitId); if(!k) return 0;
+  const c=kitCalc(k); const arr=(destino==='pdv')?CART.itens:ORC.itens; let mexidos=0;
+  const precoNovo=(li,it)=>{ const lista=+((li.precoLista!=null?li.precoLista:li.preco))||0;
+    if(k.modo==='item'){ const pk=+((it&&it.precoKit)||0);
+      if(!(pk>0)) return lista;
+      if(li.embalagem && +li.qtdPorEmbalagem>0) return Math.round(pk*(+li.qtdPorEmbalagem)*100)/100;   // preço por embalagem
+      if(li.madeira && +li.tamanho>0) return Math.round(pk*(+li.tamanho)*100)/100;
+      return Math.round(pk*100)/100; }
+    return Math.round(lista*c.fator*100)/100; };
+  const aplica=(li,limite,it)=>{ const q=+li.qtd||0; if(q<=0) return 0;
+    const composto=!!(li.embalagem||li.madeira);
+    if(composto){ /* caixa fechada ou peça de madeira: não dá para dividir a linha,
+         então ela entra INTEIRA no kit (quem levou a caixa leva o preço de kit nela). */
+      const lista=+((li.precoLista!=null?li.precoLista:li.preco))||0;
+      li.precoLista=lista; li.preco=precoNovo(li,it); li.kitId=k.id; li.kitNome=k.nome; mexidos++; return q; }
+    const lista=+((li.precoLista!=null?li.precoLista:li.preco))||0; const novo=precoNovo(li,it);
+    if(q<=limite){ li.precoLista=lista; li.preco=novo; li.kitId=k.id; li.kitNome=k.nome; mexidos++; return q; }
+    li.qtd=Math.round((q-limite)*1000)/1000;
+    const idx=arr.indexOf(li);
+    arr.splice(idx+1,0,Object.assign({},li,{qtd:limite,precoLista:lista,preco:novo,kitId:k.id,kitNome:k.nome}));
+    mexidos++; return limite; };
+  if(k.mix){ let falta=kitQtdMin(k);
+    for(let i=0;i<arr.length && falta>0;i++){ const li=arr[i]; if(li.kitId) continue;
+      const it=(k.itens||[]).find(x=>x.produtoId===(li.id||li.produtoId)); if(!it) continue;
+      falta-=aplica(li,falta,it); }
+  } else {
+    (k.itens||[]).forEach(it=>{ let falta=+it.qtd||1;
+      for(let i=0;i<arr.length && falta>0;i++){ const li=arr[i]; if(li.kitId) continue;
+        if((li.id||li.produtoId)!==it.produtoId) continue;
+        falta-=aplica(li,falta,it); } });
+  }
+  return mexidos; }
+function kitConfirmar(destino, kitId){ const k=DB.get('kitsPromo',kitId); const n=kitAplicarNosItens(destino,kitId);
+  closeModal();
+  if(!n){ toast('Não consegui aplicar o kit nas linhas lançadas','err'); return; }
+  const c=kitCalc(k); toast('Kit "'+k.nome+'" aplicado — economia de '+BRL(c.economia),'ok');
+  if(destino==='pdv'){ if(typeof renderPDV==='function') renderPDV(); } else { orcRefreshItens(); orcTotals(); } }
 /* Detecta "madeira serrada" de forma tolerante: aceita singular/plural e variações
    (Madeira Serrada, Madeiras Serradas, Madeira/Serrada, Madeira Serrada Bruta…) e
    procura na categoria, no grupo, no sub-grupo E no NOME do produto — assim funciona
@@ -19315,7 +19444,7 @@ function orcAddActive(){
       preco:Math.round(precoMetro*tam*100)/100, precoLista:Math.round(precoMetro*tam*100)/100, custo:Math.round(custoMetro*tam*100)/100, unidade:p.unidade||'pç'});   // sempre nova linha (permite o mesmo produto com tamanhos diferentes)
     const s=document.getElementById('orc-search'); if(s)s.value=''; ORC.results=[]; ORC.activePid=null; ORC.qtyPrefix=null;
     const dd=document.getElementById('orc-dd'); if(dd){dd.classList.remove('on');dd.innerHTML='';}
-    orcRefreshItens(ORC.itens.length-1); orcTotals(); if(s)s.focus(); return;
+    orcRefreshItens(ORC.itens.length-1); orcTotals(); kitSugerir('orc'); if(s)s.focus(); return;
   }
   const promo=produtoPromoAtiva(p)?Math.round(p.precoPromo*100)/100:0;
   const atacMin=+p.atacadoQtdMin||0;
@@ -19545,7 +19674,7 @@ function orcAddSugestao(pid){ const p=DB.get('produtos',pid); if(!p)return;
     else ORC.itens.push({produtoId:p.id,nome:p.nome,preco:p.preco,precoLista:p.preco,custo:p.custo,unidade:p.unidade||'UN',embalagem:true,qtdPorEmbalagem:p.qtdPorEmbalagem,embalagemTipo:p.embalagemTipo||'Caixa',pacotes:1,qtd:p.qtdPorEmbalagem}); }
   else { const ex=ORC.itens.find(i=>i.produtoId===p.id && !i.embalagem);
     if(ex) ex.qtd+=1; else ORC.itens.push({produtoId:p.id,nome:p.nome,qtd:1,preco:p.preco,precoLista:p.preco,custo:p.custo,unidade:p.unidade||'UN'}); }
-  orcRefreshItens(); orcTotals(); }
+  orcRefreshItens(); orcTotals(); kitSugerir('orc'); }
 function freteConfig(){ const c=DB._load().freteConfig||{}; return Object.assign({cepOrigem:'',faixas:[],localidades:[]},c); }
 function taxasCartao(){ const c=DB._load().taxasCartao||{};
   let credito=c.credito;
