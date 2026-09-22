@@ -48,7 +48,7 @@ const CONFIG_EMPRESA = {
      Aparece no topo do menu e no rodapé das Configurações. Troque a cada publicação.
      MANTENHA O FORMATO 'vDD/MM-X' — é ele que o sistema usa para comparar as máquinas
      da loja e avisar quando alguma ficou para trás.                                  */
-  versao: 'v22/09-E',
+  versao: 'v22/09-F',
 
   /* 4) NUVEM (Supabase)  ------------------------------------------------------------
      Cole aqui a Project URL e a chave PUBLISHABLE do projeto Supabase DESTA empresa
@@ -25186,6 +25186,7 @@ function importCRModelo(){ const csv='cliente;documento;descricao;categoria;form
 function impCRKey(h){ const k=normTxt(h).replace(/[^a-z0-9]/g,'');
   if(/^(descricao|historico|descr)/.test(k)) return 'descricao';
   if(/^(valor|vlr|total)/.test(k)) return 'valor';
+  if(/^(pagoem|pagoin|datapagamento|datadopagamento|datadebaixa|databaixa|baixaem|dtpagamento|recebidoem|datarecebimento)/.test(k)) return 'pagoData';   // ANTES de 'vencimento': 'datapagamento' também começa com 'data'
   if(/^(vencimento|venc|datavencimento|data)/.test(k)) return 'vencimento';
   if(/^(cliente|fornecedor|razaosocial|nome)/.test(k)) return 'cliente';
   if(/^(documento|cnpj|cpf|cpfcnpj|doc)/.test(k)) return 'documento';
@@ -25278,6 +25279,7 @@ async function importBOConfirmar(){ const res=document.getElementById('imp-bo-re
       const stTxt=normTxt(o.status||'');
       if(/cancelad/.test(stTxt)){ cancelados++; continue; }
       const status=impEhPago(stTxt)?'recebido':'aberto';
+      const recData=status==='recebido' ? (impCPData(o.pagoData)||venc||hoje) : '';   // sem a data da baixa o relatório soma R$ 0,00 em "Recebido"
       let cliId=null; const cnome=(''+(o.cliente||'')).trim(); const cdoc=soD(o.documento);
       if(cnome||cdoc){ let c=impAcharCliente(cnome,cdoc);
         if(!c) c=impCriarCliente(cnome,cdoc);
@@ -25286,7 +25288,8 @@ async function importBOConfirmar(){ const res=document.getElementById('imp-bo-re
       const forma=(''+(o.forma||'')).trim()||'Boleto/Prazo';
       DB.insert('financeiro',{impLote:_lote,impGrupo:'boleto',tipo:'receber',status,clienteId:cliId,clienteNome:cnome,
         descricao:(''+(o.descricao||'')).trim()||('Boleto '+cnome),valor,vencimento:venc,emissao:hoje,categoria:cat,
-        forma:forma,parcela:(''+(o.parcela||'')).trim(),origem:'boleto-ficha'});
+        forma:forma,parcela:(''+(o.parcela||'')).trim(),origem:'boleto-ficha',
+        recebidoData:recData||null, pagoData:recData||null, recebidoForma:status==='recebido'?forma:'', valorPago:status==='recebido'?valor:null});
       ok++; }
     if(res) res.innerHTML=`<div class="tag pos" style="display:inline-flex">${ico('check')} ${NUM(ok)} boleto(s) lançado(s) em Boletos a Receber</div>`+
       (cancelados?`<div class="t-mut" style="font-size:12px;margin-top:6px">${NUM(cancelados)} cancelada(s) ignorada(s).</div>`:'')+
@@ -25396,6 +25399,7 @@ async function importCRConfirmar(){ const res=document.getElementById('imp-cr-re
       const stTxt=normTxt(o.status||'');
       if(/cancelad/.test(stTxt)){ cancelados++; continue; }
       const status=impEhPago(stTxt)?'recebido':'aberto';
+      const recData=status==='recebido' ? (impCPData(o.pagoData)||venc||hoje) : '';   // sem a data da baixa o relatório soma R$ 0,00 em "Recebido"
       // cliente (cadastra se novo) — casa por CPF/CNPJ, senão por nome
       let cliId=null; const cnome=(''+(o.cliente||'')).trim(); const cdoc=soD(o.documento);
       if(cnome||cdoc){ let c=DB.all('clientes').find(x=>(cdoc&&soD(x.cpf_cnpj)===cdoc)||(cnome&&!cdoc&&normTxt(x.nome||'')===normTxt(cnome)));
@@ -25405,7 +25409,8 @@ async function importCRConfirmar(){ const res=document.getElementById('imp-cr-re
       catRegistrar(cat,'produto');
       const forma=(''+(o.forma||'')).trim();
       const ehBoleto=/boleto|prazo/i.test(forma);
-      DB.insert('financeiro',{impLote:_lote,tipo:'receber',status,clienteId:cliId,clienteNome:cnome,descricao:(''+(o.descricao||'')).trim()||('Conta '+cnome),valor,vencimento:venc,emissao:hoje,categoria:cat,forma:forma||'',origem:ehBoleto?'boleto-ficha':'importacao',parcela:(''+(o.parcela||'')).trim(),nf:(''+(o.nf||'')).trim()});
+      DB.insert('financeiro',{impLote:_lote,tipo:'receber',status,clienteId:cliId,clienteNome:cnome,descricao:(''+(o.descricao||'')).trim()||('Conta '+cnome),valor,vencimento:venc,emissao:hoje,categoria:cat,forma:forma||'',origem:ehBoleto?'boleto-ficha':'importacao',parcela:(''+(o.parcela||'')).trim(),nf:(''+(o.nf||'')).trim(),
+        recebidoData:recData||null, pagoData:recData||null, recebidoForma:status==='recebido'?forma:'', valorPago:status==='recebido'?valor:null});
       ok++; }
     if(res) res.innerHTML=`<div class="tag pos" style="display:inline-flex">${ico('check')} ${NUM(ok)} conta(s) lançada(s) em Contas a Receber</div>`+
       (cancelados?`<div class="t-mut" style="font-size:12px;margin-top:6px">${NUM(cancelados)} cancelada(s) ignorada(s).</div>`:'')+
@@ -25419,6 +25424,8 @@ function importCPModelo(){ const csv='fornecedor;documento;descricao;categoria;c
 function impCPKey(h){ const k=normTxt(h).replace(/[^a-z0-9]/g,'');
   if(/^(descricao|historico|descr)/.test(k)) return 'descricao';
   if(/^(valor|vlr|total)/.test(k)) return 'valor';
+  if(/^(pagoem|pagoin|datapagamento|datadopagamento|datadebaixa|databaixa|baixaem|dtpagamento|recebidoem|datarecebimento)/.test(k)) return 'pagoData';   // ANTES de 'vencimento': 'datapagamento' também começa com 'data'
+  if(/^(forma|formapagamento|meiopagamento|tipopagamento)/.test(k)) return 'forma';
   if(/^(vencimento|venc|datavencimento|data)/.test(k)) return 'vencimento';
   if(/^(fornecedor|cliente|razaosocial|nome)/.test(k)) return 'fornecedor';
   if(/^(documento|cnpj|cpf|cpfcnpj|doc)/.test(k)) return 'documento';
@@ -25479,6 +25486,10 @@ async function importCPConfirmar(){ const res=document.getElementById('imp-cp-re
       const stTxt=normTxt(o.status||'');
       if(/cancelad/.test(stTxt)){ cancelados++; continue; }
       const status=impEhPago(stTxt)?'pago':'aberto';
+      /* Título que já veio pago: sem a data da baixa o relatório soma R$ 0,00 em "Pago".
+         Usa a data informada na planilha; faltando ela, cai no vencimento e, por fim, em hoje. */
+      const pagoData=status==='pago' ? (impCPData(o.pagoData)||venc||hoje) : '';
+      const formaPg=(''+(o.forma||'')).trim();
       // fornecedor (cadastra se novo)
       let fornId=null; const fnome=(''+(o.fornecedor||'')).trim(); const fdoc=(''+(o.documento||'')).replace(/\D/g,'');
       if(fnome||fdoc){ let f=DB.all('fornecedores').find(x=>(fdoc&&(''+(x.cnpj||x.documento||'')).replace(/\D/g,'')===fdoc)||(fnome&&normTxt(x.nome||'')===normTxt(fnome)));
@@ -25488,7 +25499,8 @@ async function importCPConfirmar(){ const res=document.getElementById('imp-cp-re
       catRegistrar(cat,'financeiro');
       const cc=(''+(o.centroCusto||'')).trim();
       if(cc && !DB.all('centroCustos').some(c=>normTxt(c.nome||'')===normTxt(cc))) DB.insert('centroCustos',{nome:cc});
-      DB.insert('financeiro',{impLote:_lote,tipo:'pagar',status,fornecedorId:fornId,descricao:(''+(o.descricao||'')).trim()||('Conta '+(fnome||'')),valor,vencimento:venc,emissao:hoje,categoria:cat,centroCusto:cc,parcela:(''+(o.parcela||'')).trim(),nf:(''+(o.nf||'')).trim(),origem:'importacao'});
+      DB.insert('financeiro',{impLote:_lote,tipo:'pagar',status,fornecedorId:fornId,descricao:(''+(o.descricao||'')).trim()||('Conta '+(fnome||'')),valor,vencimento:venc,emissao:hoje,categoria:cat,centroCusto:cc,parcela:(''+(o.parcela||'')).trim(),nf:(''+(o.nf||'')).trim(),origem:'importacao',forma:formaPg,
+        pagoData:pagoData||null, pagoForma:status==='pago'?formaPg:'', valorPago:status==='pago'?valor:null});
       ok++; }
     if(res) res.innerHTML=`<div class="tag pos" style="display:inline-flex">${ico('check')} ${NUM(ok)} conta(s) lançada(s) em Contas a Pagar</div>`+
       (cancelados?`<div class="t-mut" style="font-size:12px;margin-top:6px">${NUM(cancelados)} cancelada(s) ignorada(s).</div>`:'')+
