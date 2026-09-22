@@ -48,7 +48,7 @@ const CONFIG_EMPRESA = {
      Aparece no topo do menu e no rodapé das Configurações. Troque a cada publicação.
      MANTENHA O FORMATO 'vDD/MM-X' — é ele que o sistema usa para comparar as máquinas
      da loja e avisar quando alguma ficou para trás.                                  */
-  versao: 'v22/09-H',
+  versao: 'v22/09-I',
 
   /* 4) NUVEM (Supabase)  ------------------------------------------------------------
      Cole aqui a Project URL e a chave PUBLISHABLE do projeto Supabase DESTA empresa
@@ -3521,6 +3521,40 @@ function dashTabelaCategorias(cats, receitaTotal){
         <td class="t-right tnum t-strong" style="color:var(--pos)">${BRL(somaLucro)}</td>
         <td class="t-right tnum t-strong">${PCT(mgTot)}</td></tr></tfoot></table></div>`; }
 
+/* ===== PAINEL: o que vence nos PRÓXIMOS 7 DIAS (a receber e a pagar) =====
+   Lista os títulos ainda em aberto com vencimento de hoje até daqui a 7 dias, do mais
+   próximo para o mais distante. Os já vencidos entram destacados, porque quem olha o
+   painel de manhã precisa ver o atraso junto com o que está por vencer. */
+function dashProx7(tipo){ const ate=daysAgo(-7);   // daysAgo(-7) = daqui a 7 dias
+  return DB.all('financeiro')
+    .filter(f=>f.tipo===tipo && f.status==='aberto' && f.vencimento && f.vencimento<=ate)
+    .sort((a,b)=>(a.vencimento<b.vencimento?-1:1)); }
+function dashProx7Nome(f){ if(f.tipo==='pagar'){ const fo=f.fornecedorId?DB.get('fornecedores',f.fornecedorId):null;
+    return (fo&&fo.nome)||f.fornecedorNome||'Sem fornecedor'; }
+  const c=f.clienteId?DB.get('clientes',f.clienteId):null; return (c&&c.nome)||f.clienteNome||'Sem cliente'; }
+function dashProx7Card(tipo){ const rec=(tipo==='receber');
+  const todos=dashProx7(tipo); const lista=todos.slice(0,6);
+  const total=Math.round(todos.reduce((s,f)=>s+(+f.valor||0),0)*100)/100;
+  const atrasados=todos.filter(f=>f.vencimento<today()).length;
+  const cor=rec?'var(--pos)':'var(--neg)';
+  return `<div class="card">
+    <div class="card-head"><div><h3>${ico(rec?'up':'down')} Contas a ${rec?'Receber':'Pagar'} — próximos 7 dias</h3>
+      <div class="ch-sub">${NUM(todos.length)} título(s) · <b style="color:${cor}">${BRL(total)}</b>${atrasados?` · <span style="color:var(--neg)">${NUM(atrasados)} em atraso</span>`:''}</div></div>
+      <button class="btn btn-ghost btn-sm" onclick="go('${rec?'contasrec':'contaspag'}')">Ver todos</button></div>
+    <div class="card-pad" style="padding-top:0">
+    ${lista.length?lista.map(f=>{ const atraso=f.vencimento<today();
+      return `<div style="display:flex;align-items:center;gap:10px;padding:9px 0;border-bottom:1px solid var(--line-2)">
+        <div style="flex:1;min-width:0">
+          <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap">
+            <span class="t-strong" style="font-size:13px">${esc(dashProx7Nome(f))}</span>
+            <span class="tag ${atraso?'neg':''}" style="font-size:10.5px">${fDate(f.vencimento)}${atraso?' · atrasado':''}</span></div>
+          <div class="t-mut" style="font-size:11.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(f.descricao||'—')}</div>
+        </div>
+        <b class="tnum" style="font-size:13.5px;color:${cor};white-space:nowrap">${BRL(f.valor)}</b>
+      </div>`; }).join('')
+      :`<div class="empty" style="padding:26px">${ico('check')}<div>Nada a ${rec?'receber':'pagar'} nos próximos 7 dias</div></div>`}
+    ${todos.length>lista.length?`<div class="t-mut" style="font-size:11.5px;padding-top:8px">+ ${NUM(todos.length-lista.length)} título(s) no período — use "Ver todos".</div>`:''}
+    </div></div>`; }
 function viewDash(){
   // Painel geral = números totais da empresa. O vendedor tem a aba própria "Painel do Vendedor".
   // Só chega aqui quem tem acesso ao 'dash' (admin, cargos não-vendedores, ou vendedor liberado no Acesso por cargo).
@@ -3577,6 +3611,11 @@ function viewDash(){
         <span class="tag ${d<=0?'neg':d<=2?'warn':''}">${d<0?`vencido há ${-d}d`:d===0?'encerra hoje':`faltam ${d} dia(s)`}</span></div>`).join('')}</div>
       <div style="margin-top:8px"><button class="btn btn-ghost btn-sm" onclick="go('aluguel')">Ver contratos</button></div>`
       :`<p class="t-mut" style="font-size:12.5px;margin:0">Nenhuma máquina com contrato vencendo nos próximos 7 dias.</p>`}</div>`; })()}
+
+    <div class="g2" style="margin-bottom:18px">
+      ${dashProx7Card('receber')}
+      ${dashProx7Card('pagar')}
+    </div>
 
     <div class="g2" style="margin-bottom:18px">
       <div class="card" style="grid-column:span 1">
