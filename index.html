@@ -48,7 +48,7 @@ const CONFIG_EMPRESA = {
      Aparece no topo do menu e no rodapé das Configurações. Troque a cada publicação.
      MANTENHA O FORMATO 'vDD/MM-X' — é ele que o sistema usa para comparar as máquinas
      da loja e avisar quando alguma ficou para trás.                                  */
-  versao: 'v22/09-F',
+  versao: 'v22/09-G',
 
   /* 4) NUVEM (Supabase)  ------------------------------------------------------------
      Cole aqui a Project URL e a chave PUBLISHABLE do projeto Supabase DESTA empresa
@@ -15173,9 +15173,10 @@ function finNfTag(f){ const n=finNfNum(f); if(!n) return '';
   const tem=!!finNotaDe(f);
   return `<span class="tag" style="background:#dbeafe;color:#1d4ed8;font-weight:700;${tem?'cursor:pointer':''}" ${tem?`onclick="event.stopPropagation();finAbrirNota('${f.id}')"`:''} title="${tem?'Nota fiscal nº '+esc(n)+' — clique para abrir e imprimir':'Nota fiscal nº '+esc(n)}">NF ${esc(n)}</span>`; }
 function crEhFicha(f){ return !crEhBoleto(f) && (!!f.vendaId || f.origem==='ficha-import' || f.categoria==='Pagamento Futuro'); }
-/* Os quatro indicadores em destaque são sempre do MÊS VIGENTE (independente do filtro
-   de período da listagem abaixo): em aberto = vence neste mês; pago/juros/desconto =
-   foi pago neste mês. */
+/* Os quatro indicadores em destaque acompanham o FILTRO DE PERÍODO da listagem
+   (Todas / Hoje / Semana / Mês / Período): em aberto = vence dentro do filtro;
+   pago/juros/desconto = foi pago dentro do filtro. Antes eram fixos no mês vigente,
+   e por isso não batiam com a lista quando se escolhia outro período. */
 function cpMesRange(){ const t=new Date(); const ini=new Date(t.getFullYear(),t.getMonth(),1), fim=new Date(t.getFullYear(),t.getMonth()+1,0);
   return [ymd(ini),ymd(fim)]; }
 function cpMesLabel(){ const t=new Date();
@@ -15184,11 +15185,22 @@ function cpMesLabel(){ const t=new Date();
 function cpNoMes(f){ const r=cpMesRange();
   const d = (f.status==='pago') ? (f.pagoData||f.vencimento||'') : (f.vencimento||'');
   return !!d && d>=r[0] && d<=r[1]; }
-function cpKpis(){ const t=finTotais('pagar', cpNoMes); const mes=cpMesLabel(); return `<div class="kpis">
-  ${kpiCard('Total em aberto',BRL(t.aberto),'clock','#f59e0b','vence em <b>'+mes+'</b>')}
-  ${kpiCard('Total pago',BRL(t.liquidado),'money','#15803d','pago em <b>'+mes+'</b>')}
-  ${kpiCard('Juros pagos',BRL(t.juros),'up','#dc2626','pagos em <b>'+mes+'</b> — quando se paga acima do valor')}
-  ${kpiCard('Descontos obtidos',BRL(t.desconto),'pct','#0d9488','obtidos em <b>'+mes+'</b> — quando se paga abaixo do valor')}
+/* Data que vale para o filtro: título pago conta pela data da baixa; em aberto, pelo vencimento. */
+function cpDataFiltro(f){ return (f.status==='pago') ? (f.pagoData||f.vencimento||'') : (f.vencimento||''); }
+function cpNoFiltro(f){ return finInRange(cpDataFiltro(f), FIN.pagPeriod, FIN.pagDe, FIN.pagAte); }
+function cpFiltroLabel(){ const p=FIN.pagPeriod;
+  if(p==='hoje')   return 'hoje';
+  if(p==='semana') return 'esta semana';
+  if(p==='mes')    return cpMesLabel();
+  if(p==='custom'){ const de=FIN.pagDe, ate=FIN.pagAte;
+    if(de||ate) return (de?fDate(de):'início')+' a '+(ate?fDate(ate):'hoje');
+    return 'o período escolhido'; }
+  return 'todo o período'; }
+function cpKpis(){ const t=finTotais('pagar', cpNoFiltro); const per=cpFiltroLabel(); return `<div class="kpis">
+  ${kpiCard('Total em aberto',BRL(t.aberto),'clock','#f59e0b','vence em <b>'+per+'</b>')}
+  ${kpiCard('Total pago',BRL(t.liquidado),'money','#15803d','pago em <b>'+per+'</b>')}
+  ${kpiCard('Juros pagos',BRL(t.juros),'up','#dc2626','pagos em <b>'+per+'</b> — quando se paga acima do valor')}
+  ${kpiCard('Descontos obtidos',BRL(t.desconto),'pct','#0d9488','obtidos em <b>'+per+'</b> — quando se paga abaixo do valor')}
 </div>`; }
 function crKpis(){ const boletos=(FIN.recTab==='boletos'); const suf=boletos?' (boletos)':'';
   const t=boletos?finTotais('receber',crEhBoleto):finTotais('receber');
