@@ -48,7 +48,7 @@ const CONFIG_EMPRESA = {
      Aparece no topo do menu e no rodapé das Configurações. Troque a cada publicação.
      MANTENHA O FORMATO 'vDD/MM-X' — é ele que o sistema usa para comparar as máquinas
      da loja e avisar quando alguma ficou para trás.                                  */
-  versao: 'v23/09-A',
+  versao: 'v23/09-B',
 
   /* 4) NUVEM (Supabase)  ------------------------------------------------------------
      Cole aqui a Project URL e a chave PUBLISHABLE do projeto Supabase DESTA empresa
@@ -8225,7 +8225,7 @@ function cliForm(id){ const c=id?DB.get('clientes',id):{};
      <div class="field"><label>Nome / Razão Social *</label><input id="c-nome" value="${esc(c.nome||'')}" placeholder="Nome completo ou razão social"></div>
      <div class="field-row">
        <div class="field"><label>Tipo de Documento</label><select id="c-tipodoc">${['CPF','CNPJ','RG','Outro'].map(t=>`<option ${c.tipoDoc===t?'selected':''}>${t}</option>`).join('')}</select></div>
-       <div class="field"><label>CPF / CNPJ *</label><input id="c-doc" value="${esc(c.doc||'')}" placeholder="000.000.000-00" onblur="cnpjFill(this.value,{razao:'c-nome',cep:'c-cep',logradouro:'c-logr',numero:'c-num',complemento:'c-compl',bairro:'c-bairro',cidade:'c-cidade',uf:'c-uf',telefone:'c-tel',email:'c-email'})"></div>
+       <div class="field"><label>CPF / CNPJ *</label><input id="c-doc" value="${esc(c.doc||'')}" placeholder="000.000.000-00" onblur="cnpjFill(this.value,{ie:'c-ie',razao:'c-nome',cep:'c-cep',logradouro:'c-logr',numero:'c-num',complemento:'c-compl',bairro:'c-bairro',cidade:'c-cidade',uf:'c-uf',telefone:'c-tel',email:'c-email'})"></div>
      </div>
      <div class="field-row">
        <div class="field"><label>Email</label><input id="c-email" value="${esc(c.email||'')}" placeholder="cliente@email.com"></div>
@@ -8918,7 +8918,7 @@ function fornForm(id){ const f=id?DB.get('fornecedores',id):{}; FNF={ativo:f.sit
    <div class="modal-body" style="max-height:62vh;overflow:auto" id="fn-tab-body">
    <div id="fn-cad-wrap">
      <div class="field"><label>Nome / Razão Social *</label><input id="fn-nome" value="${esc(f.nome||'')}"></div>
-     <div class="field-row"><div class="field"><label>CNPJ</label><input id="fn-cnpj" value="${esc(f.cnpj||'')}" onblur="cnpjFill(this.value,{razao:'fn-nome',cidade:'fn-cidade',uf:'fn-uf',telefone:'fn-tel',email:'fn-email'})"></div>
+     <div class="field-row"><div class="field"><label>CNPJ</label><input id="fn-cnpj" value="${esc(f.cnpj||'')}" onblur="cnpjFill(this.value,{ie:'fn-ie',razao:'fn-nome',cidade:'fn-cidade',uf:'fn-uf',telefone:'fn-tel',email:'fn-email'})"></div>
        <div class="field"><label>Tipo</label><select id="fn-tipo"><option ${f.tipo==='PJ'?'selected':''}>PJ</option><option ${f.tipo==='PF'?'selected':''}>PF</option></select></div></div>
      <div class="field-row"><div class="field"><label>Telefone</label><input id="fn-tel" value="${esc(f.telefone||'')}"></div>
        <div class="field"><label>E-mail</label><input id="fn-email" value="${esc(f.email||'')}"></div></div>
@@ -21685,19 +21685,30 @@ function cnpjAplicar(d, map){ d=d||{};
   setv(map.razao, d.razao_social); setv(map.fantasia, d.nome_fantasia||d.razao_social); setv(map.cep, cep);
   setv(map.logradouro, logr); setv(map.numero, cnpjNumeroEnd(d.numero, !!logr)); setv(map.complemento, d.complemento);
   setv(map.bairro, d.bairro); setv(map.cidade, d.municipio); setv(map.uf, d.uf);
-  setv(map.telefone, d.ddd_telefone_1||''); setv(map.email, (d.email||'').toLowerCase()); setv(map.cnae, d.cnae_fiscal?(''+d.cnae_fiscal):''); }
+  setv(map.telefone, d.ddd_telefone_1||''); setv(map.email, (d.email||'').toLowerCase()); setv(map.cnae, d.cnae_fiscal?(''+d.cnae_fiscal):'');
+  setv(map.ie, d.ie||''); }
+/* INSCRIÇÃO ESTADUAL: a Receita Federal (BrasilAPI/ReceitaWS) NÃO tem esse dado — ele é
+   estadual. Quem devolve é o cnpj.ws, no campo inscricoes_estaduais do estabelecimento.
+   Aqui escolhemos a IE ATIVA do mesmo estado do endereço; sem ela, a primeira ativa. */
+function cnpjIEdeWS(e){ const arr=(e&&e.inscricoes_estaduais)||[]; if(!arr.length) return '';
+  const uf=((e.estado&&e.estado.sigla)||'').toUpperCase();
+  const num=x=>((x&&(x.inscricao_estadual||x.numero||''))+'').trim();
+  const ufDe=x=>(((x&&x.estado&&x.estado.sigla)||'')+'').toUpperCase();
+  const ativas=arr.filter(x=>x && x.ativo!==false && num(x));
+  return num(ativas.find(x=>ufDe(x)===uf)) || num(ativas[0]) || num(arr.find(x=>num(x))) || ''; }
 function cnpjNormWS(j){ const e=(j&&j.estabelecimento)||{}; return {
-  razao_social:j.razao_social, nome_fantasia:e.nome_fantasia,
+  razao_social:j.razao_social, nome_fantasia:e.nome_fantasia, ie:cnpjIEdeWS(e),
   cep:e.cep, descricao_tipo_de_logradouro:e.tipo_logradouro, logradouro:e.logradouro, numero:e.numero, complemento:e.complemento, bairro:e.bairro,
   municipio:(e.cidade&&e.cidade.nome)||'', uf:(e.estado&&e.estado.sigla)||'',
   ddd_telefone_1:(e.ddd1&&e.telefone1)?(e.ddd1+' '+e.telefone1):'', email:e.email,
   cnae_fiscal:(e.atividade_principal&&e.atividade_principal.id)||'' }; }
 async function cnpjFetch(cnpj){
   const tenta=async(url,norm)=>{ try{ const r=await fetch(url); if(!r.ok) return null; const j=await r.json(); return norm?norm(j):j; }catch(e){ return null; } };
-  // 1) BrasilAPI direto
-  let d=await tenta('https://brasilapi.com.br/api/cnpj/v1/'+cnpj); if(d&&d.razao_social) return d;
-  // 2) cnpj.ws (público)
-  d=await tenta('https://publica.cnpj.ws/cnpj/'+cnpj, cnpjNormWS); if(d&&d.razao_social) return d;
+  // 1) cnpj.ws (público) PRIMEIRO: é a única fonte gratuita que devolve a INSCRIÇÃO ESTADUAL.
+  //    Tem limite de consultas por minuto — quando recusa, cai para a BrasilAPI logo abaixo.
+  let d=await tenta('https://publica.cnpj.ws/cnpj/'+cnpj, cnpjNormWS); if(d&&d.razao_social) return d;
+  // 2) BrasilAPI (Receita Federal — traz tudo, menos a IE)
+  d=await tenta('https://brasilapi.com.br/api/cnpj/v1/'+cnpj); if(d&&d.razao_social) return d;
   // 3) proxy CORS -> BrasilAPI (resolve bloqueio de CORS/rede)
   d=await tenta('https://api.allorigins.win/raw?url='+encodeURIComponent('https://brasilapi.com.br/api/cnpj/v1/'+cnpj)); if(d&&d.razao_social) return d;
   // 4) proxy CORS -> ReceitaWS
@@ -21707,11 +21718,19 @@ async function cnpjFetch(cnpj){
   if(d&&d.razao_social) return d;
   return null;
 }
+/* Busca a IE no cnpj.ws quando a fonte principal (Receita Federal) não traz.
+   Falha em silêncio: o cnpj.ws público tem limite de consultas por minuto. */
+async function cnpjIEcomplemento(cnpj){
+  try{ const r=await fetch('https://publica.cnpj.ws/cnpj/'+cnpj); if(!r.ok) return '';
+    const j=await r.json(); return cnpjIEdeWS((j&&j.estabelecimento)||{}); }catch(e){ return ''; } }
 async function cnpjFill(raw, map){ const cnpj=(''+(raw||'')).replace(/\D/g,''); if(cnpj.length!==14){ return; }
   try{ toast('Consultando CNPJ...','ok'); }catch(e){}
   const d=await cnpjFetch(cnpj);
   if(!d||!d.razao_social){ toast('CNPJ não encontrado ou consulta indisponível. Preencha manualmente.','err'); return; }
-  cnpjAplicar(d, map); toast('Dados do CNPJ preenchidos','ok');
+  if(!d.ie && map && map.ie){ const el=document.getElementById(map.ie);
+    if(!el || !((el.value||'').trim())) d.ie=await cnpjIEcomplemento(cnpj); }   // só consulta a IE se o campo está vazio
+  cnpjAplicar(d, map);
+  toast(d.ie?'Dados do CNPJ preenchidos (com inscrição estadual)':'Dados do CNPJ preenchidos — a inscrição estadual não veio na consulta','ok');
 }
 /* ===================================================================
    CONSULTA DE CNPJ EM LOTE — clientes PJ
@@ -21747,6 +21766,7 @@ function cnpjlAplicar(c, d){
   por('cep',(''+(d.cep||'')).replace(/\D/g,''),'CEP');
   if(!t(c.telefone)&&!t(c.celular)) por('telefone',d.ddd_telefone_1,'telefone');
   por('email',(d.email||'').toLowerCase(),'e-mail');
+  por('inscricaoEstadual', d.ie, 'inscrição estadual');
   up.cnpjConsultadoEm=new Date().toISOString();
   if(d.descricao_situacao_cadastral) up.situacaoReceita=d.descricao_situacao_cadastral;
   if(d.razao_social) up.razaoSocialReceita=d.razao_social;
