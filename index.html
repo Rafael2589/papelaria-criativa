@@ -48,7 +48,7 @@ const CONFIG_EMPRESA = {
      Aparece no topo do menu e no rodapé das Configurações. Troque a cada publicação.
      MANTENHA O FORMATO 'vDD/MM-X' — é ele que o sistema usa para comparar as máquinas
      da loja e avisar quando alguma ficou para trás.                                  */
-  versao: 'v22/09-Q',
+  versao: 'v23/09-A',
 
   /* 4) NUVEM (Supabase)  ------------------------------------------------------------
      Cole aqui a Project URL e a chave PUBLISHABLE do projeto Supabase DESTA empresa
@@ -1643,7 +1643,7 @@ const LOCAL_KEEP=['empresa','comissaoConfig','cfopContrapartida','_meta','unidad
 // da nuvem — então uma alteração feita aqui (estorno, exclusão, sangria...) que ainda não subiu, ou
 // que a nuvem tinha sobrescrito com dado antigo de outro aparelho, se perdia. Ficando no navegador,
 // a alteração local sobrevive ao recarregar e a mesclagem por data (_mod) mantém o mais novo.
-const LOCAL_PERSIST=['caixaSessoes','caixaMovs','produtosFalta'];
+const LOCAL_PERSIST=['caixaSessoes','caixaMovs','produtosFalta'];   // produtosFalta também sincroniza (está em NUVEM_COLS): fica no navegador só para não sumir ao recarregar
 const DB = {
   baseK:LSK('v9'),
   get K(){ return DB_TENANT ? this.baseK+'__t_'+DB_TENANT : this.baseK; },
@@ -5715,7 +5715,7 @@ function pedidoEditarVend(id){ const v=DB.get('vendas',id); if(!v){ toast('Pedid
   // abre o próprio documento no editor; ao salvar, as alterações são espelhadas no pedido (que segue Pendente).
   if(v.fromOrcId && DB.get('orcamentos',v.fromOrcId)){
     if(!confirm('Editar o pedido'+(v.numero?(' #'+v.numero):'')+'?\n\nVocê pode alterar itens, quantidades e preços e clicar em SALVAR — o pedido CONTINUA pendente (NÃO é faturado). O faturamento só acontece depois, no PDV.\n\nContinuar?')) return;
-    go('orc'); setTimeout(()=>{ try{ orcEditor(v.fromOrcId); toast('Pedido'+(v.numero?(' #'+v.numero):'')+' aberto para edição — altere e clique em Salvar. Ele continua como pedido (não fatura).','ok'); }catch(e){} },90);
+    go('orc'); setTimeout(()=>{ try{ orcEditor(v.fromOrcId,'pedido'); toast('Pedido'+(v.numero?(' #'+v.numero):'')+' aberto para edição — altere e clique em Salvar. Ele continua como pedido (não fatura).','ok'); }catch(e){} },90);
     return;
   }
   // Pedido avulso (sem orçamento vinculado): edita no PDV, mas só fatura quando o operador finalizar lá.
@@ -11489,23 +11489,27 @@ function ddKeyNav(e, ddId){
   return true;
 }
 function faltaQtdSugerida(p){ const falta=(p.estoqueMinimo||0)*2 - (p.estoque||0); return Math.max(1, Math.round(falta>0?falta:1)); }
-function faltaAdd(pid){ const p=DB.get('produtos',pid); if(!p)return; const d=DB._load(); d.produtosFalta=d.produtosFalta||[];
-  if(!d.produtosFalta.some(f=>f.produtoId===pid)){ d.produtosFalta.unshift({id:uid(),produtoId:pid,qtd:faltaQtdSugerida(p)}); DB._persist(); }
+/* A lista de falta é COMPARTILHADA: grava por DB.insert/update/remove (que carimbam _mod e
+   deixam a sincronização levar para a nuvem). Antes mexia no array na mão e só gravava no
+   navegador — por isso o que um computador incluía não aparecia nos outros. */
+function faltaAdd(pid){ const p=DB.get('produtos',pid); if(!p)return;
+  if(!DB.all('produtosFalta').some(f=>f.produtoId===pid)) DB.insert('produtosFalta',{produtoId:pid,qtd:faltaQtdSugerida(p)});
   const s=document.getElementById('falta-search'); if(s)s.value=''; const dd=document.getElementById('falta-dd'); if(dd)dd.innerHTML=''; viewProdutosFalta();
   // o cursor volta para a busca para o próximo produto ser digitado na sequência
   try{ const s2=document.getElementById('falta-search'); if(s2){ s2.focus(); } }catch(e){} }
-function faltaSetQtd(id,val){ const d=DB._load(); const f=(d.produtosFalta||[]).find(x=>x.id===id); if(f){ f.qtd=Math.max(0,+(''+val).replace(',','.')||0); DB._persist(); } }
-function faltaDel(id){ const d=DB._load(); d.produtosFalta=(d.produtosFalta||[]).filter(x=>x.id!==id); DB._persist(); viewProdutosFalta(); }
-function faltaAddBaixoEstoque(){ const d=DB._load(); d.produtosFalta=d.produtosFalta||[]; const set=new Set(d.produtosFalta.map(f=>f.produtoId)); let add=0;
-  DB.all('produtos').filter(p=>p.situacao!=='inativo' && (p.estoque||0)<=(p.estoqueMinimo||0) && (p.estoqueMinimo||0)>0).forEach(p=>{ if(!set.has(p.id)){ d.produtosFalta.unshift({id:uid(),produtoId:p.id,qtd:faltaQtdSugerida(p)}); set.add(p.id); add++; } });
-  DB._persist(); toast(add?`${add} produto(s) adicionado(s)`:'Nenhum produto abaixo do mínimo','ok'); viewProdutosFalta(); }
+function faltaSetQtd(id,val){ DB.update('produtosFalta',id,{qtd:Math.max(0,+(''+val).replace(',','.')||0)}); }
+function faltaDel(id){ DB.remove('produtosFalta',id); viewProdutosFalta(); }
+function faltaAddBaixoEstoque(){ const set=new Set(DB.all('produtosFalta').map(f=>f.produtoId)); let add=0;
+  DB.all('produtos').filter(p=>p.situacao!=='inativo' && (p.estoque||0)<=(p.estoqueMinimo||0) && (p.estoqueMinimo||0)>0)
+    .forEach(p=>{ if(!set.has(p.id)){ DB.insert('produtosFalta',{produtoId:p.id,qtd:faltaQtdSugerida(p)}); set.add(p.id); add++; } });
+  toast(add?`${add} produto(s) adicionado(s)`:'Nenhum produto abaixo do mínimo','ok'); viewProdutosFalta(); }
 function faltaEnviarCotacao(){ const lista=DB.all('produtosFalta'); if(!lista.length){ toast('A lista está vazia','err'); return; }
   const itens=lista.map(f=>{ const p=DB.get('produtos',f.produtoId); if(!p)return null; return {produtoId:p.id,nome:p.nome,sku:p.sku||'',qtd:+f.qtd||1,precoCotado:p.custo||0,_sel:true}; }).filter(Boolean);
   if(!itens.length){ toast('Os produtos da lista não existem mais','err'); return; }
   if(!confirm(`Criar uma cotação com ${itens.length} produto(s) em falta?`)) return;
   const numero=(DB.all('cotacoes').reduce((m,c)=>Math.max(m,+c.numero||0),1000))+1;
   const cot=DB.insert('cotacoes',{nome:'Reposição — produtos em falta',fornecedorNome:'',itens,obs:'Gerada a partir da lista de produtos em falta.',total:0,status:'aberta',criadoEm:today(),data:today(),numero});
-  const d=DB._load(); d.produtosFalta=[]; DB._persist();
+  DB.all('produtosFalta').slice().forEach(f=>DB.remove('produtosFalta',f.id));   // remove um a um: deixa a marca da exclusão para a nuvem
   logAcao&&logAcao('Cotação criada (produtos em falta)', '#'+numero+' · '+itens.length+' itens');
   toast('Cotação criada a partir da lista','ok'); go('cot');
 }
@@ -11871,10 +11875,10 @@ function recRestaurarNota(f, recId, r){
   if(f.vendaId){ const v=DB.get('vendas',f.vendaId); if(v && v.status==='pago') DB.update('vendas',f.vendaId,{status:'pendente'}); }
   return true;
 }
-function fichaEstornarRecebimento(recId){ const r=DB.get('recebimentos',recId); if(!r){ toast('Recebimento não encontrado','err'); return; }
+function fichaEstornarRecebimento(recId, opts){ opts=opts||{}; const r=DB.get('recebimentos',recId); if(!r){ if(!opts.semConfirm) toast('Recebimento não encontrado','err'); return; }
   const alvos=recNotasDo(recId, r);
   const foraCaixa=!!(r.migracao||r.foraCaixa);
-  if(typeof confirm==='function' && !confirm('Estornar este pagamento de '+BRL(r.valor)+' ('+(r.formas||'—')+' · '+fDate(r.data)+')?\n\n• '+alvos.length+' nota(s)/pedido(s) voltam para "a receber" em Contas a Receber — o estorno é do pagamento INTEIRO.\n'+(foraCaixa?'• Era um pagamento de migração — não estava no caixa.':'• A parte em dinheiro é estornada do caixa.')+'\n\nUse para corrigir um recebimento lançado por engano.')) return;
+  if(!opts.semConfirm && typeof confirm==='function' && !confirm('Estornar este pagamento de '+BRL(r.valor)+' ('+(r.formas||'—')+' · '+fDate(r.data)+')?\n\n• '+alvos.length+' nota(s)/pedido(s) voltam para "a receber" em Contas a Receber — o estorno é do pagamento INTEIRO.\n'+(foraCaixa?'• Era um pagamento de migração — não estava no caixa.':'• A parte em dinheiro é estornada do caixa.')+'\n\nUse para corrigir um recebimento lançado por engano.')) return;
   // Cada nota é revertida por conta própria: se uma falhar, as outras continuam — e o pagamento
   // só sai do histórico quando TODAS voltaram, para nunca ficar um estorno pela metade sem aviso.
   let okN=0, falhas=[];
@@ -12236,6 +12240,9 @@ function ficPayConfirm(opts){ opts=opts||{};
   if(nfNotaEmitida){
     // As notas da ficha saem da lista de "a receber" e ficam marcadas como faturadas.
     // Se o número ainda não veio da SEFAZ, ele é gravado sozinho quando a autorização chegar.
+    /* Vínculo nota → recebimento: se a SEFAZ REJEITAR a nota, o sistema desfaz este
+       recebimento sozinho e os títulos voltam ao status anterior (em aberto). */
+    try{ DB.update('notasFiscais',nfNotaEmitida.id,{recebimentoId:recId}); }catch(e){}
     notas.forEach(f=>DB.update('financeiro',f.id,{faturado:true,faturadoData:data,notaFiscalNum:nfNumEmitida,notaId:nfNotaEmitida.id}));
     notas.forEach(f=>{ if(f.vendaId) DB.update('vendas',f.vendaId,{faturada:true,faturadaData:data,notaFiscalNum:nfNumEmitida}); });
     nfMsg = nfNumEmitida ? (' · NF-e nº '+nfNumEmitida+(nfeFocusLigado()?' enviada à SEFAZ':' emitida (modo demonstração)'))
@@ -15360,15 +15367,24 @@ function crRecebidosLinhas(scope){
     if(f.status==='recebido'){
       const data=f.pagoData||f.recebidoData||f.vencimento||'';
       const valor=Math.round((+f.valor||0)*100)/100;
-      linhas.push({ cliente:nomeCli(f), data, valor, forma:formaDe(f,valor,data), desc:f.descricao||'' });
+      linhas.push({ id:f.id, recId:f.recebimentoId||'', cliente:nomeCli(f), data, valor, forma:formaDe(f,valor,data), desc:f.descricao||'', nf:finNfNum(f) });
     } else if((+f.pagoParcial||0)>0){
       const bx=(f.baixas||[]);
-      if(bx.length){ bx.forEach(b=>{ const valor=Math.round((+b.valor||0)*100)/100; linhas.push({ cliente:nomeCli(f), data:b.data||'', valor, forma:b.origem||formaDe(f,valor,b.data)||'—', desc:(f.descricao||'')+' · baixa parcial' }); }); }
-      else { const valor=Math.round((+f.pagoParcial||0)*100)/100; linhas.push({ cliente:nomeCli(f), data:f.pagoData||'', valor, forma:f.forma||'—', desc:(f.descricao||'')+' · baixa parcial' }); }
+      if(bx.length){ bx.forEach(b=>{ const valor=Math.round((+b.valor||0)*100)/100; linhas.push({ id:f.id, recId:f.recebimentoId||'', cliente:nomeCli(f), data:b.data||'', valor, forma:b.origem||formaDe(f,valor,b.data)||'—', desc:(f.descricao||'')+' · baixa parcial', nf:finNfNum(f) }); }); }
+      else { const valor=Math.round((+f.pagoParcial||0)*100)/100; linhas.push({ id:f.id, recId:f.recebimentoId||'', cliente:nomeCli(f), data:f.pagoData||'', valor, forma:f.forma||'—', desc:(f.descricao||'')+' · baixa parcial', nf:finNfNum(f) }); }
     }
   });
   return linhas.sort((a,b)=>((b.data||'')+'').localeCompare((a.data||'')+''));
 }
+/* Agrupa os títulos por PAGAMENTO: o que entrou junto (mesmo recebimento, ou mesmo
+   cliente+data+forma quando o título é antigo e não tem recebimento gravado) vira uma
+   linha só, que abre mostrando os títulos e traz o botão de estorno. */
+function crRecGrupos(linhas){ const m={};
+  (linhas||[]).forEach(l=>{ const k=l.recId||('x|'+l.cliente+'|'+l.data+'|'+l.forma);
+    const g=m[k]=m[k]||{key:k, recId:l.recId||'', cliente:l.cliente, data:l.data, forma:l.forma, total:0, itens:[]};
+    g.total=Math.round((g.total+(+l.valor||0))*100)/100; g.itens.push(l);
+    if(!g.data || (l.data&&l.data>g.data)) g.data=l.data; });
+  return Object.values(m).sort((a,b)=>((b.data||'')+'').localeCompare((a.data||'')+'')); }
 function crRecPeriodoRange(){ const per=CRRECF.per;
   if(per==='custom') return [CRRECF.de||'', CRRECF.ate||''];
   if(per==='hoje'){ const t=today(); return [t,t]; }
@@ -15398,15 +15414,37 @@ function crRecSegRefresh(){ const el=document.getElementById('crrec-seg'); if(el
 function crRecPer(p){ CRRECF.per=p; if(p!=='custom'){ CRRECF.de=''; CRRECF.ate=''; } crRecSegRefresh(); crRecebidosRender(); }
 function crRecDatas(de,ate){ if(de!=null)CRRECF.de=de; if(ate!=null)CRRECF.ate=ate; CRRECF.per='custom'; crRecSegRefresh(); crRecebidosRender(); }
 function crRecebidosRender(){ const qi=document.getElementById('crrec-q'); if(qi) CRRECF.q=qi.value;
-  const linhas=crRecFiltradas(); const total=Math.round(linhas.reduce((s,l)=>s+(+l.valor||0),0)*100)/100;
+  const linhas=crRecFiltradas(); const grupos=crRecGrupos(linhas);
+  const total=Math.round(linhas.reduce((s,l)=>s+(+l.valor||0),0)*100)/100;
   const body=document.getElementById('crrec-body'); if(!body) return;
   body.innerHTML=`<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;flex-wrap:wrap;gap:6px">
-      <b style="font-size:13px">${NUM(linhas.length)} recebimento(s)</b>
+      <b style="font-size:13px">${NUM(grupos.length)} pagamento(s) · ${NUM(linhas.length)} título(s)</b>
       <b class="tnum" style="font-size:16px;color:var(--pos)">Total: ${BRL(total)}</b></div>
-    ${linhas.length?`<div class="tbl-wrap"><table><thead><tr><th>Cliente</th><th>Data do pagamento</th><th>Forma de pagamento</th><th class="t-right">Valor</th><th>Referência</th></tr></thead><tbody>
-      ${linhas.map(l=>`<tr><td class="t-strong">${esc(l.cliente)}</td><td class="tnum">${l.data?fDate(l.data):'—'}</td><td>${esc(l.forma||'—')}</td><td class="t-right tnum t-strong">${BRL(l.valor)}</td><td class="t-mut" style="font-size:12px">${esc(l.desc||'')}</td></tr>`).join('')}
+    ${grupos.length?`<div class="tbl-wrap"><table style="width:100%"><thead><tr><th style="width:32px"></th><th>Cliente</th><th>Data do pagamento</th><th>Forma</th><th class="t-right">Valor</th><th class="t-right">Títulos</th><th></th></tr></thead><tbody>
+      ${grupos.map((g,i)=>`
+        <tr style="cursor:pointer" onclick="crRecToggle(${i})">
+          <td class="t-mut" id="crrec-ic${i}">${ico('chev')}</td>
+          <td class="t-strong">${esc(g.cliente)}</td>
+          <td class="tnum">${g.data?fDate(g.data):'—'}</td>
+          <td>${esc(g.forma||'—')}</td>
+          <td class="t-right tnum t-strong" style="color:var(--pos)">${BRL(g.total)}</td>
+          <td class="t-right tnum">${NUM(g.itens.length)}</td>
+          <td class="t-right" style="white-space:nowrap">${g.recId
+            ? `<button class="btn btn-ghost btn-sm" style="color:var(--neg)" onclick="event.stopPropagation();crRecEstornar('${g.recId}')">${ico('ret')} Estornar</button>`
+            : `<span class="t-mut" style="font-size:11px" title="Pagamento antigo, sem registro de recebimento — estorne pelo título">—</span>`}</td>
+        </tr>
+        <tr id="crrec-g${i}" style="display:none"><td></td><td colspan="6" style="padding:0 0 10px">
+          <table style="width:100%;font-size:12px"><thead><tr><th>Título</th><th>Vencimento/NF</th><th class="t-right">Valor</th></tr></thead><tbody>
+            ${g.itens.map(l=>`<tr><td>${esc(l.desc||'—')}</td><td class="t-mut">${l.nf?('NF '+esc(l.nf)):'—'}</td><td class="t-right tnum">${BRL(l.valor)}</td></tr>`).join('')}
+          </tbody></table></td></tr>`).join('')}
     </tbody></table></div>`:`<div class="empty" style="padding:26px">${ico('money')}<h4>Nenhum recebimento no período</h4><p class="t-mut">Ajuste o período ou a busca.</p></div>`}`;
 }
+function crRecToggle(i){ const tr=document.getElementById('crrec-g'+i); if(!tr) return;
+  const aberto=(tr.style.display!=='none'); tr.style.display=aberto?'none':'table-row';
+  const ic=document.getElementById('crrec-ic'+i); if(ic) ic.innerHTML=ico(aberto?'chev':'down'); }
+/* Estorno pelo detalhamento: devolve os títulos daquele pagamento para "a receber". */
+function crRecEstornar(recId){ try{ fichaEstornarRecebimento(recId); }catch(e){ toast('Não foi possível estornar: '+((e&&e.message)||e),'err'); }
+  setTimeout(()=>{ try{ crRecebidosRender(); }catch(e){} try{ if(typeof viewContasReceber==='function' && STATE && STATE.route==='contasrec') viewContasReceber(); }catch(e){} },80); }
 function crRecebidosCSV(){ const linhas=crRecFiltradas();
   const rows=[['Cliente','Data pagamento','Forma','Valor','Referencia']].concat(linhas.map(l=>[l.cliente, l.data?fDate(l.data):'', l.forma||'', BRL(l.valor), l.desc||'']));
   const csv=rows.map(r=>r.map(c=>/[;,\n"]/.test(''+c)?'"'+(''+c).replace(/"/g,'""')+'"':c).join(';')).join('\r\n');
@@ -18464,8 +18502,8 @@ function repEditarCliente(id){ if(!DB.get('clientes',id)){ toast('Cliente não e
 function repFaltaBtn(pid){ const ja=DB.all('produtosFalta').some(f=>f.produtoId===pid);
   return ja?`<span class="tag pos" style="font-size:10px;white-space:nowrap">${ico('check')} Na lista de falta</span>`
     :`<button class="btn btn-ghost btn-sm" style="white-space:nowrap" onclick="repFaltaAdd('${pid}')">${ico('plus')} Enviar para falta</button>`; }
-function repFaltaAdd(pid){ const p=DB.get('produtos',pid); if(!p) return; const d=DB._load(); d.produtosFalta=d.produtosFalta||[];
-  if(!d.produtosFalta.some(f=>f.produtoId===pid)){ d.produtosFalta.unshift({id:uid(),produtoId:pid,qtd:faltaQtdSugerida(p)}); DB._persist(); toast((p.nome||'Produto')+' enviado para Produtos em Falta','ok'); }
+function repFaltaAdd(pid){ const p=DB.get('produtos',pid); if(!p) return;
+  if(!DB.all('produtosFalta').some(f=>f.produtoId===pid)){ DB.insert('produtosFalta',{produtoId:pid,qtd:faltaQtdSugerida(p)}); toast((p.nome||'Produto')+' enviado para Produtos em Falta','ok'); }
   else toast('Este produto já está na lista de falta','ok');
   repRun(); }
 function repRun(){
@@ -19028,7 +19066,12 @@ function orcEditor(id, modo){
   const ex=id?DB.get('orcamentos',id):null;
   const tipoNovo=(modo==='pedido')?'Pedido':'Orçamento';
   ORC.id=id||null;
-  ORC.tipo=ex?(ex.tipo||'Orçamento'):tipoNovo; ORC.canal=ex?(ex.canal||''):'';
+  /* O modo pedido também vale para documento JÁ EXISTENTE: ao editar um pedido do vendedor,
+     o editor abria o orçamento de origem e mostrava "Orçamento" no topo e no botão salvar. */
+  ORC.tipo = (modo==='pedido') ? 'Pedido'
+           : (modo==='orcamento') ? 'Orçamento'
+           : (ex?(ex.tipo||'Orçamento'):tipoNovo);
+  ORC.canal=ex?(ex.canal||''):'';
   ORC.numero=ex?ex.numero:orcNumeroLivreTipo(ORC.tipo);   // Pedido usa sua própria sequência
   ORC.numeroPrevisto=!ex;   // enquanto não salvar, o número é só uma previsão
   kitsPerguntaReset();                       // orçamento novo/aberto: pode oferecer os kits de novo
@@ -27254,7 +27297,14 @@ async function focusTransmitirNota(noteId, modelo, opts){ opts=opts||{};
     // Nota avulsa: quem chamou desfaz tudo e devolve a tela com o motivo em destaque,
     // então aqui não abrimos janela nem alerta — seria aviso em dobro.
     if(opts.semAviso){ return {autorizado:false, processando:false, motivo:_motivo, data:(r&&r.data)}; }
-    try{ alert('A nota foi REJEITADA pela SEFAZ e NÃO foi autorizada.\n\nMotivo: '+(_motivo||'veja o retorno da SEFAZ')+'\n\nCorrija o que a mensagem indica (dados do cliente, produto, imposto, etc.) e emita a nota novamente.'); }catch(e){}
+    /* A nota saiu de um RECEBIMENTO (ficha/contas a receber) e foi rejeitada: os títulos NÃO
+       podem ficar como recebidos. Desfaz o recebimento — eles voltam para "em aberto" com o
+       status anterior — até o cadastro ser corrigido e a nota sair de verdade. */
+    let _volta='';
+    try{ if(_nf && _nf.recebimentoId && DB.get('recebimentos',_nf.recebimentoId)){
+      fichaEstornarRecebimento(_nf.recebimentoId,{semConfirm:true});
+      _volta='\n\nOs títulos deste recebimento VOLTARAM para "em aberto" — nada ficou como recebido.'; } }catch(e){}
+    try{ alert('A nota foi REJEITADA pela SEFAZ e NÃO foi autorizada.\n\nMotivo: '+(_motivo||'veja o retorno da SEFAZ')+'\n\nCorrija o que a mensagem indica (dados do cliente, produto, imposto, etc.) e emita a nota novamente.'+_volta+''); }catch(e){}
     try{ closeModal(); }catch(e){}
     try{ notaView(noteId); }catch(e){ try{ if(r && r.data) focusResultModal((_nf&&_nf._focusRef)||('gp-'+md+'-'+noteId), md, focusCfg().ambiente, r.data); }catch(_e){} }
   }
