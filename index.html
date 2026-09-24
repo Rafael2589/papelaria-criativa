@@ -48,7 +48,7 @@ const CONFIG_EMPRESA = {
      Aparece no topo do menu e no rodapé das Configurações. Troque a cada publicação.
      MANTENHA O FORMATO 'vDD/MM-X' — é ele que o sistema usa para comparar as máquinas
      da loja e avisar quando alguma ficou para trás.                                  */
-  versao: 'v23/09-C',
+  versao: 'v23/09-F',
 
   /* 4) NUVEM (Supabase)  ------------------------------------------------------------
      Cole aqui a Project URL e a chave PUBLISHABLE do projeto Supabase DESTA empresa
@@ -754,6 +754,7 @@ html.sync-lock #app, html.sync-lock .app, html.sync-lock #sidebar, html.sync-loc
 .cart-row2{padding:11px 2px;border-bottom:1px solid var(--line)}
 .cart-row2:last-child{border-bottom:none}
 .cr2-top{display:flex;justify-content:space-between;align-items:flex-start;gap:10px}
+.cr2-top > .cr-name{flex:1;min-width:0}   /* nome ocupa o espaço: a marcação 'Retira' fica à esquerda e o subtotal à direita */
 .cr2-sub{font-size:14px;white-space:nowrap}
 .cr2-bot{display:flex;align-items:center;gap:8px;margin-top:8px;flex-wrap:wrap}
 .cr2-inp{display:flex;align-items:center;gap:4px;background:var(--surface);border:1px solid var(--line);border-radius:8px;padding:3px 8px}
@@ -3837,13 +3838,9 @@ function renderPDV(){
           </div>
           <div id="cart-desc-info" class="t-mut" style="font-size:11.5px;margin-top:4px">${pdvDescInfo()}</div>
           ${pdvTemDesconto()?`<button class="btn btn-ghost btn-sm" style="margin-top:6px;color:var(--neg)" onclick="pdvRemoverDescontos()">${ico('x')} Remover todos os descontos</button>`:''}</div>
-        <div class="pay-block">
-          <div class="pay-head"><label>Formas de pagamento</label><button class="btn btn-ghost btn-sm" onclick="payAdd()">${ico('plus')} Adicionar</button></div>
-          <div id="cart-pays">${paysHTML()}</div>
-          <div id="pay-summary" class="pay-summary">${paySummaryHTML()}</div>
-        </div>
+        <!-- As formas de pagamento ficam SÓ na tela de pagamento (F4 / Finalizar venda). -->
         <div id="cart-totals">${cartTotals()}</div>
-        <button class="btn btn-amber" style="width:100%;justify-content:center;margin-top:14px;padding:13px" onclick="pdvPagtoModal()">${ico('check')} Finalizar venda</button>
+        <button class="btn btn-amber" style="width:100%;justify-content:center;margin-top:14px;padding:13px" onclick="pdvPagtoModal()">${ico('check')} Finalizar venda (F4)</button>
         <button class="btn btn-ghost btn-sm" style="width:100%;justify-content:center;margin-top:8px;color:var(--amber-d)" onclick="pdvReceberLocal()">${ico('money')} Receber no local (enviar para Pedidos)</button>
         <button class="btn btn-ghost btn-sm" style="width:100%;justify-content:center;margin-top:8px" onclick="pixModalPDV()">${ico('money')} Cobrar via PIX (copia e cola / QR)</button>
         `:`<div class="empty" style="padding:30px 14px">${ico('money')}<h4>Sem itens</h4><p class="t-mut">Adicione produtos para informar pagamento e finalizar.</p></div>`}
@@ -3944,6 +3941,10 @@ function cartRows(){
     const qtyDisplay = it.embalagem ? `${NUM(it.pacotes)} ${esc(it.embalagemTipo||'Cx')}${it.pacotes!==1?'s':''}` : NUM(it.qtd);
     return `<div class="cart-row2" data-idx="${idx}">
       <div class="cr2-top">
+        <!-- marcação "retira na loja" fica NA FRENTE do produto, onde o operador lê o item -->
+        <label class="cr2-retira" title="Cliente levou na hora (retira na loja)" style="display:flex;align-items:center;gap:5px;cursor:pointer;white-space:nowrap;padding-right:8px;color:${it.retiradoLoja?'var(--pos)':'var(--muted)'}">
+          <input type="checkbox" ${it.retiradoLoja?'checked':''} onchange="cartRetira(${idx})" style="width:15px;height:15px;cursor:pointer">
+          <span style="font-size:11px;font-weight:${it.retiradoLoja?'700':'500'}">Retira</span></label>
         <div class="cr-name"><div class="n">${esc(it.nome)}${it.kitId?` <span style="background:#7c3aed;color:#fff;font-size:9px;font-weight:700;padding:1px 5px;border-radius:8px;vertical-align:middle">KIT</span>`:''}${it.madeira?` <span style="background:#7c3aed;color:#fff;font-size:9px;font-weight:700;padding:1px 5px;border-radius:8px;vertical-align:middle">MADEIRA</span>`:''}${it.retiradoLoja?` <span style="background:#dc2626;color:#fff;font-size:9px;font-weight:800;padding:1px 5px;border-radius:8px;vertical-align:middle" title="Marcado no pedido como retirado na loja">RETIRADO</span>`:''}</div>
           <div class="p tnum">${it.madeira?`peça ${fmtQ(it.tamanho||0.5)} m · ${BRL(it.precoMetro||0)}/m · total ${fmtQ(Math.round((it.qtd*(it.tamanho||0))*1000)/1000)} m`:`${it.embalagem?`${fmtQ(it.qtd)} ${un} · `:''}lista ${BRL(lista)}/${un}${it.preco<lista?` · <span style="color:var(--pos)">−${PCT(pct)}</span>`:''}`}</div></div>
         <b class="tnum cr2-sub">${BRL(it.qtd*it.preco)}</b>
@@ -3953,7 +3954,6 @@ function cartRows(){
         ${it.madeira?`<div class="qty-ctrl" title="Tamanho da peça (de 0,5 em 0,5 m)"><button onclick="cartTamStep(${idx},-0.5)">−</button><span class="tnum">${fmtQ(it.tamanho||0.5)}m</span><button onclick="cartTamStep(${idx},0.5)">+</button></div>`:''}
         <div class="cr2-inp"><label>R$</label><input type="number" step="0.01" min="0" value="${Math.round(it.preco*100)/100}" onchange="cartPrice(${idx},this.value)"></div>
         <div class="cr2-inp"><label>%</label><input type="number" step="0.01" min="0" max="100" value="${+pct.toFixed(2)}" onchange="cartDisc(${idx},this.value)"></div>
-        <button class="btn btn-ghost btn-sm" onclick="cartRetira(${idx})" title="Cliente levou na hora (retira na loja)" style="${it.retiradoLoja?'color:var(--pos);font-weight:700':'color:var(--muted)'}">${ico(it.retiradoLoja?'check':'box')} Retira</button>
         <button class="btn-icon btn-ghost" onclick="cartDel(${idx})" title="Remover">${ico('trash')}</button>
       </div>
     </div>`; }).join('');
@@ -3987,7 +3987,11 @@ function renderCartTotals(){ if(CART.descModo==='pct') pdvDescAplicaPct(); /* pe
 /* ---- múltiplas formas de pagamento ---- */
 function normalizePays(){ if(!CART.itens.length) return; const total=cartTotalValue();
   if(!CART.pagamentos||!CART.pagamentos.length) CART.pagamentos=[{forma:'',valor:total}];
-  else if(CART.pagamentos.length===1) CART.pagamentos[0].valor=total; }
+  else if(CART.pagamentos.length===1 && !CART.pagamentos[0].parcial) CART.pagamentos[0].valor=total; }
+/* Na tela de pagamento o valor é do operador: uma forma só PODE valer menos que o total
+   (pagamento parcial), e o que falta vira Pagamento Futuro. Por isso aqui a gente só
+   garante que exista uma linha — sem reescrever o valor digitado. */
+function pdvPagNormaliza(){ if(!CART.pagamentos||!CART.pagamentos.length) CART.pagamentos=[{forma:'',valor:cartTotalValue()}]; }
 function paysHTML(){ return CART.pagamentos.map((p,i)=>{ const credito=p.forma==='Cartão Crédito'; const parc=Math.min(10,Math.max(1,+p.parcelas||1)); const base=+p.valor||0; const vparc=parc>0?base/parc:0; const tx=credito?taxaCartaoForma('Cartão Crédito',base,parc):0;
   const boleto=p.forma==='Boleto/Prazo'; const bparc=Math.max(1,+p.boletoParc||1); const bdias=(p.boletoDias!=null?+p.boletoDias:30);
   return `<div class="pay-row" style="flex-wrap:wrap">
@@ -4064,8 +4068,10 @@ function paySummaryHTML(){ if(CART.pagamentos.some(p=>!p.forma)) return `<div cl
   const faltaDin=payDinheiroFalta(); if(faltaDin>0.001) return `<div class="pay-sum erro"><span>${ico('alert')} Recebido em dinheiro menor que a parte em dinheiro</span><b class="tnum">faltam ${BRL(faltaDin)}</b></div>`;
   if(troco>0.001){ const cash=CART.pagamentos.some(p=>p.forma==='Dinheiro'); return `<div class="pay-sum ${cash?'troco':'erro'}"><span>${cash?'Troco':'Acima do total'}</span><b class="tnum">${BRL(troco)}</b></div>`; }
   return `<div class="pay-sum ok"><span>${ico('check')} Pagamento completo</span><b class="tnum">${BRL(pago)}</b></div>`; }
-function renderPays(){ const el=document.getElementById('cart-pays'); if(el)el.innerHTML=paysHTML(); renderPaySummary(); }
-function renderPaySummary(){ const el=document.getElementById('pay-summary'); if(el)el.innerHTML=paySummaryHTML(); }
+/* Com a tela de pagamento (F4) aberta, as linhas são desenhadas NELA — senão os campos
+   de troco e valor seriam atualizados na cópia que ficou atrás do modal. */
+function renderPays(){ const el=document.getElementById('pdv-pay-list')||document.getElementById('cart-pays'); if(el)el.innerHTML=paysHTML(); renderPaySummary(); }
+function renderPaySummary(){ const el=document.getElementById('pdv-pay-sum')||document.getElementById('pay-summary'); if(el)el.innerHTML=paySummaryHTML(); }
 /* Desconto do pedido: aceita valor em R$ ou percentual sobre o subtotal dos itens.
    CART.descPct guarda o percentual digitado; CART.desconto é SEMPRE o valor em reais
    (é ele que entra no total, na venda gravada e no orçamento). */
@@ -4108,7 +4114,9 @@ function payForma(i,v){ CART.pagamentos[i].forma=v; if(v==='Cartão Crédito'&&!
   if(!(+CART.pagamentos[i].valor>0)){ const outros=CART.pagamentos.reduce((s,p,k)=>s+(k===i?0:(+p.valor||0)),0); CART.pagamentos[i].valor=Math.max(0,Math.round((cartTotalValue()-outros)*100)/100); }
   renderPays();
   if(v==='Dinheiro'){ try{ const el=document.getElementById('pay-rec-'+i); if(el){ el.focus(); el.select(); } }catch(e){} } }
-function payValor(i,v){ CART.pagamentos[i].valor=+v||0; renderPaySummary(); }
+function payValor(i,v){ const p=CART.pagamentos[i]; if(!p) return; p.valor=+v||0;
+  if(pdvPagAberta()){ p.parcial=(Math.round((cartPago()-cartTotalValue())*100)/100)<-0.004; pdvPagRefresh(); return; }
+  renderPaySummary(); }
 function payParcelas(i,v){ CART.pagamentos[i].parcelas=Math.min(10,Math.max(1,+v||1)); renderPays(); }
 function sugestoesParaIds(cartIds){ if(!cartIds||!cartIds.size) return [];
   const manual=new Set(); const co={};
@@ -4536,41 +4544,54 @@ function pdvPagtoModal(){
   if(!CART.itens.length){ toast('Adicione produtos antes de informar o pagamento','err'); return; }
   openModal(pdvPagtoHTML(), true);
   setTimeout(()=>{ try{ const b=document.getElementById('pdv-pay-fim'); if(b) b.focus(); }catch(e){} },60); }
-function pdvPagtoHTML(){ const total=cartTotalValue(), pago=cartPago(), rest=pdvPagRestante();
+function pdvPagtoHTML(){ pdvPagNormaliza(); const total=cartTotalValue(), rest=pdvPagRestante();
   return `<div class="modal-head" id="pdv-pay-modal"><h3>${ico('money')} Pagamento — ${BRL(total)}</h3>
-      <button class="btn-icon btn-ghost" onclick="closeModal()">${ico('x')}</button></div>
+      <button class="btn-icon btn-ghost" onclick="pdvPagFechar()">${ico('x')}</button></div>
     <div class="modal-body">
-      <div style="display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap;margin-bottom:12px;font-size:13.5px">
-        <span class="t-mut">Já lançado: <b class="tnum">${BRL(pago)}</b></span>
-        <b class="tnum" style="font-size:16px;color:${rest>0.004?'var(--neg)':'var(--pos)'}">${rest>0.004?('Falta '+BRL(rest)):'Pagamento completo'}</b>
-      </div>
-      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(215px,1fr));gap:8px">
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:8px;margin-bottom:14px">
         ${FORMAS_PAG_ESCOLHA.map((f,i)=>`
-          <button class="btn btn-ghost" style="justify-content:flex-start;gap:9px;padding:11px 12px" onclick="pdvPagEscolher(${i})">
+          <button class="btn btn-ghost" style="justify-content:flex-start;gap:9px;padding:10px 12px" onclick="pdvPagEscolher(${i})">
             <span class="tag" style="font-weight:800">F${i+1}</span> <span style="font-size:13px">${esc(f)}</span></button>`).join('')}
       </div>
-      <div style="margin-top:14px">
-        <label style="font-size:12px;color:var(--muted)">Formas lançadas</label>
-        ${CART.pagamentos.length?CART.pagamentos.map((p,i)=>`
-          <div style="display:flex;align-items:center;gap:8px;padding:6px 0;border-bottom:1px solid var(--line-2)">
-            <b style="flex:1;font-size:13px">${esc(p.forma||'—')}</b>
-            <input type="number" step="0.01" min="0" value="${Math.round((+p.valor||0)*100)/100}" style="width:120px;text-align:right" onchange="pdvPagValor(${i},this.value)">
-            <button class="btn-icon btn-ghost" style="color:var(--neg)" onclick="pdvPagDel(${i})" title="Tirar">${ico('trash')}</button>
-          </div>`).join(''):`<div class="t-mut" style="font-size:12.5px;padding:8px 0">Nenhuma forma lançada — escolha acima ou use o atalho.</div>`}
+      <!-- mesmas linhas de pagamento da tela do PDV: valor em R$, troco do dinheiro,
+           parcelas do cartão e os avisos de crédito/comissão -->
+      <div class="pay-block" style="margin:0">
+        <div class="pay-head"><label>Formas lançadas</label><button class="btn btn-ghost btn-sm" onclick="payAdd()">${ico('plus')} Adicionar</button></div>
+        <div id="pdv-pay-list">${paysHTML()}</div>
+        <div id="pdv-pay-sum" class="pay-summary">${paySummaryHTML()}</div>
       </div>
+      ${rest>0.004?`<div style="margin-top:12px;background:var(--amber-soft);border:1px solid var(--amber);border-radius:10px;padding:10px 12px">
+        <b style="font-size:13px">${ico('alert')} Pagamento parcial</b>
+        <div class="t-mut" style="font-size:12.5px;margin:4px 0 8px">O cliente está pagando <b>${BRL(cartPago())}</b> de <b>${BRL(total)}</b>. O que falta pode ficar como <b>Pagamento Futuro</b> — vira título em Contas a Receber no nome do cliente.</div>
+        <button class="btn btn-amber btn-sm" onclick="pdvPagFuturo()">${ico('clock')} Deixar ${BRL(rest)} como Pagamento Futuro</button>
+      </div>`:''}
     </div>
     <div class="modal-foot">
-      <button class="btn btn-ghost" onclick="closeModal()">Voltar</button>
+      <button class="btn btn-ghost" onclick="pdvPagFechar()">Voltar</button>
       <button class="btn btn-amber" id="pdv-pay-fim" onclick="pdvPagFinalizar()">${ico('check')} Finalizar venda</button>
     </div>`; }
+/* Fecha a tela de pagamento e devolve o bloco de pagamento para a lateral do PDV. */
+function pdvPagFechar(){ closeModal(); try{ renderPDV(); }catch(e){} }
+/* O que falta vira "Pagamento Futuro" (fiado): a venda fecha e o restante entra a receber. */
+function pdvPagFuturo(){ const rest=pdvPagRestante(); if(!(rest>0.004)) return;
+  const ex=CART.pagamentos.find(p=>p.forma==='Pagamento Futuro');
+  if(ex) ex.valor=Math.round(((+ex.valor||0)+rest)*100)/100;
+  else { const vazia=CART.pagamentos.find(p=>!p.forma);
+    if(vazia){ vazia.forma='Pagamento Futuro'; vazia.valor=rest; }
+    else CART.pagamentos.push({forma:'Pagamento Futuro', valor:rest}); }
+  pdvPagRefresh(); }
+/* Redesenha a tela de pagamento inteira a partir do estado do carrinho. */
 function pdvPagRefresh(){ const bg=document.getElementById('modal-bg'); if(!bg) return;
   const cx=bg.querySelector('.modal'); if(cx) cx.innerHTML=pdvPagtoHTML(); }
 function pdvPagEscolher(i){ const forma=FORMAS_PAG_ESCOLHA[i]; if(!forma) return;
-  const rest=pdvPagRestante();
+  pdvPagNormaliza(); const rest=Math.max(0,pdvPagRestante());
   const ex=CART.pagamentos.find(p=>p.forma===forma);
-  if(ex){ ex.valor=Math.round(((+ex.valor||0)+Math.max(0,rest))*100)/100; }
-  else CART.pagamentos.push({forma, valor:Math.max(0,rest)});
-  pdvPagRefresh(); try{ renderPDV(); }catch(e){} pdvPagRefresh(); }
+  const vazia=CART.pagamentos.find(p=>!p.forma);
+  if(ex){ ex.valor=Math.round(((+ex.valor||0)+rest)*100)/100; }
+  else if(vazia){ vazia.forma=forma; vazia.valor=Math.round((((+vazia.valor||0)>0?(+vazia.valor||0):rest))*100)/100; }
+  else CART.pagamentos.push({forma, valor:rest});
+  pdvPagRefresh();
+  if(forma==='Dinheiro'){ setTimeout(()=>{ try{ const k=CART.pagamentos.findIndex(p=>p.forma==='Dinheiro'); const el=document.getElementById('pay-rec-'+k); if(el){ el.focus(); el.select(); } }catch(e){} },40); } }
 function pdvPagValor(i,v){ const p=CART.pagamentos[i]; if(!p) return; p.valor=Math.max(0,Math.round((+v||0)*100)/100); pdvPagRefresh(); }
 function pdvPagDel(i){ CART.pagamentos.splice(i,1); pdvPagRefresh(); }
 function pdvPagFinalizar(){ closeModal(); setTimeout(()=>{ try{ finalizarVenda(); }catch(e){} }, 30); }
@@ -4578,6 +4599,7 @@ function pdvPagFinalizar(){ closeModal(); setTimeout(()=>{ try{ finalizarVenda()
 window.addEventListener('keydown', function(e){
   const rota=(typeof STATE!=='undefined' && STATE.route)||'';
   if(e.key==='F4' && rota==='pdv' && !pdvPagAberta()){ e.preventDefault(); pdvPagtoModal(); return; }
+  if(e.key==='Escape' && pdvPagAberta()){ setTimeout(()=>{ try{ renderPDV(); }catch(_){} },30); return; }
   if(pdvPagAberta() && /^F([1-9])$/.test(e.key)){ const n=+e.key.slice(1);
     if(n<=FORMAS_PAG_ESCOLHA.length){ e.preventDefault(); pdvPagEscolher(n-1); } }
 });
