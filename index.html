@@ -48,7 +48,7 @@ const CONFIG_EMPRESA = {
      Aparece no topo do menu e no rodapé das Configurações. Troque a cada publicação.
      MANTENHA O FORMATO 'vDD/MM-X' — é ele que o sistema usa para comparar as máquinas
      da loja e avisar quando alguma ficou para trás.                                  */
-  versao: 'v23/09-J',
+  versao: 'v23/09-M',
 
   /* 4) NUVEM (Supabase)  ------------------------------------------------------------
      Cole aqui a Project URL e a chave PUBLISHABLE do projeto Supabase DESTA empresa
@@ -1505,11 +1505,19 @@ function acSeta(id,aberto){ const inp=document.getElementById(id+'__ac');
 function acPick(id,i){ const cfg=AC.reg[id]; const it=AC.lista[i]; if(!cfg||!it) return;
   const h=document.getElementById(id), inp=document.getElementById(id+'__ac'); if(!h||!inp) return;
   h.value=it.v; inp.value=it.n; acClose(); h.dispatchEvent(new Event('change')); if(cfg.after) cfg.after(it); }
+/* Enter no campo VAZIO (nada digitado e nada destacado na lista): não escolhe ninguém —
+   segue para o próximo campo, quando o campo foi configurado com onEnterVazio. */
+function acEnterVazio(id){ const cfg=AC.reg[id]||{}; if(!cfg.onEnterVazio) return false;
+  const inp=document.getElementById(id+'__ac'); const txt=((inp&&inp.value)||'').trim();
+  if(txt || AC.idx>=0) return false;
+  acClose(); try{ (new Function(cfg.onEnterVazio))(); }catch(e){}
+  return true; }
 function acKey(id,e){
   // lista fechada: a seta para baixo ABRE
   if(!AC.lista.length && e.key!=='Escape'){
     if(e.key==='ArrowDown'){ e.preventDefault(); acInput(id);
       if(AC.lista.length){ AC.idx=0; acMarca(); } }   // já abre com o primeiro destacado
+    if(e.key==='Enter' && acEnterVazio(id)) e.preventDefault();
     return; }
   if(e.key==='ArrowDown'||e.key==='ArrowUp'){ e.preventDefault();
     AC.idx=Math.max(0,Math.min(AC.lista.length-1, AC.idx+(e.key==='ArrowDown'?1:-1)));
@@ -1517,6 +1525,7 @@ function acKey(id,e){
   else if(e.key==='Home'||e.key==='PageUp'){ e.preventDefault(); AC.idx=0; acMarca(); }
   else if(e.key==='End'||e.key==='PageDown'){ e.preventDefault(); AC.idx=AC.lista.length-1; acMarca(); }
   else if(e.key==='Enter'||e.key==='Tab'){
+    if(e.key==='Enter' && acEnterVazio(id)){ e.preventDefault(); return; }
     if(AC.open===id && AC.lista.length){
       // Tab só confirma se o usuário já escolheu algo com a seta; senão segue para o próximo campo
       if(e.key==='Tab' && AC.idx<0) return;
@@ -3761,7 +3770,7 @@ function cartSub(){ return CART.itens.reduce((s,i)=>s+i.qtd*i.preco,0); }
 function cartFrete(){ return CART.entrega?Math.round((+CART.frete||0)*100)/100:0; }
 function cartTotalValue(){ return Math.round((Math.max(0,cartSub()-CART.desconto)+cartFrete())*100)/100; }
 function cartPago(){ return Math.round(CART.pagamentos.reduce((s,p)=>s+(+p.valor||0),0)*100)/100; }
-function viewPDV(){
+function viewPDV(){ window.__pdvFocoCliente=true;
   syncVendedoresSeNecessario();   // garante que todo funcionário com cargo de vendedor esteja na lista
   renderPDV();
 }
@@ -3784,15 +3793,12 @@ function renderPDV(){
   <!-- ORDEM DO ATENDIMENTO: cliente → vendedor → canal → retira na loja → produto.
        O canal começa SEM nada escolhido: quem vende decide de onde veio a venda. -->
   <div class="orc-top">
-    <div class="orc-sel" style="gap:6px">${ico('cli')}${acHTML({id:'cart-cli',col:'clientes',value:CART.clienteId||'',ph:'Cliente [F2] — nome, CPF ou CNPJ',onchange:'pdvSetCliente(this.value)',style:'border:none;background:none;outline:none;color:var(--ink);width:100%'})}<button class="btn-icon btn-ghost" onclick="clienteAddModal('pdv')" title="Cadastrar cliente" style="width:28px;height:28px;flex:0 0 auto">${ico('plus')}</button></div>
+    <div class="orc-sel" style="gap:6px">${ico('cli')}${acHTML({id:'cart-cli',col:'clientes',value:CART.clienteId||'',ph:'Cliente [F2] — nome, CPF ou CNPJ',onEnterVazio:"acFocus('cart-vend')",onchange:'pdvSetCliente(this.value)',style:'border:none;background:none;outline:none;color:var(--ink);width:100%'})}<button class="btn-icon btn-ghost" onclick="clienteAddModal('pdv')" title="Cadastrar cliente" style="width:28px;height:28px;flex:0 0 auto">${ico('plus')}</button></div>
     <div id="pdv-credito-chip" style="display:contents">${pdvCreditoChipHTML()}</div>
     <div class="orc-sel">${ico('people')}${acHTML({id:'cart-vend',col:'vendedores',value:CART.vendedorId||'',ph:'Vendedor [F3] — digite o nome',onchange:'pdvSetVend(this.value)',style:'border:none;background:none;outline:none;color:var(--ink);width:100%'})}</div>
     <div class="orc-sel"><select id="cart-canal" onchange="CART.canal=this.value" onfocus="abrirLista(this)" onkeydown="if(event.key==='Enter'){event.preventDefault();const q=document.getElementById('pdv-q');if(q)q.focus();}">
       <option value="" ${!CART.canal?'selected':''}>Canal de venda…</option>
       ${['Balcão','WhatsApp','Telefone','Externo'].map(c=>`<option ${CART.canal===c?'selected':''}>${c}</option>`).join('')}</select></div>
-    <label class="orc-sel" style="gap:7px;cursor:pointer;white-space:nowrap" title="Marca a venda como ENTREGA — abre os campos de distância e frete">
-      <input type="checkbox" id="cart-entrega-top" ${CART.entrega?'checked':''} onchange="pdvEntregaTop(this.checked)" style="width:16px;height:16px">
-      <span style="font-size:12.5px;font-weight:600">Entrega</span></label>
     <div class="orc-search-wrap">
       ${ico('search','input-ico')}
       <input id="pdv-q" placeholder="Buscar produto por nome, SKU ou código de barras…" autocomplete="off"
@@ -3801,6 +3807,9 @@ function renderPDV(){
       <div id="pdv-dd" class="orc-dd"></div>
     </div>
     <button class="btn btn-ghost" onclick="kitPicker('pdv')" style="white-space:nowrap" title="Aplicar kit promocional">${ico('gift')} Kits</button>
+    <label class="orc-sel" style="gap:7px;cursor:pointer;white-space:nowrap" title="Marca a venda como ENTREGA — abre os campos de distância e frete">
+      <input type="checkbox" id="cart-entrega-top" ${CART.entrega?'checked':''} onchange="pdvEntregaTop(this.checked)" style="width:16px;height:16px">
+      <span style="font-size:12.5px;font-weight:600">Entrega</span></label>
     
   </div>
   <div id="cart-cli-complete" style="margin:0 0 10px"></div>
@@ -3847,7 +3856,11 @@ function renderPDV(){
       </div>
     </div>
   </div>`;
-  setTimeout(()=>{const s=document.getElementById('pdv-q'); if(s)s.focus();},60);
+  /* Ao ABRIR o PDV (ou ao limpar para uma venda nova) o cursor começa no CLIENTE —
+     é a primeira coisa do atendimento. Nas demais atualizações da tela, o foco volta
+     para a busca de produto, que é onde o operador fica. */
+  setTimeout(()=>{ if(window.__pdvFocoCliente){ window.__pdvFocoCliente=false; try{ acFocus('cart-cli'); return; }catch(e){} }
+    const s=document.getElementById('pdv-q'); if(s)s.focus(); },60);
   pdvUpdCliComplete();
 }
 function pdvParseQty(raw){ const m=(''+(raw||'')).match(/^\s*(\d+(?:[.,]\d+)?)\s*\*\s*(.*)$/); if(m){ const q=parseFloat(m[1].replace(',','.')); return {qty:(q>0?q:null), rest:m[2]}; } return {qty:null, rest:raw||''}; }
@@ -4301,7 +4314,7 @@ function chgQty(idx,d){ const it=CART.itens[idx]; if(!it) return;
   else { it.qtd+=d; if(it.qtd<=0) CART.itens.splice(idx,1); }
   kitAposMudanca('pdv');
   if(CART.pagamentos&&CART.pagamentos.length===1) CART.pagamentos[0].valor=cartTotalValue(); renderPDV(); }
-function clearCart(){ kitsPerguntaReset(); CART.itens=[]; CART.desconto=0; CART.descPct=0; CART.clienteId=null; CART.pagamentos=[]; CART.canal=''; CART.retiraLoja=false; CART.entrega=false; CART.frete=0; CART.distanciaKm=0; CART.enderecoEntrega=''; CART.obs=''; CART.fromOrcId=null; CART.fromOrcNumero=null; CART.faturaPedidoId=null; CART.faturaPedidoNumero=null; CART.origemTroca=false; CART.creditoAplicado=0; CART.devolucaoVendaId=null; CART.vendedorId=null; CART.vendedorNome=null; CART.contratoId=null; renderPDV(); }
+function clearCart(){ window.__pdvFocoCliente=true; kitsPerguntaReset(); CART.itens=[]; CART.desconto=0; CART.descPct=0; CART.clienteId=null; CART.pagamentos=[]; CART.canal=''; CART.retiraLoja=false; CART.entrega=false; CART.frete=0; CART.distanciaKm=0; CART.enderecoEntrega=''; CART.obs=''; CART.fromOrcId=null; CART.fromOrcNumero=null; CART.faturaPedidoId=null; CART.faturaPedidoNumero=null; CART.origemTroca=false; CART.creditoAplicado=0; CART.devolucaoVendaId=null; CART.vendedorId=null; CART.vendedorNome=null; CART.contratoId=null; renderPDV(); }
 /* ---- importar orçamento para o PDV ---- */
 function pdvImportContrato(){
   const lista=DB.all('contratosAluguel').filter(c=>c.tipo==='Contrato' && !c.pagoVendaId).sort((a,b)=>((b.criadoEm||'')+'').localeCompare((a.criadoEm||'')+''));
