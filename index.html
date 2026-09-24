@@ -48,7 +48,7 @@ const CONFIG_EMPRESA = {
      Aparece no topo do menu e no rodapé das Configurações. Troque a cada publicação.
      MANTENHA O FORMATO 'vDD/MM-X' — é ele que o sistema usa para comparar as máquinas
      da loja e avisar quando alguma ficou para trás.                                  */
-  versao: 'v23/09-M',
+  versao: 'v23/09-N',
 
   /* 4) NUVEM (Supabase)  ------------------------------------------------------------
      Cole aqui a Project URL e a chave PUBLISHABLE do projeto Supabase DESTA empresa
@@ -3856,11 +3856,11 @@ function renderPDV(){
       </div>
     </div>
   </div>`;
-  /* Ao ABRIR o PDV (ou ao limpar para uma venda nova) o cursor começa no CLIENTE —
-     é a primeira coisa do atendimento. Nas demais atualizações da tela, o foco volta
-     para a busca de produto, que é onde o operador fica. */
-  setTimeout(()=>{ if(window.__pdvFocoCliente){ window.__pdvFocoCliente=false; try{ acFocus('cart-cli'); return; }catch(e){} }
-    const s=document.getElementById('pdv-q'); if(s)s.focus(); },60);
+  /* Ao ABRIR o PDV (ou ao limpar para uma venda nova) o cursor começa no CLIENTE.
+     A tela é redesenhada mais de uma vez na abertura (nuvem, crédito do cliente, menu),
+     e cada redesenho tentava levar o foco para a busca de produto — por isso a insistência
+     em três tempos, sempre respeitando onde o operador já estiver digitando. */
+  if(window.__pdvFocoCliente) pdvFocoInicial(); else setTimeout(()=>{ const s=document.getElementById('pdv-q'); if(s)s.focus(); },60);
   pdvUpdCliComplete();
 }
 function pdvParseQty(raw){ const m=(''+(raw||'')).match(/^\s*(\d+(?:[.,]\d+)?)\s*\*\s*(.*)$/); if(m){ const q=parseFloat(m[1].replace(',','.')); return {qty:(q>0?q:null), rest:m[2]}; } return {qty:null, rest:raw||''}; }
@@ -3949,6 +3949,16 @@ function pdvBlur(){ setTimeout(()=>{ const d=document.getElementById('pdv-dd'); 
 /* Chegou no campo pelo Tab: já abre a lista de opções, para escolher sem clicar.
    showPicker() é do próprio navegador; onde não existir, o campo apenas recebe o foco. */
 function abrirLista(el){ try{ if(el && typeof el.showPicker==='function') el.showPicker(); }catch(e){} }
+function pdvFocoLivre(){ const a=document.activeElement;
+  return !a || a===document.body || a.id==='pdv-q' || a.id==='cart-cli__ac'; }
+function pdvFocoInicial(){ [60,260,650].forEach(ms=>setTimeout(()=>{
+    if(!window.__pdvFocoCliente) return;
+    if(CART.itens.length){ window.__pdvFocoCliente=false; return; }   // já tem venda em andamento
+    if(!pdvFocoLivre()){ window.__pdvFocoCliente=false; return; }     // o operador já está em outro campo
+    const inp=document.getElementById('cart-cli__ac');
+    if(inp){ inp.focus(); if(inp.select) inp.select(); }
+    if(ms===650) window.__pdvFocoCliente=false;
+  },ms)); }
 function pdvEntregaTop(v){ if(!!v===!!CART.entrega){ renderPDV(); return; } pdvToggleEntrega(); renderPDV(); }
 function cartRetira(idx){ const it=CART.itens[idx]; if(!it) return; it.retiradoLoja=!it.retiradoLoja; renderPDV(); }
 function pdvSetVend(id){ CART.vendedorId=id||null; const v=DB.get('vendedores',id); CART.vendedorNome=v?v.nome:null; }
