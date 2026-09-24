@@ -48,7 +48,7 @@ const CONFIG_EMPRESA = {
      Aparece no topo do menu e no rodapé das Configurações. Troque a cada publicação.
      MANTENHA O FORMATO 'vDD/MM-X' — é ele que o sistema usa para comparar as máquinas
      da loja e avisar quando alguma ficou para trás.                                  */
-  versao: 'v23/09-G',
+  versao: 'v23/09-H',
 
   /* 4) NUVEM (Supabase)  ------------------------------------------------------------
      Cole aqui a Project URL e a chave PUBLISHABLE do projeto Supabase DESTA empresa
@@ -4543,6 +4543,9 @@ function exigeVendedor(id, focoId){ const v=id?DB.get('vendedores',id):null; if(
    e a venda é fechada pelo botão do rodapé.
    =================================================================== */
 function pdvPagAberta(){ return !!document.getElementById('pdv-pay-modal'); }
+/* O F4 é do FINALIZAR VENDA (abre a tela e fecha a venda), então as formas pulam o F4. */
+const PDV_PAG_TECLAS=['F1','F2','F3','F5','F6','F7','F8','F9','F10','F11'];
+function pdvPagTecla(i){ return PDV_PAG_TECLAS[i]||''; }
 function pdvPagRestante(){ return Math.round((cartTotalValue()-cartPago())*100)/100; }
 function pdvPagtoModal(){
   if(!CART.itens.length){ toast('Adicione produtos antes de informar o pagamento','err'); return; }
@@ -4555,7 +4558,7 @@ function pdvPagtoHTML(){ pdvPagNormaliza(); const total=cartTotalValue(), rest=p
       <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:8px;margin-bottom:14px">
         ${FORMAS_PAG_ESCOLHA.map((f,i)=>`
           <button class="btn btn-ghost" style="justify-content:flex-start;gap:9px;padding:10px 12px" onclick="pdvPagEscolher(${i})">
-            <span class="tag" style="font-weight:800">F${i+1}</span> <span style="font-size:13px">${esc(f)}</span></button>`).join('')}
+            <span class="tag" style="font-weight:800">${pdvPagTecla(i)}</span> <span style="font-size:13px">${esc(f)}</span></button>`).join('')}
       </div>
       <!-- mesmas linhas de pagamento da tela do PDV: valor em R$, troco do dinheiro,
            parcelas do cartão e os avisos de crédito/comissão -->
@@ -4572,7 +4575,7 @@ function pdvPagtoHTML(){ pdvPagNormaliza(); const total=cartTotalValue(), rest=p
     </div>
     <div class="modal-foot">
       <button class="btn btn-ghost" onclick="pdvPagFechar()">Voltar</button>
-      <button class="btn btn-amber" id="pdv-pay-fim" onclick="pdvPagFinalizar()">${ico('check')} Finalizar venda</button>
+      <button class="btn btn-amber" id="pdv-pay-fim" onclick="pdvPagFinalizar()">${ico('check')} Finalizar venda (F4)</button>
     </div>`; }
 /* Fecha a tela de pagamento e devolve o bloco de pagamento para a lateral do PDV. */
 function pdvPagFechar(){ closeModal(); try{ renderPDV(); }catch(e){} }
@@ -4602,10 +4605,11 @@ function pdvPagFinalizar(){ closeModal(); setTimeout(()=>{ try{ finalizarVenda()
 /* F4 abre o pagamento; com a tela aberta, F1…F9 escolhem a forma. */
 window.addEventListener('keydown', function(e){
   const rota=(typeof STATE!=='undefined' && STATE.route)||'';
-  if(e.key==='F4' && rota==='pdv' && !pdvPagAberta()){ e.preventDefault(); pdvPagtoModal(); return; }
+  if(e.key==='F4' && rota==='pdv'){ e.preventDefault();
+    if(pdvPagAberta()) pdvPagFinalizar(); else pdvPagtoModal(); return; }
   if(e.key==='Escape' && pdvPagAberta()){ setTimeout(()=>{ try{ renderPDV(); }catch(_){} },30); return; }
-  if(pdvPagAberta() && /^F([1-9])$/.test(e.key)){ const n=+e.key.slice(1);
-    if(n<=FORMAS_PAG_ESCOLHA.length){ e.preventDefault(); pdvPagEscolher(n-1); } }
+  if(pdvPagAberta() && /^F\d{1,2}$/.test(e.key)){ const k=PDV_PAG_TECLAS.indexOf(e.key);
+    if(k>=0 && k<FORMAS_PAG_ESCOLHA.length){ e.preventDefault(); pdvPagEscolher(k); } }
 });
 function finalizarVenda(){
   if(!CART.itens.length) return;
