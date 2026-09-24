@@ -48,7 +48,7 @@ const CONFIG_EMPRESA = {
      Aparece no topo do menu e no rodapé das Configurações. Troque a cada publicação.
      MANTENHA O FORMATO 'vDD/MM-X' — é ele que o sistema usa para comparar as máquinas
      da loja e avisar quando alguma ficou para trás.                                  */
-  versao: 'v23/09-I',
+  versao: 'v23/09-J',
 
   /* 4) NUVEM (Supabase)  ------------------------------------------------------------
      Cole aqui a Project URL e a chave PUBLISHABLE do projeto Supabase DESTA empresa
@@ -3787,7 +3787,7 @@ function renderPDV(){
     <div class="orc-sel" style="gap:6px">${ico('cli')}${acHTML({id:'cart-cli',col:'clientes',value:CART.clienteId||'',ph:'Cliente [F2] — nome, CPF ou CNPJ',onchange:'pdvSetCliente(this.value)',style:'border:none;background:none;outline:none;color:var(--ink);width:100%'})}<button class="btn-icon btn-ghost" onclick="clienteAddModal('pdv')" title="Cadastrar cliente" style="width:28px;height:28px;flex:0 0 auto">${ico('plus')}</button></div>
     <div id="pdv-credito-chip" style="display:contents">${pdvCreditoChipHTML()}</div>
     <div class="orc-sel">${ico('people')}${acHTML({id:'cart-vend',col:'vendedores',value:CART.vendedorId||'',ph:'Vendedor [F3] — digite o nome',onchange:'pdvSetVend(this.value)',style:'border:none;background:none;outline:none;color:var(--ink);width:100%'})}</div>
-    <div class="orc-sel"><select id="cart-canal" onchange="CART.canal=this.value">
+    <div class="orc-sel"><select id="cart-canal" onchange="CART.canal=this.value" onfocus="abrirLista(this)" onkeydown="if(event.key==='Enter'){event.preventDefault();const q=document.getElementById('pdv-q');if(q)q.focus();}">
       <option value="" ${!CART.canal?'selected':''}>Canal de venda…</option>
       ${['Balcão','WhatsApp','Telefone','Externo'].map(c=>`<option ${CART.canal===c?'selected':''}>${c}</option>`).join('')}</select></div>
     <label class="orc-sel" style="gap:7px;cursor:pointer;white-space:nowrap" title="Marca a venda como ENTREGA — abre os campos de distância e frete">
@@ -3933,6 +3933,9 @@ function pdvBlur(){ setTimeout(()=>{ const d=document.getElementById('pdv-dd'); 
    pelo cliente no ato. Cada linha também pode ser marcada/desmarcada individualmente. */
 /* Chave "Entrega" da barra do PDV: é a mesma marcação do "Pedido para entrega" da lateral
    (abre distância e frete). Cada item continua com a marcação "Retira" na própria linha. */
+/* Chegou no campo pelo Tab: já abre a lista de opções, para escolher sem clicar.
+   showPicker() é do próprio navegador; onde não existir, o campo apenas recebe o foco. */
+function abrirLista(el){ try{ if(el && typeof el.showPicker==='function') el.showPicker(); }catch(e){} }
 function pdvEntregaTop(v){ if(!!v===!!CART.entrega){ renderPDV(); return; } pdvToggleEntrega(); renderPDV(); }
 function cartRetira(idx){ const it=CART.itens[idx]; if(!it) return; it.retiradoLoja=!it.retiradoLoja; renderPDV(); }
 function pdvSetVend(id){ CART.vendedorId=id||null; const v=DB.get('vendedores',id); CART.vendedorNome=v?v.nome:null; }
