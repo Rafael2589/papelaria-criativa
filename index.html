@@ -48,7 +48,7 @@ const CONFIG_EMPRESA = {
      Aparece no topo do menu e no rodapé das Configurações. Troque a cada publicação.
      MANTENHA O FORMATO 'vDD/MM-X' — é ele que o sistema usa para comparar as máquinas
      da loja e avisar quando alguma ficou para trás.                                  */
-  versao: 'v23/09-N',
+  versao: 'v23/09-P',
 
   /* 4) NUVEM (Supabase)  ------------------------------------------------------------
      Cole aqui a Project URL e a chave PUBLISHABLE do projeto Supabase DESTA empresa
@@ -1502,15 +1502,25 @@ function acMarca(){ const p=document.getElementById('ac-pop'); if(!p) return;
   const el=p.querySelector('.ac-row.on'); if(el&&el.scrollIntoView) el.scrollIntoView({block:'nearest'}); }
 function acSeta(id,aberto){ const inp=document.getElementById(id+'__ac');
   const w=(inp&&inp.closest)?inp.closest('.ac-wrap'):null; if(w) w.classList.toggle('ac-on',!!aberto); }
+/* Leva o cursor para o PRÓXIMO campo do atendimento. Serve tanto para campos de busca
+   (que têm o input com sufixo __ac) quanto para listas comuns, que já abrem as opções. */
+function acIrPara(alvo){ if(!alvo) return; setTimeout(()=>{ try{
+    const el=document.getElementById(alvo+'__ac')||document.getElementById(alvo); if(!el) return;
+    el.focus(); if(el.select) el.select();
+    if(el.tagName==='SELECT' && typeof abrirLista==='function') abrirLista(el);
+  }catch(e){} }, 30); }
 function acPick(id,i){ const cfg=AC.reg[id]; const it=AC.lista[i]; if(!cfg||!it) return;
   const h=document.getElementById(id), inp=document.getElementById(id+'__ac'); if(!h||!inp) return;
-  h.value=it.v; inp.value=it.n; acClose(); h.dispatchEvent(new Event('change')); if(cfg.after) cfg.after(it); }
+  h.value=it.v; inp.value=it.n; acClose(); h.dispatchEvent(new Event('change')); if(cfg.after) cfg.after(it);
+  if(cfg.proximo) acIrPara(cfg.proximo); }
 /* Enter no campo VAZIO (nada digitado e nada destacado na lista): não escolhe ninguém —
    segue para o próximo campo, quando o campo foi configurado com onEnterVazio. */
-function acEnterVazio(id){ const cfg=AC.reg[id]||{}; if(!cfg.onEnterVazio) return false;
+function acEnterVazio(id){ const cfg=AC.reg[id]||{}; if(!cfg.onEnterVazio && !cfg.proximo) return false;
   const inp=document.getElementById(id+'__ac'); const txt=((inp&&inp.value)||'').trim();
   if(txt || AC.idx>=0) return false;
-  acClose(); try{ (new Function(cfg.onEnterVazio))(); }catch(e){}
+  acClose();
+  if(cfg.onEnterVazio){ try{ (new Function(cfg.onEnterVazio))(); }catch(e){} }
+  else acIrPara(cfg.proximo);
   return true; }
 function acKey(id,e){
   // lista fechada: a seta para baixo ABRE
@@ -3793,10 +3803,10 @@ function renderPDV(){
   <!-- ORDEM DO ATENDIMENTO: cliente → vendedor → canal → retira na loja → produto.
        O canal começa SEM nada escolhido: quem vende decide de onde veio a venda. -->
   <div class="orc-top">
-    <div class="orc-sel" style="gap:6px">${ico('cli')}${acHTML({id:'cart-cli',col:'clientes',value:CART.clienteId||'',ph:'Cliente [F2] — nome, CPF ou CNPJ',onEnterVazio:"acFocus('cart-vend')",onchange:'pdvSetCliente(this.value)',style:'border:none;background:none;outline:none;color:var(--ink);width:100%'})}<button class="btn-icon btn-ghost" onclick="clienteAddModal('pdv')" title="Cadastrar cliente" style="width:28px;height:28px;flex:0 0 auto">${ico('plus')}</button></div>
+    <div class="orc-sel" style="gap:6px">${ico('cli')}${acHTML({id:'cart-cli',col:'clientes',value:CART.clienteId||'',ph:'Cliente [F2] — nome, CPF ou CNPJ',proximo:'cart-vend',onchange:'pdvSetCliente(this.value)',style:'border:none;background:none;outline:none;color:var(--ink);width:100%'})}<button class="btn-icon btn-ghost" onclick="clienteAddModal('pdv')" title="Cadastrar cliente" style="width:28px;height:28px;flex:0 0 auto">${ico('plus')}</button></div>
     <div id="pdv-credito-chip" style="display:contents">${pdvCreditoChipHTML()}</div>
-    <div class="orc-sel">${ico('people')}${acHTML({id:'cart-vend',col:'vendedores',value:CART.vendedorId||'',ph:'Vendedor [F3] — digite o nome',onchange:'pdvSetVend(this.value)',style:'border:none;background:none;outline:none;color:var(--ink);width:100%'})}</div>
-    <div class="orc-sel"><select id="cart-canal" onchange="CART.canal=this.value" onfocus="abrirLista(this)" onkeydown="if(event.key==='Enter'){event.preventDefault();const q=document.getElementById('pdv-q');if(q)q.focus();}">
+    <div class="orc-sel">${ico('people')}${acHTML({id:'cart-vend',col:'vendedores',value:CART.vendedorId||'',ph:'Vendedor [F3] — digite o nome',proximo:'cart-canal',onchange:'pdvSetVend(this.value)',style:'border:none;background:none;outline:none;color:var(--ink);width:100%'})}</div>
+    <div class="orc-sel"><select id="cart-canal" onchange="CART.canal=this.value;acIrPara('pdv-q')" onfocus="abrirLista(this)" onkeydown="if(event.key==='Enter'){event.preventDefault();acIrPara('pdv-q');}">
       <option value="" ${!CART.canal?'selected':''}>Canal de venda…</option>
       ${['Balcão','WhatsApp','Telefone','Externo'].map(c=>`<option ${CART.canal===c?'selected':''}>${c}</option>`).join('')}</select></div>
     <div class="orc-search-wrap">
