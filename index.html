@@ -48,7 +48,7 @@ const CONFIG_EMPRESA = {
      Aparece no topo do menu e no rodapé das Configurações. Troque a cada publicação.
      MANTENHA O FORMATO 'vDD/MM-X' — é ele que o sistema usa para comparar as máquinas
      da loja e avisar quando alguma ficou para trás.                                  */
-  versao: 'v23/09-H',
+  versao: 'v23/09-I',
 
   /* 4) NUVEM (Supabase)  ------------------------------------------------------------
      Cole aqui a Project URL e a chave PUBLISHABLE do projeto Supabase DESTA empresa
@@ -3790,9 +3790,9 @@ function renderPDV(){
     <div class="orc-sel"><select id="cart-canal" onchange="CART.canal=this.value">
       <option value="" ${!CART.canal?'selected':''}>Canal de venda…</option>
       ${['Balcão','WhatsApp','Telefone','Externo'].map(c=>`<option ${CART.canal===c?'selected':''}>${c}</option>`).join('')}</select></div>
-    <label class="orc-sel" style="gap:7px;cursor:pointer;white-space:nowrap" title="Ligado: os próximos produtos entram marcados como retirados na loja">
-      <input type="checkbox" id="cart-retira" ${CART.retiraLoja?'checked':''} onchange="pdvRetiraLoja(this.checked)" style="width:16px;height:16px">
-      <span style="font-size:12.5px;font-weight:600">Retira na loja</span></label>
+    <label class="orc-sel" style="gap:7px;cursor:pointer;white-space:nowrap" title="Marca a venda como ENTREGA — abre os campos de distância e frete">
+      <input type="checkbox" id="cart-entrega-top" ${CART.entrega?'checked':''} onchange="pdvEntregaTop(this.checked)" style="width:16px;height:16px">
+      <span style="font-size:12.5px;font-weight:600">Entrega</span></label>
     <div class="orc-search-wrap">
       ${ico('search','input-ico')}
       <input id="pdv-q" placeholder="Buscar produto por nome, SKU ou código de barras…" autocomplete="off"
@@ -3931,7 +3931,9 @@ function pdvKey(e){ if(!PDVS.results.length){ if(e.key==='Enter')e.preventDefaul
 function pdvBlur(){ setTimeout(()=>{ const d=document.getElementById('pdv-dd'); if(d && !(document.activeElement && d.contains(document.activeElement))) d.classList.remove('on'); },180); }
 /* RETIRA NA LOJA: ligado na barra, todo produto lançado já entra marcado como retirado
    pelo cliente no ato. Cada linha também pode ser marcada/desmarcada individualmente. */
-function pdvRetiraLoja(v){ CART.retiraLoja=!!v; renderPDV(); }
+/* Chave "Entrega" da barra do PDV: é a mesma marcação do "Pedido para entrega" da lateral
+   (abre distância e frete). Cada item continua com a marcação "Retira" na própria linha. */
+function pdvEntregaTop(v){ if(!!v===!!CART.entrega){ renderPDV(); return; } pdvToggleEntrega(); renderPDV(); }
 function cartRetira(idx){ const it=CART.itens[idx]; if(!it) return; it.retiradoLoja=!it.retiradoLoja; renderPDV(); }
 function pdvSetVend(id){ CART.vendedorId=id||null; const v=DB.get('vendedores',id); CART.vendedorNome=v?v.nome:null; }
 function itemLista(it){ return it.precoLista || (DB.get('produtos',it.id)||{}).preco || it.preco; }
@@ -4285,7 +4287,7 @@ function addToCart(id){ const p=DB.get('produtos',id); if(!p) return;
     else CART.itens.push({id,nome:p.nome,preco:p.preco,precoLista:p.preco,custo:p.custo,unidade:p.unidade,embalagem:true,qtdPorEmbalagem:p.qtdPorEmbalagem,embalagemTipo:p.embalagemTipo||'Caixa',pacotes:1,qtd:p.qtdPorEmbalagem});
   } else {
     const ex=CART.itens.find(i=>i.id===id && !i.embalagem);
-    if(ex && cartDupMerge(p.nome)) ex.qtd++; else CART.itens.push({id,nome:p.nome,preco:p.preco,precoLista:p.preco,custo:p.custo,unidade:p.unidade,qtd:1,retiradoLoja:!!CART.retiraLoja});
+    if(ex && cartDupMerge(p.nome)) ex.qtd++; else CART.itens.push({id,nome:p.nome,preco:p.preco,precoLista:p.preco,custo:p.custo,unidade:p.unidade,qtd:1,retiradoLoja:false});   // marcação 'Retira' é feita na linha do item
   }
   const idxLancado=CART.itens.findIndex(i=>i.id===id);
   kitSugerir('pdv'); renderPDV();
