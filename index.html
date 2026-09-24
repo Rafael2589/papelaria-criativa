@@ -48,7 +48,7 @@ const CONFIG_EMPRESA = {
      Aparece no topo do menu e no rodapé das Configurações. Troque a cada publicação.
      MANTENHA O FORMATO 'vDD/MM-X' — é ele que o sistema usa para comparar as máquinas
      da loja e avisar quando alguma ficou para trás.                                  */
-  versao: 'v23/09-F',
+  versao: 'v23/09-G',
 
   /* 4) NUVEM (Supabase)  ------------------------------------------------------------
      Cole aqui a Project URL e a chave PUBLISHABLE do projeto Supabase DESTA empresa
@@ -3998,7 +3998,7 @@ function paysHTML(){ return CART.pagamentos.map((p,i)=>{ const credito=p.forma==
    <select onchange="payForma(${i},this.value)" class="${!p.forma?'pay-empty':''}">
      <option value="" disabled ${!p.forma?'selected':''}>Forma de pagamento…</option>
      ${FORMAS_PAG_ESCOLHA.map(f=>`<option value="${f}" ${p.forma===f?'selected':''}>${f}</option>`).join('')}</select>
-   <div class="pay-val"><span>R$</span><input type="number" step="0.01" min="0" value="${p.valor}" oninput="payValor(${i},this.value)" onchange="renderPays()"></div>
+   <div class="pay-val"><span>R$</span><input type="text" inputmode="decimal" value="${fmtMoeda(p.valor)}" oninput="payValor(${i},this.value)" onchange="payValorFim(${i},this.value)"></div>
    <button class="btn-icon btn-ghost" onclick="payDel(${i})" ${CART.pagamentos.length<=1?'style="visibility:hidden"':''}>${ico('trash')}</button>
    ${p.forma==='Crédito de troca'?(function(){ const sc=clienteCreditoSaldo(CART.clienteId, cartClienteNome());
      const falta=Math.round(((+p.valor||0)-sc)*100)/100;
@@ -4030,7 +4030,7 @@ function paysHTML(){ return CART.pagamentos.map((p,i)=>{ const credito=p.forma==
      return `<div class="pay-dinheiro">
        <div class="pd-tit">${ico('money')} Valor recebido do cliente</div>
        <div class="pd-row">
-         <div class="pay-val"><span>R$</span><input id="pay-rec-${i}" type="number" step="0.01" min="0" placeholder="0,00" value="${rec>0?rec:''}" oninput="payRecebido(${i},this.value)" title="Quanto o cliente entregou em dinheiro — o troco sai sozinho"></div>
+         <div class="pay-val"><span>R$</span><input id="pay-rec-${i}" type="text" inputmode="decimal" placeholder="0,00" value="${rec>0?fmtMoeda(rec):''}" oninput="payRecebido(${i},this.value)" title="Quanto o cliente entregou em dinheiro — o troco sai sozinho"></div>
          <div class="pd-troco" id="pay-troco-${i}">${payTrocoTxt(p)}</div>
        </div>
      </div>`; })():''}
@@ -4114,9 +4114,13 @@ function payForma(i,v){ CART.pagamentos[i].forma=v; if(v==='Cartão Crédito'&&!
   if(!(+CART.pagamentos[i].valor>0)){ const outros=CART.pagamentos.reduce((s,p,k)=>s+(k===i?0:(+p.valor||0)),0); CART.pagamentos[i].valor=Math.max(0,Math.round((cartTotalValue()-outros)*100)/100); }
   renderPays();
   if(v==='Dinheiro'){ try{ const el=document.getElementById('pay-rec-'+i); if(el){ el.focus(); el.select(); } }catch(e){} } }
-function payValor(i,v){ const p=CART.pagamentos[i]; if(!p) return; p.valor=+v||0;
-  if(pdvPagAberta()){ p.parcial=(Math.round((cartPago()-cartTotalValue())*100)/100)<-0.004; pdvPagRefresh(); return; }
+/* Dinheiro na tela sempre com centavos: 0,00 — aceita digitar com vírgula ou ponto. */
+function fmtMoeda(v){ return (Math.round((+v||0)*100)/100).toFixed(2).replace('.',','); }
+function payValor(i,v){ const p=CART.pagamentos[i]; if(!p) return; p.valor=Math.max(0,numBR(v)||0);
+  p.parcial=(Math.round((cartPago()-cartTotalValue())*100)/100)<-0.004;
   renderPaySummary(); }
+/* Ao sair do campo (ou dar Enter) o valor é reescrito no formato 0,00 e a tela se ajusta. */
+function payValorFim(i,v){ payValor(i,v); if(pdvPagAberta()) pdvPagRefresh(); else renderPays(); }
 function payParcelas(i,v){ CART.pagamentos[i].parcelas=Math.min(10,Math.max(1,+v||1)); renderPays(); }
 function sugestoesParaIds(cartIds){ if(!cartIds||!cartIds.size) return [];
   const manual=new Set(); const co={};
