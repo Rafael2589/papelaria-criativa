@@ -48,7 +48,7 @@ const CONFIG_EMPRESA = {
      Aparece no topo do menu e no rodapé das Configurações. Troque a cada publicação.
      MANTENHA O FORMATO 'vDD/MM-X' — é ele que o sistema usa para comparar as máquinas
      da loja e avisar quando alguma ficou para trás.                                  */
-  versao: 'v28/09-A',
+  versao: 'v28/09-B',
 
   /* 4) NUVEM (Supabase)  ------------------------------------------------------------
      Cole aqui a Project URL e a chave PUBLISHABLE do projeto Supabase DESTA empresa
@@ -680,6 +680,10 @@ html.sync-lock #app, html.sync-lock .app, html.sync-lock #sidebar, html.sync-loc
 .orc-inl input:focus{border-color:var(--amber)}
 .orc-add{width:30px;height:30px;border:none;border-radius:8px;background:#0d9488;color:#fff;display:grid;place-items:center;cursor:pointer;flex-shrink:0}
 .orc-add svg{width:16px;height:16px}
+.doc-avisos{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin:-8px 0 12px}
+.doc-avisos-in{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+.doc-avisos-in:empty,.doc-avisos>div:empty{display:none}
+.doc-avisos .orc-sel{height:auto;min-height:34px;flex:0 0 auto}
 .orc-sel{display:flex;align-items:center;gap:7px;border:1px solid var(--field-line);border-radius:11px;padding:0 6px 0 11px;background:var(--surface);height:44px;flex-shrink:0}
 .orc-sel svg{width:16px;height:16px;color:var(--muted);flex-shrink:0}
 .orc-sel select{border:none;background:transparent;font-size:13px;color:var(--ink);outline:none;padding:8px 4px;cursor:pointer;max-width:150px}
@@ -2178,6 +2182,7 @@ const NAV=[
   {g:'Logística / Frete',icon:'truck',items:[
     {id:'entregas',label:'Rota de Entregas',icon:'truck',title:'Rota de Entregas',sub:'Roteiro otimizado das entregas'},
     {id:'freterel',label:'Relatório de Entregas (KM)',icon:'target',title:'Relatório de Entregas — KM rodados',sub:'Soma de KM das entregas concluídas por período'},
+    {id:'feedbackent',label:'Feedback de Entrega',icon:'check',title:'Feedback de Entrega',sub:'Contato com o cliente depois da entrega e anotações'},
     {id:'retiradas',label:'Retiradas / Separação',icon:'box',title:'Retiradas e Separação',sub:'Histórico de retiradas parciais por pedido, com data e observações'},
     {id:'frete',label:'Tabela de Frete',icon:'truck',title:'Tabela de Frete por distância',sub:'Faixas de km → valor'},
     {id:'combustivel',label:'Combustível & Frota',icon:'gear',title:'Combustível e Frota',sub:'Preço do litro, abastecimentos, manutenções e consumo'} ]},
@@ -2264,7 +2269,7 @@ function navReport(id,repId){ STATE.menuId=id; toggleSidebar(false); openReport(
    usado tanto pela navegação (go) quanto pela atualização em segundo plano. */
 function rotaViews(){ return {dash:viewDash,dashvend:viewDashVend,pdv:viewPDV,orc:viewOrc,sales:viewSales,prod:viewProd,cli:viewCli,func:viewFunc,contasrec:viewContasReceber,contaspag:viewContasPagar,cheques:viewCheques,concil:viewConciliacao,contasbanc:viewContasBancarias,gruposcp:viewGruposCP,deppessoal:viewDepPessoal,rep:viewRep,cfg:viewCfg,ficha:fichaAbrirNaAba,frete:viewFrete,caixa:viewCaixa,entregas:viewEntregas,maquinas:viewMaquinas,aluguel:viewAluguel,
     nfeent:viewNfeEntrada,notasemit:viewNotasEmit,nfesai:viewNfeSaida,auditoria:viewAuditoria,contador:viewContador,impostos:viewImpostos,aliquotas:viewAliquotas,sped:viewSped,beneficios:viewBeneficios,fiscalcfg:viewFiscalCfg,cfopmap:viewCfopMap,entrada:viewEntradaManual,
-    forn:viewForn,vend:viewVend,indic:viewIndic,crmwa:viewCrmWa,waatend:viewAtendWa,prospec:viewProspec,banner:viewBanner,cat:viewCat,calc:viewCalc,calcobra:viewCalcObra,funil:viewFunil,tarefas:viewTarefas,sugcompra:viewSugCompra,pedcompra:viewListaPedidos,comis:viewComissao,impxml:viewImportXML,etiq:viewEtiquetas,cot:viewCotacoes,nfavulsa:viewNFAvulsa,ecommerce:viewEcommerce,ecalc:viewEcalc,vendmobile:viewVendMobile,freterel:viewFreteRel,aluguelrel:viewAluguelRel,central:viewCentral,veiculos:viewVeiculos,combustivel:viewCombustivel,orcrel:viewOrcRel,retiradas:viewRetiradas,salesvend:viewSalesVendedor,trocas:viewTrocas,fluxocaixa:viewFluxoCaixa,contagem:viewContagem,auditlog:viewAuditoriaLog,faltas:viewProdutosFalta,kits:viewKits,nuvem:viewNuvem,lixeira:viewLixeira,anual:viewAnual,saude:viewSaude,pendencias:viewPendencias};
+    forn:viewForn,vend:viewVend,indic:viewIndic,crmwa:viewCrmWa,waatend:viewAtendWa,prospec:viewProspec,banner:viewBanner,cat:viewCat,calc:viewCalc,calcobra:viewCalcObra,funil:viewFunil,tarefas:viewTarefas,sugcompra:viewSugCompra,pedcompra:viewListaPedidos,comis:viewComissao,impxml:viewImportXML,etiq:viewEtiquetas,cot:viewCotacoes,nfavulsa:viewNFAvulsa,ecommerce:viewEcommerce,ecalc:viewEcalc,vendmobile:viewVendMobile,freterel:viewFreteRel,aluguelrel:viewAluguelRel,central:viewCentral,veiculos:viewVeiculos,combustivel:viewCombustivel,orcrel:viewOrcRel,retiradas:viewRetiradas,salesvend:viewSalesVendedor,trocas:viewTrocas,fluxocaixa:viewFluxoCaixa,contagem:viewContagem,auditlog:viewAuditoriaLog,faltas:viewProdutosFalta,kits:viewKits,nuvem:viewNuvem,lixeira:viewLixeira,anual:viewAnual,saude:viewSaude,pendencias:viewPendencias,feedbackent:viewFeedbackEntrega};
 
 }
 /* ===== SELEÇÕES (caixinhas marcadas) ================================
@@ -3835,6 +3840,42 @@ function numBR(v){ v=(''+(v==null?'':v)).trim(); if(!v)return 0; if(v.indexOf(',
 function cartSub(){ return CART.itens.reduce((s,i)=>s+i.qtd*i.preco,0); }
 function cartFrete(){ return CART.entrega?Math.round((+CART.frete||0)*100)/100:0; }
 function cartTotalValue(){ return Math.round((Math.max(0,cartSub()-CART.desconto)+cartFrete())*100)/100; }
+/* VENDAS QUE FICARAM SEM NOTA POR ERRO NA EMISSÃO — continuam aqui no PDV para emitir a nota
+   assim que o problema for resolvido (cadastro do produto/cliente, rejeição da SEFAZ). */
+let PDVNP={aberto:true};
+function pdvNotasPendentes(){ return DB.all('vendas').filter(v=>v && v.fiscalPendente && v.status!=='cancelada' && !v.notaEmitida)
+  .sort((a,b)=>String(b.fiscalPendenteEm||b.data||'').localeCompare(String(a.fiscalPendenteEm||a.data||''))); }
+function pdvNotasPendentesHTML(){ const L=pdvNotasPendentes(); if(!L.length) return '';
+  return `<div class="card" style="margin-bottom:14px;border:1px solid var(--amber)">
+    <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;padding:10px 14px;background:var(--amber-soft);cursor:pointer" onclick="PDVNP.aberto=!PDVNP.aberto;pdvNotasPendRefresh()">
+      <b style="flex:1;font-size:13px">${ico('nfeout')} ${NUM(L.length)} venda(s) aguardando nota fiscal — emita a nota aqui depois de corrigir</b>
+      <span class="t-mut" style="font-size:12px">${PDVNP.aberto?'ocultar ▲':'mostrar ▼'}</span></div>
+    ${PDVNP.aberto?`<div class="tbl-wrap"><table style="font-size:12.5px"><thead><tr><th>Pedido</th><th>Cliente</th><th class="t-right">Total</th><th>Motivo</th><th></th></tr></thead><tbody>
+      ${L.slice(0,30).map(v=>{ const md=v.fiscalPendenteModelo||''; return `<tr><td class="tnum"><b>#${esc(v.numero||'—')}</b><div class="t-mut" style="font-size:11px">${fDate(v.data)}</div></td>
+        <td>${esc(v.clienteNome||'Consumidor')}</td><td class="t-right tnum t-strong">${BRL(v.total)}</td>
+        <td class="t-mut" style="font-size:12px;max-width:380px">${esc(((v.fiscalPendenciaMotivo||'')+'').slice(0,160))}</td>
+        <td class="t-right" style="white-space:nowrap">
+          <button class="btn btn-ghost btn-sm" onclick="pdvNotaPendVer('${v.id}')" title="Ver o que falta e corrigir">${ico('alert')} O que falta</button>
+          <button class="btn btn-amber btn-sm" onclick="pdvNotaPendEmitir('${v.id}')">${ico('nfeout')} Emitir ${md==='65'?'NFC-e':(md==='55'?'NF-e':'nota')}</button>
+          <button class="btn btn-ghost btn-sm" onclick="pdvVoltarParaAberto('${v.id}')" title="Desfaz o faturamento: o pedido volta para Pedidos em aberto até ser faturado com a nota correta">${ico('back')} Voltar para em aberto</button>
+          <button class="btn btn-ghost btn-sm" onclick="nfeLiberarPendenciaModal('${v.id}')" title="Liberar no caixa sem emitir a nota">${ico('check')}</button></td></tr>`; }).join('')}
+      </tbody></table></div>`:''}</div>`; }
+function pdvVoltarParaAberto(id){ const v=DB.get('vendas',id); if(!v) return;
+  if(!confirm('Voltar o pedido '+(v.numero?('#'+v.numero):'')+' para PEDIDOS EM ABERTO?\n\nO faturamento é desfeito (estoque, contas e caixa voltam) e ele fica pendente até ser faturado de novo no PDV com a nota fiscal correta.')) return;
+  if(pdvDesfazerFaturamento(id, v.fiscalPendenciaMotivo||'Problema na nota fiscal')) toast('Pedido '+(v.numero?('#'+v.numero):'')+' voltou para Pedidos em aberto','ok');
+  try{ if(STATE.route==='pdv') renderPDV(); else go(STATE.route); }catch(e){} }
+function pdvNotasPendRefresh(){ try{ const el=document.getElementById('pdv-notas-pend'); if(el) el.innerHTML=pdvNotasPendentesHTML(); }catch(e){} }
+function pdvNotaPendVer(id){ let v=DB.get('vendas',id); if(!v) return; nfeReligarItens(v); v=DB.get('vendas',id);
+  const cli=(nfeResolverCliente(v)||{}).cli; const md=v.fiscalPendenteModelo||((v.total>=500&&v.clienteId)?'55':'65');
+  const falta=nfeFaltaEmitir(cli, v.itens, md);
+  if(!falta.length){ const nf=DB.all('notasFiscais').find(n=>n && n.vendaId===id && n.status!=='cancelada');
+    if(nf){ notaView(nf.id); return; } }
+  nfePendenciasModal(falta, cli?cli.id:'', id, md); }
+async function pdvNotaPendEmitir(id){ const v=DB.get('vendas',id); if(!v) return;
+  const md=v.fiscalPendenteModelo||'';
+  try{ if(md==='65'){ const n=await nfeEmitirETransmitir(id,'65','sales'); await nfeFinalizarEmissao(n); }
+       else { await pedidoNFe(id); } }catch(e){ try{ toast('Não foi possível emitir: '+((e&&e.message)||e),'err'); }catch(_){} }
+  pdvNotasPendRefresh(); }
 function cartPago(){ return Math.round(CART.pagamentos.reduce((s,p)=>s+(+p.valor||0),0)*100)/100; }
 function viewPDV(){ window.__pdvFocoCliente=true;
   syncVendedoresSeNecessario();   // garante que todo funcionário com cargo de vendedor esteja na lista
@@ -3858,9 +3899,9 @@ function renderPDV(){
   </div>
   <!-- ORDEM DO ATENDIMENTO: cliente → vendedor → canal → retira na loja → produto.
        O canal começa SEM nada escolhido: quem vende decide de onde veio a venda. -->
+  <div id="pdv-notas-pend">${pdvNotasPendentesHTML()}</div>
   <div class="orc-top">
     <div class="orc-sel" style="gap:6px">${ico('cli')}${acHTML({id:'cart-cli',col:'clientes',value:CART.clienteId||'',ph:'Cliente [F2] — nome, CPF ou CNPJ',proximo:'cart-vend',onchange:'pdvSetCliente(this.value)',style:'border:none;background:none;outline:none;color:var(--ink);width:100%'})}<button class="btn-icon btn-ghost" onclick="clienteAddModal('pdv')" title="Cadastrar cliente" style="width:28px;height:28px;flex:0 0 auto">${ico('plus')}</button></div>
-    <div id="pdv-credito-chip" style="display:contents">${pdvCreditoChipHTML()}</div>
     <div class="orc-sel">${ico('people')}${acHTML({id:'cart-vend',col:'vendedores',value:CART.vendedorId||'',ph:'Vendedor [F3] — digite o nome',proximo:'cart-canal',onchange:'pdvSetVend(this.value)',style:'border:none;background:none;outline:none;color:var(--ink);width:100%'})}</div>
     <div class="orc-sel"><select id="cart-canal" onchange="CART.canal=this.value;acIrPara('pdv-q')" onfocus="abrirLista(this)" onkeydown="if(event.key==='Enter'){event.preventDefault();acIrPara('pdv-q');}">
       <option value="" ${!CART.canal?'selected':''}>Canal de venda…</option>
@@ -3878,7 +3919,7 @@ function renderPDV(){
       <span style="font-size:12.5px;font-weight:600">Entrega</span></label>
     
   </div>
-  <div id="cart-cli-complete" style="margin:0 0 10px"></div>
+  <div class="doc-avisos"><div id="pdv-credito-chip" class="doc-avisos-in">${pdvCreditoChipHTML()}</div><div id="cart-cli-complete"></div></div>
   <div class="pdv-grid">
     <div class="card">
       <div class="card-head"><div><h3>Itens da venda</h3><div class="ch-sub">Ajuste quantidades e preços</div></div>
@@ -4654,6 +4695,58 @@ function pdvFiscalChecar(){
   const cli=DB.get('clientes',CART.clienteId); if(!cli) return true;
   const falta=pdvFiscalFalta(cli); if(!falta.length) return true;
   pdvFiscalModal(cli.id, falta, boleto); return false; }
+/* CLIENTE CADASTRADO DUAS VEZES COM GRAFIAS DIFERENTES (WARLEY × WARLEI, SOUSA × SOUZA…).
+   A venda fica ligada ao cadastro incompleto e a nota não sai, embora exista outro cadastro
+   completo da mesma pessoa. Aqui o sistema acha esses cadastros "parecidos" pelo som do nome
+   (e pelo telefone) para oferecer usar o cadastro completo — e, se quiser, unir os dois. */
+const _fonCache=new Map();
+function nomeFonetico(nome){ nome=(nome==null?'':nome)+''; let k=_fonCache.get(nome); if(k!==undefined) return k;
+  k=cliChaveNome(nome).split(' ').filter(t=>t && !/^(DE|DA|DO|DAS|DOS|E)$/.test(t)).map(t=>t
+    .replace(/PH/g,'F').replace(/TH/g,'T').replace(/Y/g,'I').replace(/W/g,'V').replace(/K/g,'C')
+    .replace(/C(?=[EI])/g,'S').replace(/QU(?=[EI])/g,'C').replace(/Z/g,'S').replace(/X(?=[AEIOU])/g,'CH')
+    .replace(/([^CLNS])H/g,'$1').replace(/^H/,'').replace(/(.)\1+/g,'$1')).join(' ');
+  _fonCache.set(nome,k); return k; }
+function levenshtein(a,b){ a=a||''; b=b||''; if(a===b) return 0; const m=a.length, n=b.length; if(!m) return n; if(!n) return m;
+  let prev=new Array(n+1), cur=new Array(n+1); for(let j=0;j<=n;j++) prev[j]=j;
+  for(let i=1;i<=m;i++){ cur[0]=i; for(let j=1;j<=n;j++){ cur[j]=Math.min(prev[j]+1, cur[j-1]+1, prev[j-1]+(a[i-1]===b[j-1]?0:1)); } const t=prev; prev=cur; cur=t; }
+  return prev[n]; }
+function foneDig(c){ return (((c&&(c.celular||c.telefone))||'')+'').replace(/\D/g,'').slice(-8); }
+function clientesParecidos(cli){ if(!cli) return [];
+  const f=nomeFonetico(cli.nome||''); const fone=foneDig(cli); if(!f && !fone) return [];
+  return DB.all('clientes').filter(c=>c && c.id!==cli.id && c.situacao!=='inativo').map(c=>{
+      const fc=nomeFonetico(c.nome||''); let score=0;
+      if(f && fc===f) score=3;
+      else if(f && fc && Math.min(f.length,fc.length)>=10 && levenshtein(f,fc)<=2) score=2;
+      if(fone && fone.length===8 && foneDig(c)===fone) score+=2;
+      return score?{c, score, falta:pdvFiscalFalta(c)}:null; }).filter(Boolean)
+    .sort((a,b)=>a.falta.length-b.falta.length || b.score-a.score).slice(0,3); }
+/* Juntando os dados dos dois cadastros (como a união faz: só preenche o que está vazio), a nota sai? */
+function cliUniaoCompleta(a,b){ try{ const m=cliMesclarCampos(b,[a]).merged; return pdvFiscalFalta(m).length===0; }catch(e){ return false; } }
+function clientesParecidosHTML(cli, fnUsar){ const L=clientesParecidos(cli); if(!L.length) return '';
+  return `<div class="card card-pad" style="margin:0 0 12px;border:1px solid #2563eb;background:#eff6ff">
+    <b style="font-size:12.5px;color:#1d4ed8">${ico('cli')} Este cliente pode estar cadastrado com outra grafia:</b>
+    ${L.map(x=>{ const c=x.c; return `<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;padding:6px 0;border-top:1px dashed #93c5fd;margin-top:6px;font-size:12.5px">
+      <span style="flex:1;min-width:220px"><b>${esc(c.nome||'')}</b>${c.doc?(' · '+esc(c.doc)):''}${(c.celular||c.telefone)?(' · '+esc(c.celular||c.telefone)):''}
+        <div style="font-size:11.5px;color:${x.falta.length?'var(--amber-d)':'var(--pos)'}">${x.falta.length?('ainda falta: '+esc(x.falta.join(', '))+(cliUniaoCompleta(cli,c)?' — <b>unindo os dois cadastros fica completo</b>':'')):'cadastro completo para a nota'}</div></span>
+      <button class="btn btn-amber btn-sm" onclick="${fnUsar}('${c.id}')">${ico('check')} Usar este cadastro</button></div>`; }).join('')}
+    <label style="display:flex;gap:6px;align-items:center;font-size:12px;margin-top:6px;cursor:pointer"><input type="checkbox" id="cli-parecido-unir"> Unir os dois cadastros (o incompleto vai para a Lixeira e o histórico dele passa para o escolhido)</label>
+  </div>`; }
+function cliParecidoUnir(ficaId, saiId){ try{ if(!(document.getElementById('cli-parecido-unir')||{}).checked || !saiId || ficaId===saiId) return false;
+    const r=cliMesclar(ficaId,[saiId]); if(r){ try{ logAcao('Clientes unidos (grafia diferente)', r.nome+' · '+r.registrosMovidos+' registro(s) movido(s)'); }catch(e){} toast('Cadastros unidos em '+r.nome,'ok'); return true; } }catch(e){} return false; }
+/* PDV: troca o cliente da venda pelo cadastro completo e segue a finalização. */
+function pdvFiscalUsarOutro(id){ const atual=CART.clienteId; const c=DB.get('clientes',id); if(!c) return;
+  cliParecidoUnir(id, atual);
+  CART.clienteId=id; CART.clienteNome=c.nome||''; CART._fiscalCupomCli=null;
+  try{ const h=document.getElementById('cart-cli'); if(h) h.value=id; const vis=document.getElementById('cart-cli__ac'); if(vis) vis.value=c.nome||''; }catch(e){}
+  try{ pdvCreditoRefresh(); }catch(e){} try{ pdvUpdCliComplete(); }catch(e){}
+  closeModal(); toast('Venda passou para o cadastro de '+(c.nome||''),'ok'); finalizarVenda(); }
+/* Venda já feita: troca o cliente da venda pelo cadastro completo e confere de novo. */
+function nfeUsarClienteParecido(id){ const ctx=window.__nfePendCtx||{}; const v=ctx.vendaId?DB.get('vendas',ctx.vendaId):null; const c=DB.get('clientes',id); if(!v||!c) return;
+  const antigo=v.clienteId; if(!cliParecidoUnir(id, antigo)) DB.update('vendas',v.id,{clienteId:c.id, clienteNome:c.nome||''});
+  try{ logAcao('Cliente da venda trocado pelo cadastro completo', (v.numero?('#'+v.numero+' · '):'')+(c.nome||'')); }catch(e){}
+  try{ nuvemPushJa(); }catch(e){}
+  const v2=DB.get('vendas',v.id); const md=ctx.modelo||((v2.total>=500&&v2.clienteId)?'55':'65');
+  nfePendenciasModal(nfeFaltaEmitir(c, v2.itens, md), c.id, v2.id, ctx.modelo); }
 function pdvFiscalModal(cliId, falta, boleto, ctx){ const c=DB.get('clientes',cliId)||{}; const doOrc=(ctx==='orc');
   const fx=(re)=>falta.some(x=>re.test(x));
   const destaque=(re)=>fx(re)?' style="border-color:var(--amber);background:var(--amber-soft)"':'';
@@ -4662,6 +4755,7 @@ function pdvFiscalModal(cliId, falta, boleto, ctx){ const c=DB.get('clientes',cl
    <div class="modal-body cad-upper" style="max-height:64vh;overflow:auto">
      <p style="font-size:13px;margin:0 0 6px">O cadastro de <b>${esc(c.nome||'')}</b> não tem tudo o que a nota fiscal (NF-e) exige. Aproveite que o cliente está aqui e complete agora:</p>
      <ul style="margin:0 0 12px;padding-left:18px;font-size:12.5px;line-height:1.5;color:var(--amber-d)">${falta.map(x=>`<li>${esc(x)}</li>`).join('')}</ul>
+     ${doOrc?'':clientesParecidosHTML(c, 'pdvFiscalUsarOutro')}
      <div class="field-row">
        <div class="field" style="flex:0 0 120px"><label>Tipo</label><select id="pf-tipodoc">${['CPF','CNPJ'].map(t=>`<option ${tipo===t?'selected':''}>${t}</option>`).join('')}</select></div>
        <div class="field"><label>CPF / CNPJ</label><input id="pf-doc" value="${esc(c.doc||'')}"${destaque(/CPF|CNPJ/)} onblur="cnpjFill(this.value,{cep:'pf-cep',logradouro:'pf-logr',numero:'pf-num',bairro:'pf-bairro',cidade:'pf-cidade',uf:'pf-uf',ie:'pf-ie'})" placeholder="Com CNPJ, os dados vêm da Receita"></div>
@@ -4855,6 +4949,7 @@ function finalizarVenda(){
     pagamentos, troco:Math.round(Math.max(0,troco)*100)/100, formaPagamento:formaResumo, taxaCartao, valorAberto:Math.round(aberto*100)/100, status: aberto>0.01?'pendente':'pago',
     comissaoUsada: Math.round((CART.pagamentos||[]).filter(p=>ehComissaoIndic(p.forma)).reduce((s,p)=>s+(+p.valor||0),0)*100)/100,
     comissaoIndicadorId: CART.comissaoIndicadorId||null,
+    notaErroMotivo:'', notaErroEm:null,
     creditoTrocaUsado: Math.round((CART.pagamentos||[]).filter(p=>p.forma==='Crédito de troca').reduce((s,p)=>s+(+p.valor||0),0)*100)/100,
     entrega:!!CART.entrega, frete:cartFrete(), enderecoEntrega:CART.entrega?CART.enderecoEntrega:'', entregaStatus: CART.entrega?'pendente':null,
     hora: nowTime(), sessaoId: (caixaSessaoAberta()||{}).id||null,
@@ -5105,28 +5200,146 @@ function nfeEscolherClienteExec(vendaId){ const id=(document.getElementById('nfe
   try{ logAcao('Cliente religado à venda', (c.nome||'')+' · venda '+vendaId); }catch(e){}
   closeModal(); toast('Cliente ligado à venda — emita a nota de novo','ok');
   try{ vendaResumo(vendaId); }catch(e){} }
+/* Item da venda que perdeu a ligação com o cadastro (produto refeito, id diferente vindo de outro
+   computador): procura o produto pelo SKU/código ou pelo NOME exato e religa o item. Sem isso a nota
+   dizia "produto fora do cadastro" e não enxergava o NCM que já estava no cadastro. */
+function nfeReligarItens(v){ try{ if(!v||!Array.isArray(v.itens)) return 0; let n=0; let porNome=null;
+    const itens=v.itens.map(it=>{ if(!it) return it; const pid=(''+(it.produtoId||it.id||''));
+      if(pid.indexOf('loc-')===0 || /^Loca[cç][aã]o\b/i.test(it.nome||'') || /^Multa por atraso/i.test(it.nome||'')) return it;
+      if(pid && DB.get('produtos',pid)) return (it.produtoId?it:Object.assign({},it,{produtoId:pid}));
+      if(!porNome){ porNome=new Map(); const dup=new Set(); DB.all('produtos').forEach(p=>{ const k=normTxt(((p.nome||'')+'').trim()); if(!k) return; if(porNome.has(k)) dup.add(k); else porNome.set(k,p); }); dup.forEach(k=>porNome.delete(k)); }
+      let p=null; const sku=((it.sku||it.codigo||'')+'').trim();
+      if(sku){ const ach=DB.all('produtos').filter(x=>((x.sku||'')+'').trim()===sku || ((x.codigoBarras||'')+'').trim()===sku); if(ach.length===1) p=ach[0]; }
+      if(!p) p=porNome.get(normTxt(((it.nome||'')+'').trim()))||null;
+      if(!p) return it; n++; return Object.assign({},it,{produtoId:p.id}); });
+    if(n){ DB.update('vendas',v.id,{itens}); try{ logAcao('Itens religados ao cadastro de produtos', n+' item(ns)'+(v.numero?(' · venda #'+v.numero):'')); }catch(e){} }
+    return n; }catch(e){ return 0; } }
+/* REGRA DO FATURAMENTO NO PDV: se a nota der QUALQUER problema (cadastro incompleto, cliente não
+   encontrado, rejeição da SEFAZ, Focus fora), a venda NÃO fica faturada. O faturamento é desfeito
+   (estoque, contas e caixa voltam), o registro volta a ser PEDIDO PENDENTE — aparece em "Pedidos em
+   aberto" (Pedidos Vendedores) e no "Importar pedido" do PDV — até ser faturado de novo, com a nota
+   saindo corretamente. As formas de pagamento combinadas ficam no pedido, para não redigitar. */
+function pdvDesfazerFaturamento(vendaId, motivo){ try{ const v=DB.get('vendas',vendaId); if(!v || v.status==='cancelada') return false;
+    const pags=(v.pagamentos||[]).map(p=>Object.assign({},p)); const forma=v.formaPagamento||'';
+    vendaEstornar(vendaId, false, true, true);
+    const v2=DB.get('vendas',vendaId); if(!v2) return false;
+    DB.update('vendas',vendaId,{ status:'pendente', pedido:true, faturadoPDV:false, fiscalPendente:false, fiscalPendenciaMotivo:'', fiscalPendenteEm:null,
+      pagamentos:pags.map(p=>({forma:p.forma, valor:+p.valor||0, parcelas:p.parcelas})).map(p=>{ if(!(+p.parcelas>1)) delete p.parcelas; return p; }), formaPagamento:forma,
+      notaErroMotivo:((motivo||'Problema na nota fiscal')+'').slice(0,300), notaErroEm:new Date().toISOString() });
+    try{ logAcao('Faturamento desfeito — problema na nota', (v.numero?('#'+v.numero+' · '):'')+(motivo||'')); }catch(e){}
+    try{ nuvemPushJa(); }catch(e){} try{ buildNav(); }catch(e){}
+    return true; }catch(e){ console.error('desfazer faturamento',e); return false; } }
+/* Pedido pendente (ainda não faturado) com problema de nota: depois de corrigir, fatura de novo no PDV. */
+function nfePedidoPendente(v){ try{ return !!v && pedidoStatusInfo(v).k==='pendente' && !v.faturadoPDV; }catch(e){ return false; } }
+/* Itens da venda sem NCM válido — com o produto do cadastro, quando existe. */
+function nfeItensSemNcm(v){ const L=[]; try{ (v&&v.itens||[]).forEach((it,idx)=>{ if(!it) return;
+    const pid=(''+(it.produtoId||it.id||''));
+    if(pid.indexOf('loc-')===0 || /^Loca[cç][aã]o\b/i.test(it.nome||'') || /^Multa por atraso/i.test(it.nome||'')) return;
+    const p=pid?DB.get('produtos',pid):null; const ncm=((it.ncm||(p&&p.ncm)||'')+'').replace(/\D/g,'');
+    if(ncm.length!==8) L.push({idx, nome:(it.nome||(p&&p.nome)||'Item'), prod:p}); }); }catch(e){} return L; }
+/* O QUE FALTA PARA A NOTA, COM O BOTÃO CERTO PARA CADA COISA.
+   Pendência no PRODUTO pede o produto (o NCM pode ser digitado aqui mesmo); pendência no
+   CLIENTE pede o cliente. Antes a janela sempre oferecia "Completar cadastro do cliente",
+   mesmo quando o que faltava era o NCM de um produto. */
 function nfePendenciasModal(falta, cliId, vendaId, modelo){
-  const g=nfePendGrupos(falta); const cli=cliId?DB.get('clientes',cliId):null; const v=vendaId?DB.get('vendas',vendaId):null;
-  const prodId=nfeProdutoPendenteId(v);
+  const g=nfePendGrupos(falta); const cli=cliId?DB.get('clientes',cliId):null; let v=vendaId?DB.get('vendas',vendaId):null;
+  if(v && nfeReligarItens(v)){ v=DB.get('vendas',vendaId); const cli2=(nfeResolverCliente(v)||{}).cli; const md=modelo||((v.total>=500&&v.clienteId)?'55':'65');
+    return nfePendenciasModal(nfeFaltaEmitir(cli2, v.itens, md), cli2?cli2.id:(cliId||''), vendaId, modelo); }
+  window.__nfePendCtx={falta, cliId, vendaId, modelo};
+  const semNcm=v?nfeItensSemNcm(v):[];
   const bloco=(tit,itens,cor)=>itens.length?`<div style="margin-bottom:10px">
       <b style="font-size:12.5px;color:${cor}">${tit}</b>
       <ul style="margin:5px 0 0;padding-left:18px;font-size:12.5px;line-height:1.55">${itens.map(x=>`<li>${esc(x)}</li>`).join('')}</ul></div>`:'';
-  openModal(`<div class="modal-head"><h3>${ico('alert')} Falta completar o cadastro para emitir a nota</h3><button class="btn-icon btn-ghost" onclick="closeModal()">${ico('x')}</button></div>
+  const outrosProd=g.produto.filter(x=>!/^NCM do produto/i.test(x));
+  const blocoProd=(g.produto.length && semNcm.length)?`<div style="margin-bottom:10px">
+      <b style="font-size:12.5px;color:#2563eb">${ico('box')} Nos produtos da venda — falta o NCM</b>
+      <div class="t-mut" style="font-size:12px;margin:3px 0 6px">Digite o NCM (8 números, está na nota de compra do produto) e salve. ${semNcm.some(x=>x.prod)?'O NCM fica gravado no cadastro do produto e vale para as próximas vendas.':''}</div>
+      ${semNcm.map(x=>`<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;padding:6px 0;border-top:1px dashed var(--line)">
+          <span style="flex:1;min-width:180px;font-size:12.5px"><b>${esc(x.nome)}</b>${x.prod?'':' <span class="t-mut">(produto fora do cadastro — o NCM fica só nesta venda)</span>'}</span>
+          <input id="nfe-ncm-${x.idx}" inputmode="numeric" maxlength="10" placeholder="NCM" style="width:120px">
+          <button class="btn btn-amber btn-sm" onclick="nfeNcmSalvar(${x.idx})">${ico('check')} Salvar NCM</button>
+          ${x.prod?`<button class="btn btn-ghost btn-sm" onclick="closeModal();go('prod');setTimeout(()=>{try{prodForm('${x.prod.id}');}catch(e){}},120)">${ico('box')} Abrir cadastro do produto</button>`
+            :`<button class="btn btn-ghost btn-sm" onclick="nfeLigarItemModal(${x.idx})" title="Troca este item pelo produto do cadastro, com os dados fiscais dele">${ico('box')} Ligar a produto cadastrado</button>`}
+        </div>`).join('')}
+      ${outrosProd.length?`<ul style="margin:5px 0 0;padding-left:18px;font-size:12.5px">${outrosProd.map(x=>`<li>${esc(x)}</li>`).join('')}</ul>`:''}</div>`
+    : bloco(ico('box')+' Nos produtos da venda', g.produto, '#2563eb');
+  const nadaFalta=!falta.length;
+  openModal(`<div class="modal-head"><h3>${ico('alert')} ${nadaFalta?'Tudo pronto para emitir a nota':'Falta completar o cadastro para emitir a nota'}</h3><button class="btn-icon btn-ghost" onclick="closeModal()">${ico('x')}</button></div>
    <div class="modal-body">
-     <p class="t-mut" style="font-size:12.5px;margin:0 0 10px">A nota <b>não foi enviada</b> para a SEFAZ — o sistema conferiu antes e encontrou dados obrigatórios faltando. Resolva o que está abaixo e emita de novo.</p>
-     ${bloco('No cadastro do cliente'+(cli?(' — '+esc(cli.nome||'')):''), g.cliente, 'var(--amber-d)')}
-     ${bloco('Nos dados da empresa', g.empresa, 'var(--neg)')}
-     ${bloco('Nos produtos da venda', g.produto, '#2563eb')}
+     ${nadaFalta?`<p style="font-size:13px;margin:0 0 10px;color:var(--pos)"><b>${ico('check')} Nada mais está faltando.</b> Pode emitir a nota.</p>`
+       :`<p class="t-mut" style="font-size:12.5px;margin:0 0 10px">A nota <b>não foi enviada</b> para a SEFAZ — o sistema conferiu antes e encontrou dados obrigatórios faltando. Resolva o que está abaixo e emita de novo.</p>`}
+     ${(v&&nfePedidoPendente(v))?`<div class="card card-pad" style="margin:0 0 10px;background:var(--amber-soft);font-size:12.5px">${ico('clock')} O pedido <b>${v.numero?('#'+esc(v.numero)):''}</b> <b>não foi faturado</b>: voltou para <b>Pedidos em aberto</b> (Pedidos Vendedores) e para o "Importar pedido" do PDV. Depois de corrigir, fature de novo no PDV.</div>`:''}
+     ${blocoProd}
+     ${bloco(ico('cli')+' No cadastro do cliente'+(cli?(' — '+esc(cli.nome||'')):''), g.cliente, 'var(--amber-d)')}
+     ${(g.cliente.length&&cli)?clientesParecidosHTML(cli, 'nfeUsarClienteParecido'):''}
+     ${bloco(ico('gear')+' Nos dados da empresa', g.empresa, 'var(--neg)')}
    </div>
    <div class="modal-foot" style="flex-wrap:wrap;gap:8px">
      <button class="btn btn-ghost" onclick="closeModal()">Depois</button>
      ${(v&&v.fiscalPendente)?`<button class="btn btn-ghost" title="A venda volta a contar no caixa, sem nota emitida" onclick="closeModal();nfeLiberarPendenciaModal('${v.id}')">${ico('check')} Liberar no caixa sem nota</button>`:''}<div style="flex:1"></div>
-     ${g.produto.length&&prodId?`<button class="btn btn-ghost" onclick="closeModal();go('prod');setTimeout(()=>{try{prodForm('${prodId}');}catch(e){}},120)">${ico('box')} Corrigir produto</button>`:''}
      ${g.empresa.length?`<button class="btn btn-ghost" onclick="closeModal();go('fiscalcfg')">${ico('gear')} Dados da empresa</button>`:''}
-     ${(!cli&&v&&v.clienteId)?`<button class="btn btn-ghost" onclick="closeModal();nuvemPullMerge&&nuvemPullMerge();toast('Buscando os cadastros na nuvem…','ok')">${ico('dl')} Buscar na nuvem</button>`:''}
-     ${!cli&&v?`<button class="btn btn-amber" onclick="closeModal();nfeEscolherClienteModal('${v.id}')">${ico('cli')} Escolher o cliente da venda</button>`:''}
-     ${cli?`<button class="btn btn-amber" onclick="closeModal();nfeCompletarCadastro('${cli.id}'${vendaId?(",'"+vendaId+"'"):''})">${ico('cli')} Completar cadastro do cliente</button>`:''}
+     ${(g.cliente.length&&!cli&&v&&v.clienteId)?`<button class="btn btn-ghost" onclick="closeModal();nuvemPullMerge&&nuvemPullMerge();toast('Buscando os cadastros na nuvem…','ok')">${ico('dl')} Buscar na nuvem</button>`:''}
+     ${(g.cliente.length&&!cli&&v)?`<button class="btn btn-amber" onclick="closeModal();nfeEscolherClienteModal('${v.id}')">${ico('cli')} Escolher o cliente da venda</button>`:''}
+     ${(g.cliente.length&&cli)?`<button class="btn btn-amber" onclick="closeModal();nfeCompletarCadastro('${cli.id}'${vendaId?(",'"+vendaId+"'"):''})">${ico('cli')} Completar cadastro do cliente</button>`:''}
+     ${(nadaFalta&&v&&!nfePedidoPendente(v))?`<button class="btn btn-amber" onclick="closeModal();nfeEmitirDeNovo('${v.id}','${modelo||''}')">${ico('nfeout')} Emitir a nota agora</button>`:''}
+     ${(v&&nfePedidoPendente(v))?`<button class="btn ${nadaFalta?'btn-amber':'btn-ghost'}" onclick="closeModal();pedidoAbertoPDVVenda('${v.id}')" title="O pedido está em aberto: fature de novo no PDV e emita a nota">${ico('sales')} Faturar no PDV</button>`:''}
    </div>`, true); }
+/* LIGAR O ITEM "FORA DO CADASTRO" A UM PRODUTO CADASTRADO.
+   O item vendido como produto externo passa a ser o produto escolhido: nome, unidade, custo e os
+   DADOS FISCAIS (NCM, CFOP, CST) vêm do cadastro. Quantidade e preço cobrados não mudam. Opcional:
+   dar baixa no estoque do produto, já que a mercadoria saiu. */
+function nfeLigarItemModal(idx){ const ctx=window.__nfePendCtx||{}; const v=ctx.vendaId?DB.get('vendas',ctx.vendaId):null; if(!v) return;
+  const it=(v.itens||[])[idx]; if(!it) return;
+  openModal(`<div class="modal-head"><h3>${ico('box')} Ligar item a um produto cadastrado</h3><button class="btn-icon btn-ghost" onclick="nfeLigarVoltar()">${ico('x')}</button></div>
+   <div class="modal-body">
+     <div class="card card-pad" style="background:var(--surface-2);margin-bottom:12px;font-size:12.5px">Item vendido fora do cadastro: <b>${esc(it.nome||'Item')}</b> · ${fmtQ(it.qtd)} ${esc(it.unidade||'')} × ${BRL(it.preco)} = <b>${BRL((+it.qtd||0)*(+it.preco||0))}</b></div>
+     <div class="field"><label>Produto do cadastro que substitui este item</label>${acHTML({id:'nfe-lig-prod', col:'produtos', value:'', ph:'Digite o nome, SKU ou código de barras…', onchange:'nfeLigarPreview('+idx+')'})}</div>
+     <div id="nfe-lig-prev" class="t-mut" style="font-size:12.5px;margin:6px 0 10px">Escolha o produto para ver os dados fiscais que vão para a nota.</div>
+     <label style="display:flex;gap:8px;align-items:center;font-size:12.5px;cursor:pointer"><input type="checkbox" id="nfe-lig-baixa" checked> Dar baixa de ${fmtQ(it.qtd)} no estoque do produto escolhido (a mercadoria já saiu)</label>
+     <p class="t-mut" style="font-size:11.5px;margin:8px 0 0">A quantidade e o preço cobrados continuam os mesmos. O nome e os dados fiscais passam a ser os do produto escolhido.</p>
+   </div>
+   <div class="modal-foot"><button class="btn btn-ghost" onclick="nfeLigarVoltar()">Voltar</button><div style="flex:1"></div>
+     <button class="btn btn-amber" onclick="nfeLigarItemExec(${idx})">${ico('check')} Ligar e usar os dados deste produto</button></div>`, true); }
+function nfeLigarPreview(idx){ const id=(document.getElementById('nfe-lig-prod')||{}).value||''; const p=id?DB.get('produtos',id):null; const el=document.getElementById('nfe-lig-prev'); if(!el) return;
+  if(!p){ el.innerHTML='Escolha o produto para ver os dados fiscais que vão para a nota.'; return; }
+  const ncm=((p.ncm||'')+'').replace(/\D/g,'');
+  el.innerHTML=`<b>${esc(p.nome||'')}</b>${p.sku?(' · SKU '+esc(p.sku)):''} · estoque ${fmtQ(p.estoque||0)} ${esc(p.unidade||'')}<br>
+    NCM <b style="color:${ncm.length===8?'var(--pos)':'var(--neg)'}">${ncm.length===8?esc(ncm):'sem NCM'}</b> · CFOP ${esc(p.cfop||p.cfopVenda||'—')} · CST/CSOSN ${esc(p.cst||p.csosn||'—')}
+    ${ncm.length===8?'':'<br><span style="color:var(--neg)">Este produto também está sem NCM — depois de ligar, digite o NCM na tela anterior (ele fica no cadastro).</span>'}`; }
+function nfeLigarVoltar(){ const ctx=window.__nfePendCtx||{}; const v=ctx.vendaId?DB.get('vendas',ctx.vendaId):null; if(!v){ closeModal(); return; }
+  const cli=(nfeResolverCliente(v)||{}).cli; const md=ctx.modelo||((v.total>=500&&v.clienteId)?'55':'65');
+  nfePendenciasModal(nfeFaltaEmitir(cli, v.itens, md), cli?cli.id:(ctx.cliId||''), v.id, ctx.modelo); }
+function nfeLigarItemExec(idx){ const ctx=window.__nfePendCtx||{}; const v=ctx.vendaId?DB.get('vendas',ctx.vendaId):null; if(!v) return;
+  const it=(v.itens||[])[idx]; if(!it) return;
+  const id=(document.getElementById('nfe-lig-prod')||{}).value||''; const p=id?DB.get('produtos',id):null;
+  if(!p){ toast('Escolha o produto do cadastro','err'); return; }
+  const baixa=!!(document.getElementById('nfe-lig-baixa')||{}).checked;
+  const novo=Object.assign({}, it, { produtoId:p.id, nome:p.nome||it.nome, sku:p.sku||'', unidade:p.unidade||it.unidade, custo:(+p.custo||+it.custo||0),
+    nomeOriginal:it.nome||'', ligadoAoCadastroEm:new Date().toISOString(), externo:false });
+  ['ncm','cfop','cst','csosn','cfopNfe','cstNfe','cest'].forEach(k=>{ delete novo[k]; });   // os dados fiscais passam a vir do cadastro
+  const itens=(v.itens||[]).map((x,k)=>k===idx?novo:x);
+  const custoTotal=Math.round(itens.reduce((s,x)=>s+(+x.qtd||0)*(+x.custo||0),0)*100)/100;
+  DB.update('vendas',v.id,{itens, custoTotal});
+  if(baixa){ const q=+it.qtd||0; DB.update('produtos',p.id,{estoque:Math.round(((+p.estoque||0)-q)*1000)/1000});
+    DB.insert('movEstoque',{produtoId:p.id,tipo:'saida',qtd:q,data:today(),motivo:'Venda'+(v.numero?(' #'+v.numero):'')+' — item externo ligado ao cadastro'}); }
+  try{ logAcao('Item externo ligado ao cadastro de produtos', '"'+(it.nome||'')+'" → '+(p.nome||'')+(v.numero?(' · venda #'+v.numero):'')+(baixa?' · baixa no estoque':'')); }catch(e){}
+  try{ nuvemPushJa(); }catch(e){}
+  toast('Item ligado a '+(p.nome||'produto')+' — dados fiscais do cadastro','ok');
+  nfeLigarVoltar(); }
+/* Grava o NCM digitado: no cadastro do produto (quando existe) ou só no item desta venda. */
+function nfeNcmSalvar(idx){ const ctx=window.__nfePendCtx||{}; const v=ctx.vendaId?DB.get('vendas',ctx.vendaId):null; if(!v) return;
+  const el=document.getElementById('nfe-ncm-'+idx); const ncm=((el&&el.value)||'').replace(/\D/g,'');
+  if(ncm.length!==8){ toast('O NCM tem 8 números','err'); if(el) el.focus(); return; }
+  const it=(v.itens||[])[idx]; if(!it) return; const pid=it.produtoId||it.id; const p=pid?DB.get('produtos',pid):null;
+  if(p){ DB.update('produtos',p.id,{ncm}); try{ logAcao('NCM do produto completado (nota fiscal)', (p.nome||'')+' · '+ncm); }catch(e){} }
+  const itens=(v.itens||[]).map((x,k)=>k===idx?Object.assign({},x,{ncm}):x); DB.update('vendas',v.id,{itens});
+  try{ nuvemPushJa(); }catch(e){}
+  toast('NCM salvo'+(p?' no cadastro do produto':' nesta venda'),'ok');
+  const v2=DB.get('vendas',v.id); const cli2=(nfeResolverCliente(v2)||{}).cli; const md=ctx.modelo||((v2.total>=500&&v2.clienteId)?'55':'65');
+  const falta=nfeFaltaEmitir(cli2, v2.itens, md);
+  nfePendenciasModal(falta, cli2?cli2.id:(ctx.cliId||''), v2.id, ctx.modelo); }
+function nfeEmitirDeNovo(vendaId, modelo){ try{ if(!modelo || modelo==='55'){ pedidoNFe(vendaId); return; }
+    nfeEmitirETransmitir(vendaId, modelo, 'sales').then(n=>{ try{ renderSalesTable(); }catch(e){} return nfeFinalizarEmissao(n); }); }catch(e){} }
 /* Abre o cadastro do cliente para completar e, ao voltar, lembra de emitir a nota. */
 function nfeCompletarCadastro(cliId, vendaId){ if(!cliId){ toast('Venda sem cliente cadastrado — selecione o cliente para emitir a NF-e','err'); return; }
   window.__nfeVoltarVenda = vendaId || null;
@@ -5144,8 +5357,8 @@ function nfeFaltaCliente(v, modelo){ try{
    rejeição da SEFAZ), a venda é SEGURADA: não conta no caixa nem nos faturados, fica como
    "Aguardando nota fiscal" na aba Pedidos. Quando a nota é autorizada, a retenção é liberada e a
    venda entra no caixa. */
-function nfeMarcarPendencia(vendaId, motivo){ if(!vendaId) return; const v=DB.get('vendas',vendaId); if(!v||v.status==='cancelada') return;
-  DB.update('vendas',vendaId,{fiscalPendente:true, fiscalPendenciaMotivo:(motivo||'Pendência na emissão da nota fiscal'), fiscalPendenteEm:today()});
+function nfeMarcarPendencia(vendaId, motivo, modelo){ if(!vendaId) return; const v=DB.get('vendas',vendaId); if(!v||v.status==='cancelada') return;
+  DB.update('vendas',vendaId,Object.assign({fiscalPendente:true, fiscalPendenciaMotivo:(motivo||'Pendência na emissão da nota fiscal'), fiscalPendenteEm:today()}, modelo?{fiscalPendenteModelo:String(modelo)}:{}));
   try{ logAcao('Venda retida por pendência fiscal',(v.numero?('#'+v.numero+' · '):'')+(motivo||'')); }catch(e){}
   try{ buildNav(); }catch(e){} }
 function nfeLimparPendencia(vendaId){ if(!vendaId) return; const v=DB.get('vendas',vendaId); if(!v||!v.fiscalPendente) return;
@@ -5251,7 +5464,8 @@ function nfeXpedResolver(action){ const r=window._nfeXpedResolve; window._nfeXpe
   if(action==='skip'){ if(r) r({action:'skip', xPed:'', itens:itensNip}); return; }
   if(r) r({action:'include', xPed:xPed, itens:itensNip}); }
 async function nfeEmitirETransmitir(vendaId, modelo, origem){
-  const v=DB.get('vendas',vendaId); if(!v){ toast('Venda não encontrada','err'); return null; }
+  let v=DB.get('vendas',vendaId); if(!v){ toast('Venda não encontrada','err'); return null; }
+  if(nfeReligarItens(v)) v=DB.get('vendas',vendaId);
   // Resolve o MODELO do documento em TODAS as telas: BOLETO (a prazo) é sempre NF-e (55);
   // sem escolha explícita, decide por valor/cliente (>=R$500 c/ cliente -> 55, senão 65).
   if((v.pagamentos||[]).some(p=>/boleto|prazo/i.test(p.forma||'')) || /boleto|prazo/i.test(v.formaPagamento||'')) modelo='55';
@@ -5265,14 +5479,14 @@ async function nfeEmitirETransmitir(vendaId, modelo, origem){
     if(_rc.perdido){ try{ closeModal(); }catch(e){}
       nfePendenciasModal(['Cliente: o cadastro ligado a esta venda ('+((v.clienteNome||'sem nome'))+') NÃO foi encontrado neste computador — pode ainda não ter sincronizado, ou o cadastro foi refeito com outro registro. Use "Buscar na nuvem" ou escolha o cliente certo.'], '', vendaId, modelo);
       toast('Nota não enviada — o cadastro do cliente não foi encontrado aqui','err');
-      nfeMarcarPendencia(vendaId, 'Cadastro do cliente não encontrado neste computador');
+      nfeMarcarPendencia(vendaId, 'Cadastro do cliente não encontrado neste computador', modelo);
       return null; }
     const falta=nfeFaltaEmitir(cliV, v.itens, modelo);
     if(falta.length){
       try{ closeModal(); }catch(e){}
       nfePendenciasModal(falta, cliV?cliV.id:'', vendaId, modelo);
       try{ toast('Nota não enviada — falta completar o cadastro','err'); }catch(e){}
-      nfeMarcarPendencia(vendaId, 'Dados obrigatórios faltando: '+falta.join('; '));   // segura a venda fora do caixa até corrigir e emitir
+      nfeMarcarPendencia(vendaId, 'Dados obrigatórios faltando: '+falta.join('; '), modelo);   // segura a venda fora do caixa até corrigir e emitir
       return null; } }
   if(MODO_TESTE){ try{ closeModal(); }catch(e){} toast('Ambiente de teste: o cadastro está completo para a nota, mas nada é enviado para a SEFAZ','ok'); return null; }
   const f=focusCfg();
@@ -5303,7 +5517,7 @@ async function nfeEmitirETransmitir(vendaId, modelo, origem){
     // avanço SEMPRE de 1 em 1 (sem aceleração) — mantém a numeração sequencial, sem vãos grandes
   }
   if(r && r.autorizado){ nfeLimparPendencia(vendaId); if(_tent) toast('Numeração ajustada automaticamente — NF autorizada nº '+((DB.get('notasFiscais',n.id)||{}).numero||''),'ok'); return DB.get('notasFiscais',n.id); }
-  if(r && r.processando){ nfeMarcarPendencia(vendaId, 'Nota enviada — aguardando autorização da SEFAZ (ainda sem validade fiscal)'); return DB.get('notasFiscais',n.id); }   // SEFAZ processando: NÃO é válida ainda → venda fica retida (fora do caixa) até autorizar
+  if(r && r.processando){ nfeMarcarPendencia(vendaId, 'Nota enviada — aguardando autorização da SEFAZ (ainda sem validade fiscal)', modelo); return DB.get('notasFiscais',n.id); }   // SEFAZ processando: NÃO é válida ainda → venda fica retida (fora do caixa) até autorizar
   // ERRO/REJEIÇÃO final: mostra o retorno da SEFAZ (suprimido durante o retry) e NÃO finaliza a nota
   try{ const _nf=DB.get('notasFiscais',n.id); if(r && r.data) focusResultModal((_nf&&_nf._focusRef)||('gp-'+n.modelo+'-'+n.id), n.modelo, focusCfg().ambiente, r.data); }catch(e){}
   const numUsado=(DB.get('notasFiscais',n.id)||n).numero, modeloUsado=n.modelo;
@@ -5317,7 +5531,7 @@ async function nfeEmitirETransmitir(vendaId, modelo, origem){
     try{ DB.update('vendas',vendaId,{fiscalPendente:false, fiscalPendenciaMotivo:'', fiscalRejeicaoMotivo:_motivoRej||'Nota rejeitada pela SEFAZ', fiscalRejeicaoEm:today()}); }catch(e){}
     toast('Nota recusada — o pedido voltou para PENDENTE e não foi faturado. Motivo: '+(_motivoRej||'veja o retorno da SEFAZ'),'err');
   } else {
-    nfeMarcarPendencia(vendaId, 'Nota rejeitada/erro na SEFAZ — corrija e emita novamente'+(_motivoRej?(' ('+_motivoRej+')'):''));   // venda antiga: fica retida fora do caixa até emitir corretamente
+    nfeMarcarPendencia(vendaId, 'Nota rejeitada/erro na SEFAZ — corrija e emita novamente'+(_motivoRej?(' ('+_motivoRej+')'):''), modelo);   // venda antiga: fica retida fora do caixa até emitir corretamente
   }
   if(r && r.duplicidade){
     const _sug=(+numUsado||0)+1;
@@ -5405,11 +5619,11 @@ async function nfeFinalizarEmissao(n){
     notaView(id);
     setTimeout(()=>{ try{ if(md==='55') danfeImprimir(id, nota.numero); else printTicket('danfe-print'); }catch(e){} }, 250);
   } else if(nota.status==='processando'){
-    try{ nfeMarcarPendencia(nota.vendaId, 'Nota aguardando autorização da SEFAZ'); }catch(e){}   // ainda sem validade → segura a venda fora do caixa
+    try{ nfeMarcarPendencia(nota.vendaId, 'Nota aguardando autorização da SEFAZ', nota.modelo); }catch(e){}   // ainda sem validade → segura a venda fora do caixa
     try{ alert('A nota AINDA NÃO foi autorizada pela SEFAZ (status: processando).\n\n• Ela NÃO é um documento fiscal válido ainda — por isso a venda ficou RETIDA fora do caixa.\n• Abra "Notas Emitidas" e clique em "Consultar status" em alguns instantes.\n• Quando a SEFAZ autorizar, a venda entra no caixa automaticamente.'); }catch(e){}
     try{ if(STATE.route==='notasemit') viewNotasEmit(); }catch(e){}
   } else {
-    try{ nfeMarcarPendencia(nota.vendaId, 'Nota não autorizada na SEFAZ — '+((nota._focusUltMsg||'').slice(0,120))); }catch(e){}   // não autorizada → segura fora do caixa
+    try{ nfeMarcarPendencia(nota.vendaId, 'Nota não autorizada na SEFAZ — '+((nota._focusUltMsg||'').slice(0,120)), nota.modelo); }catch(e){}   // não autorizada → segura fora do caixa
     try{ alert('A nota NÃO foi autorizada pela SEFAZ.\n\nMotivo: '+((nota._focusUltMsg||'').trim()||'veja o retorno da SEFAZ no aviso anterior')+'\n\n• NENHUM documento fiscal válido foi gerado (o que aparece sem chave NÃO vale como nota).\n• A venda ficou RETIDA fora do caixa até você corrigir e reenviar a nota.'); }catch(e){}
   }
 }
@@ -6042,7 +6256,7 @@ ${(STATE&&STATE.route==='salesvend')?'':`        <button class="btn-icon btn-gho
   const rowVenda=v=>{ const si=pedidoStatusInfo(v); return `<tr>
       <td class="tnum t-strong">${v.numero?('#'+v.numero):'—'}</td>
       <td class="tnum t-mut">${fDate(v.data)}</td>
-      <td class="t-strong">${esc(v.clienteNome||'Consumidor')}</td>
+      <td class="t-strong">${esc(v.clienteNome||'Consumidor')}${v.notaErroMotivo?`<div style="font-size:11px;font-weight:600;color:var(--neg);cursor:pointer" title="${esc(v.notaErroMotivo)}" onclick="pdvNotaPendVer('${v.id}')">${ico('alert')} Nota não saiu: ${esc((v.notaErroMotivo+'').slice(0,70))}${(v.notaErroMotivo+'').length>70?'…':''} — corrigir</div>`:''}</td>
       <td class="t-mut">${esc(v.vendedorNome||'—')}</td>
       <td class="t-right tnum">${NUM((v.itens||[]).reduce((s,i)=>s+(+i.qtd||0),0))}</td>
       <td class="t-right tnum t-strong">${BRL(v.total)}</td>
@@ -7569,7 +7783,8 @@ function vendaVendedorNome(v){ if(!v) return '—';
   const x=v.vendedorId?DB.get('vendedores',v.vendedorId):null; if(x&&x.nome) return x.nome;
   const f=v.vendedorId?DB.get('funcionarios',v.vendedorId):null; if(f&&f.nome) return f.nome;
   return '—'; }
-function vendaResumo(id){ const v=DB.get('vendas',id); if(!v){ toast('Venda não encontrada','err'); return; }
+function vendaResumo(id){ let v=DB.get('vendas',id); if(!v){ toast('Venda não encontrada','err'); return; }
+  if(!v.notaEmitida && v.status!=='cancelada' && nfeReligarItens(v)) v=DB.get('vendas',id);
   const itens=v.itens||[];
   const sub=itens.reduce((s,i)=>s+(+i.qtd||0)*Math.max(+i.precoLista||0,+i.preco||0),0);
   const liq=itens.reduce((s,i)=>s+(+i.qtd||0)*(+i.preco||0),0);
@@ -9095,12 +9310,12 @@ const CARGO_PERMS_PADRAO={
   'Vendedor externo':['cli','prod','orc','salesvend','comis','funil','tarefas','calcobra','vendmobile','prospec'],
   'Orçamentista':['cli','prod','orc','funil','orcrel','calcobra','calc','kits','tarefas','frete'],
   'Caixa / Operador de caixa':['cli','prod','pdv','sales','caixa','trocas','contasrec','cheques'],
-  'Gerente':['pendencias','saude','cli','forn','func','indic','prod','contagem','cat','kits','etiq','banner','calc','calcobra','crmwa','waatend','prospec','funil','orcrel','tarefas','pdv','orc','sales','salesvend','trocas','caixa','comis','entregas','freterel','retiradas','frete','ecommerce','ecalc','vendmobile','pedcompra','sugcompra','faltas','cot','fluxocaixa','contasrec','contaspag','cheques','concil','contasbanc','rep','nfeent','notasemit','nfesai','impostos'],
-  'Subgerente':['pendencias','cli','forn','prod','contagem','kits','etiq','banner','calc','calcobra','funil','orcrel','tarefas','pdv','orc','sales','salesvend','trocas','caixa','comis','entregas','retiradas','pedcompra','sugcompra','faltas','contasrec','contaspag','rep'],
+  'Gerente':['pendencias','saude','feedbackent','cli','forn','func','indic','prod','contagem','cat','kits','etiq','banner','calc','calcobra','crmwa','waatend','prospec','funil','orcrel','tarefas','pdv','orc','sales','salesvend','trocas','caixa','comis','entregas','freterel','retiradas','frete','ecommerce','ecalc','vendmobile','pedcompra','sugcompra','faltas','cot','fluxocaixa','contasrec','contaspag','cheques','concil','contasbanc','rep','nfeent','notasemit','nfesai','impostos'],
+  'Subgerente':['pendencias','feedbackent','cli','forn','prod','contagem','kits','etiq','banner','calc','calcobra','funil','orcrel','tarefas','pdv','orc','sales','salesvend','trocas','caixa','comis','entregas','retiradas','pedcompra','sugcompra','faltas','contasrec','contaspag','rep'],
   'Supervisor de vendas':['cli','prod','funil','orcrel','tarefas','orc','sales','salesvend','comis','pdv','trocas','rep','indic','crmwa','waatend','prospec','banner'],
   'Atendente de balcão':['cli','prod','pdv','orc','sales','trocas','retiradas','calcobra'],
   'Estoquista':['prod','contagem','cat','etiq','faltas','sugcompra','retiradas','nfeent'],
-  'Conferente':['prod','contagem','retiradas','faltas','nfeent','entregas'],
+  'Conferente':['feedbackent','prod','contagem','retiradas','faltas','nfeent','entregas'],
   'Separador':['prod','retiradas','sales','entregas'],
   'Repositor':['prod','contagem','etiq','faltas'],
   'Comprador':['forn','prod','cat','contagem','pedcompra','sugcompra','faltas','cot','nfeent','contaspag','rep'],
@@ -13496,7 +13711,6 @@ function viewEtiquetas(){ try{ etiqHydrate(); }catch(e){} const m=etiqModelo(); 
        </div>
        <div class="toolbar" style="margin:6px 0"><span class="t-mut" style="font-size:12px"><b>${totalLabels}</b> etiqueta(s)${ETIQ.promo?' · <span style="color:#e11d2a;font-weight:700">modo promoção</span>':''}</span><div class="spacer"></div>
          <button class="btn btn-ghost btn-sm" onclick="etiqClear()">Limpar</button>
-         <button class="btn btn-ghost btn-sm" onclick="etiqPrintFallback()" ${totalLabels?'':'disabled'} title="Imprimir direto pelo navegador">${ico('scan')} Imprimir</button>
          <button class="btn btn-amber btn-sm" onclick="etiqPdf()" ${totalLabels?'':'disabled'}>${ico('dl')} Gerar PDF${ETIQ.promo?' promocional':''}</button></div>
        <div id="etiq-list" style="max-height:56vh;overflow:auto;border:1px solid var(--line);border-radius:10px">${etiqListHTML()}</div>
      </div>
@@ -17638,6 +17852,7 @@ function viewConciliacao(){
       </div>
     </div>
     ${ofxHistoricoHTML()}
+    ${concJurosMesHTML()}
     <div class="card">
       <div class="card-head" style="flex-wrap:wrap;gap:12px">
         <h3>Transações Importadas</h3>
@@ -17761,7 +17976,10 @@ function concAbrir(id){ const t=DB.get('conciliacaoTx',id); if(!t||t.status==='c
 function concToggle(finId){ const t=DB.get('conciliacaoTx',CONC.txId); const f=concCandLookup(finId); if(!t||!f) return;
   if(CONC.sel[finId]!=null){ delete CONC.sel[finId]; }
   else { const jaSel=concSelTotal(); const restaTx=Math.round((concTxRestante(t)-jaSel)*100)/100;
-    const sugerido=Math.max(0, Math.min(finSaldoAberto(f), restaTx));
+    const saldo=finSaldoAberto(f); const sozinho=!Object.keys(CONC.sel).length;
+    // O banco trouxe MAIS do que o título e ele é o único marcado: a diferença é juros/multa —
+    // o título é quitado e os juros ficam no campo próprio (não vira "falta"/baixa parcial).
+    const sugerido = (sozinho && !f._venda && restaTx>saldo+0.004) ? restaTx : Math.max(0, Math.min(saldo, restaTx));
     CONC.sel[finId]= sugerido>0.004 ? sugerido : 0; }
   concModalRefresh(); }
 function concSetValor(finId,v){ const f=concCandLookup(finId); if(!f) return;
@@ -17772,9 +17990,18 @@ function concSetValor(finId,v){ const f=concCandLookup(finId); if(!f) return;
    > 0 = veio a MAIS (juros/multa) · < 0 = veio a MENOS (parcial ou desconto). */
 function concDif(finId){ const f=concCandLookup(finId); if(!f) return 0; return Math.round((((+CONC.sel[finId]||0))-finSaldoAberto(f))*100)/100; }
 function concAjuste(finId,v){ CONC.aj=CONC.aj||{}; if(v) CONC.aj[finId]=v; else delete CONC.aj[finId]; concModalRefresh(true); }
-function concAjusteHTML(t,f){ const dif=concDif(f.id); if(Math.abs(dif)<0.005 || f._venda) return '';
+function concJurosSet(finId,v){ const f=concCandLookup(finId); if(!f||f._venda) return; const j=Math.max(0,impCPValor(v));
+  CONC.sel[finId]=Math.round((finSaldoAberto(f)+j)*100)/100; concModalRefresh(true); }
+/* Lança o que falta para fechar a transação como juros do último título marcado. */
+function concDiferencaJuros(){ const t=DB.get('conciliacaoTx',CONC.txId); if(!t) return; const ids=Object.keys(CONC.sel).filter(id=>{ const f=concCandLookup(id); return f && !f._venda; });
+  if(!ids.length) return; const falta=Math.round((concTxRestante(t)-concSelTotal())*100)/100; if(!(falta>0.004)) return;
+  const id=ids[ids.length-1]; CONC.sel[id]=Math.round(((+CONC.sel[id]||0)+falta)*100)/100; concModalRefresh(); }
+function concAjusteHTML(t,f){ const dif=concDif(f.id); if(f._venda) return '';
   const rec=t.tipo==='credito'; const aj=(CONC.aj||{})[f.id]||'';
-  if(dif>0) return `<div class="conc-aj juros" onclick="event.stopPropagation()">${ico('up')} + ${BRL(dif)} de juros ${rec?'recebidos':'pagos'} — o título fica quitado</div>`;
+  if(dif>=-0.004) return `<div class="conc-aj juros" onclick="event.stopPropagation()" style="${dif>0.004?'':'background:var(--surface);border-color:var(--line);color:var(--ink);font-weight:400'}">
+      ${ico('up')} Juros/multa ${rec?'recebidos':'pagos'}: <span style="font-weight:400">R$</span>
+      <input id="conc-j-${f.id}" class="tnum" style="width:96px;text-align:right;padding:4px 7px;font-size:12.5px" value="${(dif>0.004?dif:0).toFixed(2).replace('.',',')}" onchange="concJurosSet('${f.id}',this.value)" onclick="event.stopPropagation()">
+      <span style="font-weight:400;font-size:11px">${dif>0.004?'— o título ('+BRL(finSaldoAberto(f))+') fica quitado e os juros ficam registrados à parte':'se o banco trouxe a mais, informe aqui'}</span></div>`;
   return `<div class="conc-aj ${aj==='desconto'?'desc':''}" onclick="event.stopPropagation()">
     <label><input type="radio" name="conc-aj-${f.id}" ${aj!=='desconto'?'checked':''} onchange="concAjuste('${f.id}','')"> Baixa parcial — ${BRL(-dif)} continua em aberto</label>
     <label><input type="radio" name="conc-aj-${f.id}" ${aj==='desconto'?'checked':''} onchange="concAjuste('${f.id}','desconto')"> Quitar com <b>desconto ${rec?'concedido':'obtido'}</b> de ${BRL(-dif)}</label></div>`; }
@@ -17869,6 +18096,7 @@ function concModalBody(){ const t=DB.get('conciliacaoTx',CONC.txId); if(!t) retu
       <b class="tnum" style="color:${falta>0.004?'var(--amber-700,#b45309)':falta<-0.004?'var(--neg)':'var(--pos)'}">
         ${falta>0.004?`Faltam: ${BRL(falta)}`:falta<-0.004?`Excede em ${BRL(-falta)}`:'Valor fechado ✓'}</b>
     </div>
+    ${(falta>0.004 && Object.keys(CONC.sel).some(id=>{ const f=concCandLookup(id); return f && !f._venda; }))?`<div style="margin-top:8px;display:flex;gap:8px;align-items:center;flex-wrap:wrap"><span class="t-mut" style="font-size:12px">O banco ${t.tipo==='credito'?'recebeu':'pagou'} ${BRL(falta)} a mais que os títulos marcados?</span><button class="btn btn-amber btn-sm" onclick="concDiferencaJuros()">${ico('up')} Lançar ${BRL(falta)} como juros</button></div>`:''}
     ${Object.entries(CONC.sel).some(([id,v])=>{ const f=DB.get('financeiro',id); return f && (+v||0) < finSaldoAberto(f)-0.004 && (CONC.aj||{})[id]!=='desconto'; })
       ? `<div class="t-mut" style="font-size:11.5px;margin-top:7px">${ico('bulb')} Um ou mais títulos receberão <b>baixa parcial</b> — o saldo continua em aberto em Contas a ${t.tipo==='credito'?'Receber':'Pagar'}.</div>`:''}
   </div>
@@ -17934,6 +18162,26 @@ function concConfirmar(){ const t=DB.get('conciliacaoTx',CONC.txId); if(!t) retu
   toast(`${NUM(quitados)} título(s) quitado(s)`+(comJuros?` · ${NUM(comJuros)} com juros de ${BRL(totJuros)}`:'')+(comDesc?` · ${NUM(comDesc)} com desconto de ${BRL(totDesc)}`:'')+(parciais?` · ${NUM(parciais)} com baixa parcial`:'')+(fechou?'':` · transação ainda tem ${BRL(concTxRestante(DB.get('conciliacaoTx',t.id)))} a conciliar`),'ok');
   buildNav(); viewConciliacao(); }
 function concConciliar(id){ concAbrir(id); }
+/* JUROS DO MÊS NA CONCILIAÇÃO — o que entrou de juros/multa recebidos (clientes que pagaram
+   atrasado) e o que saiu de juros pagos (contas pagas com atraso), pelas baixas feitas na
+   conciliação bancária. */
+function concJurosMes(mes){ const out={rec:0,pag:0,itensRec:[],itensPag:[]};
+  DB.all('financeiro').forEach(f=>{ if(!f) return; (f.baixas||[]).forEach(b=>{ if(!b||!(+b.juros>0)) return; if(!b.txId && b.origem!=='Conciliação bancária') return;
+      if(((b.data||'')+'').slice(0,7)!==mes) return;
+      const it={data:b.data, valor:+b.juros, desc:f.descricao||'', quem:concNomeConta(f)||'', titulo:+f.valorOriginal||+f.valor||0};
+      if(f.tipo==='receber'){ out.rec+=it.valor; out.itensRec.push(it); } else { out.pag+=it.valor; out.itensPag.push(it); } }); });
+  out.rec=Math.round(out.rec*100)/100; out.pag=Math.round(out.pag*100)/100; return out; }
+function concJurosMesHTML(){ const mes=FIN.concJurosMes||today().slice(0,7); const j=concJurosMes(mes);
+  const lista=(arr)=>arr.length?arr.sort((a,b)=>String(b.data).localeCompare(String(a.data))).map(i=>`<div style="display:flex;gap:8px;font-size:12px;padding:3px 0;border-top:1px dashed var(--line)"><span class="tnum t-mut">${fDate(i.data)}</span><span style="flex:1">${esc(i.quem||i.desc)}<span class="t-mut"> · título ${BRL(i.titulo)}</span></span><b class="tnum">${BRL(i.valor)}</b></div>`).join(''):'<div class="t-mut" style="font-size:12px">Nenhum no mês.</div>';
+  return `<div class="card" style="margin-bottom:18px"><div class="card-head" style="flex-wrap:wrap;gap:10px"><h3>${ico('up')} Juros do mês na conciliação</h3>
+      <input type="month" value="${mes}" onchange="FIN.concJurosMes=this.value;viewConciliacao()" style="padding:6px 9px;border:1px solid var(--line);border-radius:8px"></div>
+    <div class="card-pad" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:14px">
+      <div><div class="t-mut" style="font-size:12px">Juros recebidos (clientes)</div><div class="tnum" style="font-size:22px;font-weight:800;color:var(--pos)">${BRL(j.rec)}</div>
+        <details style="margin-top:4px"><summary style="cursor:pointer;font-size:12px;color:#2563eb">${j.itensRec.length} lançamento(s)</summary>${lista(j.itensRec)}</details></div>
+      <div><div class="t-mut" style="font-size:12px">Juros pagos (fornecedores/contas)</div><div class="tnum" style="font-size:22px;font-weight:800;color:var(--neg)">${BRL(j.pag)}</div>
+        <details style="margin-top:4px"><summary style="cursor:pointer;font-size:12px;color:#2563eb">${j.itensPag.length} lançamento(s)</summary>${lista(j.itensPag)}</details></div>
+      <div><div class="t-mut" style="font-size:12px">Saldo de juros no mês</div><div class="tnum" style="font-size:22px;font-weight:800">${BRL(j.rec-j.pag)}</div></div>
+    </div></div>`; }
 /* Juros/descontos lançados nos títulos por esta transação (para mostrar na lista). */
 function concTxAjuste(t){ let juros=0, desc=0;
   (t.vinculos||[]).forEach(v=>{ if(!v.finId) return; const f=DB.get('financeiro',v.finId); if(!f) return;
@@ -19911,13 +20159,12 @@ function orcEditor(id, modo, opts){ opts=opts||{};
           style:'border:none;background:none;outline:none;color:var(--ink);width:100%'})}</div>
         <button class="btn btn-amber btn-sm" onclick="orcNovoCliente()" title="Cadastrar novo cliente" style="white-space:nowrap;padding:0 12px">${ico('plus')}</button>
       </div>
-      <div id="orc-cli-credito" style="margin:2px 0 0">${orcCreditoAvisoHTML()}</div>
-      <div id="orc-cli-complete" style="margin:2px 0 0"></div>
       <div class="orc-sel">${ico('people')}${acHTML({id:'orc-vend',col:'vendedores',value:ORC.vendedorId||'',ph:'Vendedor [F3] — digite o nome',onchange:'ORC.vendedorId=this.value',style:'border:none;background:none;outline:none;color:var(--ink);width:100%'})}</div>
       <div class="orc-sel"><select id="orc-canal" onchange="ORC.canal=this.value;this.style.border=this.value?'':'1px solid var(--neg)'" style="${(ORC.canal||'').trim()?'':'border:1px solid var(--neg)'}">
         <option value="" ${(ORC.canal||'').trim()?'':'selected'} disabled>Selecione o canal…</option>
         ${['Balcão','WhatsApp','Telefone','Externo'].map(c=>`<option ${ORC.canal===c?'selected':''}>${c}</option>`).join('')}</select></div>
     </div>
+    <div class="doc-avisos"><div id="orc-cli-credito" class="doc-avisos-in">${orcCreditoAvisoHTML()}</div><div id="orc-cli-complete"></div></div>
 
     <div class="pdv-grid">
       <div class="card"><div class="card-head"><div><h3>Itens do ${ORC.tipo.toLowerCase()}</h3><div class="ch-sub">Ajuste quantidades e preços</div></div></div>
@@ -20700,7 +20947,7 @@ function orcPagamentosResumo(){
   if(!res.length){ out[0].valor=tot; res=[out[0]]; }
   return { pagamentos:res, forma: res.length===1?res[0].forma:'Múltiplas' }; }
 function orcCalc(){ const bruto=ORC.itens.reduce((s,i)=>s+i.qtd*i.preco,0); const custo=ORC.itens.reduce((s,i)=>s+i.qtd*i.custo,0);
-  const frete=ORC.entrega?(+ORC.frete||0):0; const total=Math.max(0,bruto-ORC.desconto)+frete; return {bruto,custo,frete,total,lucro:Math.max(0,bruto-ORC.desconto)-custo}; }
+  const frete=ORC.entrega?(+ORC.frete||0):0; const dsc=+ORC.desconto||0; const total=Math.max(0,bruto-dsc)+frete; return {bruto,custo,frete,total,lucro:Math.max(0,bruto-dsc)-custo}; }
 /* Selo do crédito LOGO ABAIXO DO CAMPO DO CLIENTE: assim o vendedor vê o vale no
    momento em que escolhe o cliente, sem precisar rolar a tela até o fim. */
 /* Cliente que é INDICADOR e tem comissão acumulada: mostra o saldo como crédito
@@ -21558,6 +21805,63 @@ function entregaConfirmar(id){ const veiculoId=(document.getElementById('ent-vei
   if(!veiculoId){ toast('Selecione o veículo utilizado na entrega','err'); return; }
   DB.update('vendas',id,{entregaStatus:'entregue',entregaData:today(),veiculoId}); closeModal(); toast('Entrega concluída','ok'); viewEntregas(); }
 let FRETEREL={de:daysAgo(30), ate:today()};
+/* ===================================================================
+   FEEDBACK DE ENTREGA
+   Depois que a mercadoria é entregue, alguém da loja liga/manda mensagem para o
+   cliente. Aqui fica marcado se o contato já foi feito e o que o cliente disse
+   (anotação). Tudo fica gravado no próprio pedido, então aparece em todos os
+   computadores e fica no histórico.
+   =================================================================== */
+let FBENT={periodo:'30', sit:'pendente', q:''};
+function fbentLista(){ const q=normTxt(FBENT.q||''); const lim=FBENT.periodo==='todos'?'':daysAgo((+FBENT.periodo||30)-1);
+  return DB.all('vendas').filter(v=>v && v.entrega && v.status!=='cancelada' && v.entregaStatus==='entregue')
+    .filter(v=>!lim || (v.entregaData||v.data||'')>=lim)
+    .filter(v=>FBENT.sit==='todos' || (FBENT.sit==='feito'?!!v.feedbackContato:!v.feedbackContato))
+    .filter(v=>{ if(!q) return true; const c=v.clienteId?DB.get('clientes',v.clienteId):null;
+      return normTxt((v.clienteNome||'')+' '+(v.numero||'')+' '+((c&&(c.celular||c.telefone))||'')+' '+(v.enderecoEntrega||'')).indexOf(q)>=0; })
+    .sort((a,b)=>String(b.entregaData||b.data||'').localeCompare(String(a.entregaData||a.data||''))); }
+function fbentFone(v){ const c=v.clienteId?DB.get('clientes',v.clienteId):null; return ((c&&(c.celular||c.telefone))||v.telefone||'')+''; }
+function fbentWa(fone){ let d=(fone||'').replace(/\D/g,''); if(!d) return ''; if(d.length<=11) d='55'+d; return 'https://wa.me/'+d; }
+function viewFeedbackEntrega(){
+  const todas=DB.all('vendas').filter(v=>v && v.entrega && v.status!=='cancelada' && v.entregaStatus==='entregue');
+  const lim=FBENT.periodo==='todos'?'':daysAgo((+FBENT.periodo||30)-1);
+  const noPer=todas.filter(v=>!lim || (v.entregaData||v.data||'')>=lim);
+  const feitos=noPer.filter(v=>v.feedbackContato).length;
+  const L=fbentLista();
+  document.getElementById('view').innerHTML=`
+   <div class="bi-banner" style="margin-bottom:14px"><div>${ico('truck')}</div><div><b>Feedback de entrega</b><p>Entregas concluídas para ligar ou mandar mensagem ao cliente. Marque quando o contato for feito e anote o que ele disse sobre a entrega (horário, estado da mercadoria, atendimento do entregador…).</p></div></div>
+   <div class="kpis" style="margin-bottom:12px">
+     ${kpiCard('Entregas no período',NUM(noPer.length),'truck','#2563eb')}
+     ${kpiCard('Contato feito',NUM(feitos),'check','#15803d')}
+     ${kpiCard('Falta contatar',NUM(noPer.length-feitos),'alert','#dc2626')}
+   </div>
+   <div class="toolbar" style="flex-wrap:wrap;gap:8px">
+     <div class="ptabs">${[['pendente','Falta contatar'],['feito','Contato feito'],['todos','Todas']].map(([k,l])=>`<button class="ptab ${FBENT.sit===k?'active':''}" onclick="FBENT.sit='${k}';viewFeedbackEntrega()">${l}</button>`).join('')}</div>
+     <select onchange="FBENT.periodo=this.value;viewFeedbackEntrega()" style="padding:8px 10px;border:1px solid var(--line);border-radius:9px">${[['7','Últimos 7 dias'],['30','Últimos 30 dias'],['90','Últimos 90 dias'],['todos','Todo o período']].map(([v,l])=>`<option value="${v}" ${FBENT.periodo===v?'selected':''}>${l}</option>`).join('')}</select>
+     <div class="search" style="flex:1;min-width:200px">${ico('search','')}<input placeholder="Buscar cliente, pedido, telefone ou endereço…" value="${esc(FBENT.q)}" onchange="FBENT.q=this.value;viewFeedbackEntrega()"></div>
+   </div>
+   <div class="card"><div class="tbl-wrap">${L.length?`<table><thead><tr><th>Entregue em</th><th>Pedido</th><th>Cliente</th><th>Contato</th><th class="t-center">Contato feito</th><th>Anotação sobre a entrega</th></tr></thead><tbody>
+     ${L.map(v=>{ const fone=fbentFone(v); const wa=fbentWa(fone); return `<tr id="fbent-${v.id}" style="${v.feedbackContato?'':'background:var(--amber-soft)'}">
+       <td class="tnum">${fDate(v.entregaData||v.data)}</td>
+       <td class="tnum"><b>#${esc(v.numero||'—')}</b><div><button class="btn btn-ghost btn-sm" style="padding:2px 6px;font-size:11px" onclick="vendaResumo('${v.id}')">Ver</button></div></td>
+       <td><b>${esc(v.clienteNome||'Consumidor')}</b>${v.enderecoEntrega?`<div class="t-mut" style="font-size:11.5px">${esc(v.enderecoEntrega)}</div>`:''}</td>
+       <td style="white-space:nowrap">${fone?esc(fone):'<span class="t-mut">sem telefone</span>'}${wa?`<div><a href="${wa}" target="_blank" rel="noopener" style="font-size:11.5px">Abrir WhatsApp</a></div>`:''}</td>
+       <td class="t-center"><label style="display:inline-flex;align-items:center;gap:6px;cursor:pointer"><input type="checkbox" ${v.feedbackContato?'checked':''} onchange="fbentMarcar('${v.id}',this.checked)" style="width:18px;height:18px"></label>
+         ${v.feedbackContato?`<div class="t-mut" style="font-size:11px">${esc(v.feedbackPor||'')}${v.feedbackContatoEm?(' · '+fDate(String(v.feedbackContatoEm).slice(0,10))):''}</div>`:''}</td>
+       <td style="min-width:260px"><textarea rows="2" style="width:100%;font-size:12.5px" placeholder="Ex.: cliente satisfeito; entregador chegou atrasado; faltou 1 saco…" onchange="fbentNota('${v.id}',this.value)">${esc(v.feedbackNota||'')}</textarea>
+         ${v.feedbackNotaEm?`<div class="t-mut" style="font-size:11px">Anotado ${fDate(String(v.feedbackNotaEm).slice(0,10))}${v.feedbackNotaPor?(' por '+esc(v.feedbackNotaPor)):''}</div>`:''}</td></tr>`; }).join('')}
+     </tbody></table>`:`<div class="empty" style="padding:40px">${ico('check')}<h4>${FBENT.sit==='pendente'?'Nenhuma entrega esperando contato':'Nenhuma entrega encontrada'}</h4><p class="t-mut">No período e filtro escolhidos.</p></div>`}</div></div>`; }
+function fbentQuem(){ try{ return (CURRENT_USER&&(CURRENT_USER.nome||CURRENT_USER.username))||''; }catch(e){ return ''; } }
+function fbentMarcar(id, on){ const v=DB.get('vendas',id); if(!v) return;
+  DB.update('vendas',id,on?{feedbackContato:true, feedbackContatoEm:new Date().toISOString(), feedbackPor:fbentQuem()}:{feedbackContato:false, feedbackContatoEm:null, feedbackPor:''});
+  try{ logAcao(on?'Feedback de entrega: contato feito':'Feedback de entrega: contato desmarcado', (v.numero?('#'+v.numero+' · '):'')+(v.clienteNome||'')); }catch(e){}
+  try{ nuvemPushJa(); }catch(e){}
+  toast(on?'Contato marcado como feito':'Contato desmarcado','ok'); viewFeedbackEntrega(); }
+function fbentNota(id, txt){ const v=DB.get('vendas',id); if(!v) return; txt=((txt||'')+'').trim();
+  if(txt===((v.feedbackNota||'')+'').trim()) return;
+  DB.update('vendas',id,{feedbackNota:txt, feedbackNotaEm:new Date().toISOString(), feedbackNotaPor:fbentQuem()});
+  try{ nuvemPushJa(); }catch(e){}
+  toast('Anotação salva','ok'); }
 function viewFreteRel(){ const de=FRETEREL.de, ate=FRETEREL.ate;
   const entregas=DB.all('vendas').filter(v=>v.entrega && v.entregaStatus==='entregue' && between(v.entregaData||v.data, de, ate))
     .sort((a,b)=>((b.entregaData||b.data||'')+'').localeCompare((a.entregaData||a.data||'')+''));
