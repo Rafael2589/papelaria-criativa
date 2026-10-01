@@ -48,7 +48,7 @@ const CONFIG_EMPRESA = {
      Aparece no topo do menu e no rodapé das Configurações. Troque a cada publicação.
      MANTENHA O FORMATO 'vDD/MM-X' — é ele que o sistema usa para comparar as máquinas
      da loja e avisar quando alguma ficou para trás.                                  */
-  versao: 'v01/10-E',
+  versao: 'v01/10-G',
 
   /* 4) NUVEM (Supabase)  ------------------------------------------------------------
      Cole aqui a Project URL e a chave PUBLISHABLE do projeto Supabase DESTA empresa
@@ -3961,7 +3961,7 @@ function renderPDV(){
       <span style="font-size:12.5px;font-weight:600">Entrega</span></label>
   </div>
   <!-- A busca de PRODUTO fica numa linha própria, logo abaixo da linha do cliente. -->
-  <div class="orc-top" style="margin-top:-8px">
+  <div class="orc-top" style="margin-top:-8px;z-index:20">
     <div class="orc-search-wrap">
       ${ico('search','input-ico')}
       <input id="pdv-q" placeholder="Buscar produto por nome, SKU ou código de barras…" autocomplete="off"
@@ -27167,8 +27167,7 @@ function viewVendasCfg(){
           ${FORMAS_PAG_FIXAS.map(f=>`<tr><td><b>${esc(f)}</b> <span class="tag gray" style="font-size:10px">fixa</span></td><td class="t-mut" style="font-size:12.5px">${esc(FORMAS_FIXAS_INFO[f]||'')}</td><td>${(f==='Cartão Crédito'||f==='Cartão Débito'||f==='PIX')?maquinaAssocSelectHTML(f):'<span class="t-mut">—</span>'}</td><td>${concFormaBanco(f)?'Sim':'—'}</td><td class="tnum">${esc(focusFormaPag(f))}</td><td></td></tr>`).join('')}
           ${extras.map((x,i)=>{ const tc=formaTipoCartao(x.nome); const mq=tc?formaExtraMaquina(x.nome):''; const semMaq=tc && !(x.maquina && maquinasCartao().some(m=>m.id===x.maquina));
             return `<tr><td><b>${esc(x.nome)}</b>${tc?` <span class="tag info" style="font-size:10px">${tc==='credito'?'crédito':'débito'}</span>`:''}</td>
-            <td style="font-size:12.5px"><select onchange="formaPagExtraTipo(${i},this.value)" style="max-width:200px;margin-bottom:4px" title="Tipo da forma: à vista (sem taxa) ou cartão (desconta a taxa da maquininha)"><option value="avista" ${!tc?'selected':''}>À vista (sem taxa)</option><option value="debito" ${tc==='debito'?'selected':''}>Cartão de débito</option><option value="credito" ${tc==='credito'?'selected':''}>Cartão de crédito</option></select>
-              <div class="t-mut">${tc==='credito'?'Desconta a taxa por parcela da maquininha ao lado.':(tc==='debito'?'Desconta a taxa de débito da maquininha ao lado.':`Entra no caixa como "${esc(x.nome)}".`)}</div></td>
+            <td class="t-mut" style="font-size:12.5px">${tc==='credito'?'Cartão de crédito — desconta a taxa por parcela da maquininha ao lado.':(tc==='debito'?'Cartão de débito — desconta a taxa de débito da maquininha ao lado.':`Pagamento à vista — entra no caixa como "${esc(x.nome)}".`)}</td>
             <td>${tc?`<select onchange="formaPagExtraSet(${i},'maquina',this.value)" style="max-width:220px;${semMaq?'border-color:var(--neg)':''}" title="Maquininha usada nesta forma — a taxa dela é descontada no caixa">${semMaq?'<option value="" selected>Escolha a maquininha…</option>':''}${maquinasCartao().map(m=>`<option value="${m.id}" ${(!semMaq&&mq===m.id)?'selected':''}>${esc(m.nome)}</option>`).join('')}</select>${semMaq?'<div style="font-size:11px;color:var(--neg)">informe a maquininha</div>':''}`:'<span class="t-mut">—</span>'}</td>
             <td><label style="display:flex;align-items:center;gap:6px;cursor:pointer"><input type="checkbox" ${x.banco?'checked':''} onchange="formaPagExtraSet(${i},'banco',this.checked)" style="width:16px;height:16px"> ${x.banco?'Sim':'Não'}</label></td>
             <td><select onchange="formaPagExtraSet(${i},'sefaz',this.value)" style="max-width:220px">${FORMAS_SEFAZ.map(([c,l])=>`<option value="${c}" ${(x.sefaz||'99')===c?'selected':''}>${c} — ${esc(l)}</option>`).join('')}</select></td>
