@@ -48,7 +48,7 @@ const CONFIG_EMPRESA = {
      Aparece no topo do menu e no rodapé das Configurações. Troque a cada publicação.
      MANTENHA O FORMATO 'vDD/MM-X' — é ele que o sistema usa para comparar as máquinas
      da loja e avisar quando alguma ficou para trás.                                  */
-  versao: 'v01/10-C',
+  versao: 'v01/10-D',
 
   /* 4) NUVEM (Supabase)  ------------------------------------------------------------
      Cole aqui a Project URL e a chave PUBLISHABLE do projeto Supabase DESTA empresa
@@ -24070,9 +24070,13 @@ function versaoMostrar(){ try{
    por diferenças de comportamento entre as máquinas. */
 function versaoPartes(v){ const m=(''+(v||'')).match(/v(\d+)\/(\d+)-([A-Z]+)/i);
   if(!m) return null; return { a:+m[1], b:+m[2], suf:m[3].toUpperCase() }; }
+/* A versão é vDIA/MÊS-LETRA: para saber qual é mais nova compara-se primeiro o MÊS e depois o
+   dia (antes comparava o dia primeiro, e a v01/10 parecia mais velha que a v28/09). Na virada
+   do ano (dezembro → janeiro) o mês menor é o mais novo. */
 function versaoComparar(x,y){ const A=versaoPartes(x), B=versaoPartes(y);
   if(!A && !B) return 0; if(!A) return -1; if(!B) return 1;
-  if(A.a!==B.a) return A.a-B.a; if(A.b!==B.b) return A.b-B.b;
+  if(A.b!==B.b){ const dif=A.b-B.b; return Math.abs(dif)>6 ? -dif : dif; }   // mês (com virada de ano)
+  if(A.a!==B.a) return A.a-B.a;                                                // dia
   if(A.suf.length!==B.suf.length) return A.suf.length-B.suf.length;
   return A.suf<B.suf?-1:(A.suf>B.suf?1:0); }
 function versaoAvisoHTML(maisNova){
