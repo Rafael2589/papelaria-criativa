@@ -48,7 +48,7 @@ const CONFIG_EMPRESA = {
      Aparece no topo do menu e no rodapé das Configurações. Troque a cada publicação.
      MANTENHA O FORMATO 'vDD/MM-X' — é ele que o sistema usa para comparar as máquinas
      da loja e avisar quando alguma ficou para trás.                                  */
-  versao: 'v01/10-D',
+  versao: 'v01/10-E',
 
   /* 4) NUVEM (Supabase)  ------------------------------------------------------------
      Cole aqui a Project URL e a chave PUBLISHABLE do projeto Supabase DESTA empresa
@@ -3878,7 +3878,10 @@ function formaPagExtra(nome){ return formasPagExtras().find(x=>x.nome===nome)||n
 /* Forma de CARTÃO? 'credito' | 'debito' | ''. Vale para as fixas e para as cadastradas em
    Vendas › Configurações com tipo cartão (que já nascem com a maquininha escolhida). */
 function formaTipoCartao(forma){ if(forma==='Cartão Crédito') return 'credito'; if(forma==='Cartão Débito') return 'debito';
-  const x=formaPagExtra(forma||''); return (x && (x.tipo==='credito'||x.tipo==='debito'))?x.tipo:''; }
+  const x=formaPagExtra(forma||''); if(!x) return ''; if(x.tipo==='credito'||x.tipo==='debito') return x.tipo; if(x.tipo==='avista') return '';
+  return formaTipoPeloNome(x.nome); }
+/* Sem tipo informado, o NOME diz: "cartão crédito FP" é crédito, "débito loja" é débito. */
+function formaTipoPeloNome(nome){ const n=normTxt(nome||''); if(/cred/.test(n)) return 'credito'; if(/deb/.test(n)) return 'debito'; return ''; }
 /* Maquininha de uma forma cadastrada do tipo cartão (a escolhida no cadastro). */
 function formaExtraMaquina(forma){ const x=formaPagExtra(forma||''); if(!x||!formaTipoCartao(forma)) return ''; return (x.maquina && maquinasCartao().some(m=>m.id===x.maquina))?x.maquina:'padrao'; }
 const CART={ itens:[], clienteId:null, clienteNome:'', desconto:0, descModo:'valor', descPct:0, pagamento:'PIX', pagamentos:[], canal:'', retiraLoja:false, entrega:false, frete:0, distanciaKm:0, enderecoEntrega:'', obs:'', fromOrcId:null, fromOrcNumero:null, faturaPedidoId:null, faturaPedidoNumero:null, vendedorId:null, vendedorNome:null, contratoId:null };
@@ -27162,16 +27165,17 @@ function viewVendasCfg(){
       <div class="card-body">
         <div class="tbl-wrap"><table><thead><tr><th>Forma</th><th>Como funciona</th><th title="Maquininha usada por padrão nesta forma: a taxa dela é descontada nos lançamentos do caixa">Maquininha</th><th title="Marque quando o dinheiro dessa forma entra na conta bancária: a venda passa a ser oferecida na Conciliação Bancária para casar com o extrato">Vai para conciliação bancária</th><th>Código na NF-e</th><th class="t-right">Ações</th></tr></thead><tbody>
           ${FORMAS_PAG_FIXAS.map(f=>`<tr><td><b>${esc(f)}</b> <span class="tag gray" style="font-size:10px">fixa</span></td><td class="t-mut" style="font-size:12.5px">${esc(FORMAS_FIXAS_INFO[f]||'')}</td><td>${(f==='Cartão Crédito'||f==='Cartão Débito'||f==='PIX')?maquinaAssocSelectHTML(f):'<span class="t-mut">—</span>'}</td><td>${concFormaBanco(f)?'Sim':'—'}</td><td class="tnum">${esc(focusFormaPag(f))}</td><td></td></tr>`).join('')}
-          ${extras.map((x,i)=>{ const tc=(x.tipo==='credito'||x.tipo==='debito')?x.tipo:''; const mq=tc?formaExtraMaquina(x.nome):'';
+          ${extras.map((x,i)=>{ const tc=formaTipoCartao(x.nome); const mq=tc?formaExtraMaquina(x.nome):''; const semMaq=tc && !(x.maquina && maquinasCartao().some(m=>m.id===x.maquina));
             return `<tr><td><b>${esc(x.nome)}</b>${tc?` <span class="tag info" style="font-size:10px">${tc==='credito'?'crédito':'débito'}</span>`:''}</td>
-            <td class="t-mut" style="font-size:12.5px">${tc==='credito'?'Cartão de crédito — desconta a taxa por parcela da maquininha ao lado.':(tc==='debito'?'Cartão de débito — desconta a taxa de débito da maquininha ao lado.':`Pagamento à vista — entra no caixa como "${esc(x.nome)}".`)}</td>
-            <td>${tc?`<select onchange="formaPagExtraSet(${i},'maquina',this.value)" style="max-width:220px" title="Maquininha usada nesta forma — a taxa dela é descontada no caixa">${maquinasCartao().map(m=>`<option value="${m.id}" ${mq===m.id?'selected':''}>${esc(m.nome)}</option>`).join('')}</select>`:'<span class="t-mut">—</span>'}</td>
+            <td style="font-size:12.5px"><select onchange="formaPagExtraTipo(${i},this.value)" style="max-width:200px;margin-bottom:4px" title="Tipo da forma: à vista (sem taxa) ou cartão (desconta a taxa da maquininha)"><option value="avista" ${!tc?'selected':''}>À vista (sem taxa)</option><option value="debito" ${tc==='debito'?'selected':''}>Cartão de débito</option><option value="credito" ${tc==='credito'?'selected':''}>Cartão de crédito</option></select>
+              <div class="t-mut">${tc==='credito'?'Desconta a taxa por parcela da maquininha ao lado.':(tc==='debito'?'Desconta a taxa de débito da maquininha ao lado.':`Entra no caixa como "${esc(x.nome)}".`)}</div></td>
+            <td>${tc?`<select onchange="formaPagExtraSet(${i},'maquina',this.value)" style="max-width:220px;${semMaq?'border-color:var(--neg)':''}" title="Maquininha usada nesta forma — a taxa dela é descontada no caixa">${semMaq?'<option value="" selected>Escolha a maquininha…</option>':''}${maquinasCartao().map(m=>`<option value="${m.id}" ${(!semMaq&&mq===m.id)?'selected':''}>${esc(m.nome)}</option>`).join('')}</select>${semMaq?'<div style="font-size:11px;color:var(--neg)">informe a maquininha</div>':''}`:'<span class="t-mut">—</span>'}</td>
             <td><label style="display:flex;align-items:center;gap:6px;cursor:pointer"><input type="checkbox" ${x.banco?'checked':''} onchange="formaPagExtraSet(${i},'banco',this.checked)" style="width:16px;height:16px"> ${x.banco?'Sim':'Não'}</label></td>
             <td><select onchange="formaPagExtraSet(${i},'sefaz',this.value)" style="max-width:220px">${FORMAS_SEFAZ.map(([c,l])=>`<option value="${c}" ${(x.sefaz||'99')===c?'selected':''}>${c} — ${esc(l)}</option>`).join('')}</select></td>
             <td class="t-right" style="white-space:nowrap"><button class="btn-icon btn-ghost" title="Renomear" onclick="formaPagExtraRenomear(${i})">${ico('edit')}</button><button class="btn-icon btn-ghost" title="Remover" style="color:var(--neg)" onclick="formaPagExtraRemover(${i})">${ico('trash')}</button></td></tr>`; }).join('')}
         </tbody></table></div>
         <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:flex-end;margin-top:12px">
-          <div class="field" style="margin:0;min-width:220px"><label>Nova forma de pagamento</label><input id="fp-novo-nome" placeholder="Ex.: Transferência, Cheque, Vale alimentação" onkeydown="if(event.key==='Enter'){event.preventDefault();formaPagExtraAdd()}"></div>
+          <div class="field" style="margin:0;min-width:220px"><label>Nova forma de pagamento</label><input id="fp-novo-nome" placeholder="Ex.: Transferência, Cheque, Vale alimentação" oninput="formaPagNovoNome(this.value)" onkeydown="if(event.key==='Enter'){event.preventDefault();formaPagExtraAdd()}"></div>
           <div class="field" style="margin:0"><label>Tipo</label><select id="fp-novo-tipo" onchange="formaPagNovoTipo()"><option value="">À vista (sem taxa)</option><option value="debito">Cartão de débito</option><option value="credito">Cartão de crédito</option></select></div>
           <div class="field" id="fp-novo-maq-box" style="margin:0;display:none"><label>Maquininha <span style="color:var(--neg)">*</span></label><select id="fp-novo-maq"><option value="">Escolha a maquininha…</option>${maquinasCartao().map(m=>`<option value="${m.id}">${esc(m.nome)}</option>`).join('')}</select></div>
           <label style="display:flex;align-items:center;gap:6px;font-size:12.5px;margin-bottom:9px;cursor:pointer"><input type="checkbox" id="fp-novo-banco" style="width:16px;height:16px"> vai para conciliação bancária</label>
@@ -27255,6 +27259,8 @@ function diasMesCarregar(){ const ym=(document.getElementById('dm-mes')||{}).val
 function diasMesSalvar(){ const ym=(document.getElementById('dm-mes')||{}).value||''; if(!/^\d{4}-\d{2}$/.test(ym)){ toast('Informe o mês','err'); return; }
   const v=+((document.getElementById('dm-qtd')||{}).value)||0; const cal=calendarioLoja(); const dm=Object.assign({}, cal.diasMes); if(v>0) dm[ym]=Math.min(31,Math.round(v)); else delete dm[ym];
   calendarioLojaSave({diasMes:dm}); try{ logAcao('Dias trabalhados do mês '+(v>0?'fixados':'voltaram ao automático'), ym+(v>0?(' · '+v+' dias'):'')); }catch(e){} toast(v>0?('Mês '+ym+' fixado em '+v+' dias trabalhados'):('Mês '+ym+' volta a contar sozinho'),'ok'); try{ go(STATE.route); }catch(e){} }
+/* Nome com "crédito"/"débito" já marca o tipo cartão e abre a maquininha. */
+function formaPagNovoNome(v){ const t=formaTipoPeloNome(v); const sel=document.getElementById('fp-novo-tipo'); if(!sel||!t||sel.value===t) return; sel.value=t; formaPagNovoTipo(); }
 /* Tipo cartão escolhido: mostra a maquininha (obrigatória) e sugere o código da NF-e (03 crédito / 04 débito). */
 function formaPagNovoTipo(){ const t=(document.getElementById('fp-novo-tipo')||{}).value||''; const box=document.getElementById('fp-novo-maq-box'); if(box) box.style.display=t?'':'none';
   const sz=document.getElementById('fp-novo-sefaz'); if(sz && t){ sz.value=t==='credito'?'03':'04'; }
@@ -27268,6 +27274,11 @@ function formaPagExtraAdd(){ const nome=((document.getElementById('fp-novo-nome'
   if(tipo){ novo.tipo=tipo; novo.maquina=maquina; }
   const lista=formasPagExtras().concat([novo]);
   formasPagExtrasSave(lista); try{ logAcao('Forma de pagamento cadastrada', nome); }catch(e){} toast('Forma "'+nome+'" cadastrada — já aparece no PDV e no orçamento','ok'); viewVendasCfg(); }
+function formaPagExtraTipo(i, tipo){ const lista=formasPagExtras(); if(!lista[i]) return;
+  if(tipo==='credito'||tipo==='debito'){ lista[i].tipo=tipo; const ms=maquinasCartao(); if(!(lista[i].maquina && ms.some(m=>m.id===lista[i].maquina))) lista[i].maquina=(ms.length===1?ms[0].id:'');
+    if(!lista[i].sefaz||lista[i].sefaz==='99') lista[i].sefaz=(tipo==='credito'?'03':'04'); }
+  else { lista[i].tipo='avista'; delete lista[i].maquina; }
+  formasPagExtrasSave(lista); if((tipo==='credito'||tipo==='debito') && !lista[i].maquina) toast('Agora informe a maquininha usada em "'+lista[i].nome+'"','err'); viewVendasCfg(); }
 function formaPagExtraSet(i, campo, v){ const lista=formasPagExtras(); if(!lista[i]) return; lista[i][campo]=v; formasPagExtrasSave(lista); viewVendasCfg(); }
 function formaPagExtraRenomear(i){ const lista=formasPagExtras(); if(!lista[i]) return; const novo=(prompt('Novo nome da forma "'+lista[i].nome+'":', lista[i].nome)||'').trim(); if(!novo||novo===lista[i].nome) return;
   if(FORMAS_PAG_FIXAS.some(f=>normTxt(f)===normTxt(novo)) || lista.some((x,k)=>k!==i&&normTxt(x.nome)===normTxt(novo))){ toast('Já existe uma forma com esse nome','err'); return; }
