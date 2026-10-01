@@ -48,7 +48,7 @@ const CONFIG_EMPRESA = {
      Aparece no topo do menu e no rodapé das Configurações. Troque a cada publicação.
      MANTENHA O FORMATO 'vDD/MM-X' — é ele que o sistema usa para comparar as máquinas
      da loja e avisar quando alguma ficou para trás.                                  */
-  versao: 'v01/10-G',
+  versao: 'v01/10-I',
 
   /* 4) NUVEM (Supabase)  ------------------------------------------------------------
      Cole aqui a Project URL e a chave PUBLISHABLE do projeto Supabase DESTA empresa
@@ -32973,6 +32973,7 @@ function audProdFiscalHTML(){
    </div>
    <div class="card"><div class="card-head" style="display:flex;align-items:center;gap:8px;flex-wrap:wrap"><h3 style="flex:1;min-width:180px">${ico('shield')} Produtos com NCM/CFOP/ST divergentes</h3>
    ${linhas.length?`<button class="btn btn-amber btn-sm" onclick="audAjustarTodos()">${ico('check')} Ajustar todos com divergência (${NUM(linhas.length)})</button>`:''}</div>
+   ${linhas.length?audTiposBarraHTML():''}
    <div class="tbl-wrap">${linhas.length?`<table><thead><tr><th>Produto</th><th class="t-center">NCM</th><th class="t-center">CEST</th><th class="t-center">CSOSN</th><th class="t-center">CFOP</th><th class="t-center">CFOP inter.</th><th>Divergência</th><th></th></tr></thead><tbody>
      ${linhas.slice(0,AUD_FISC_LIMITE).map(x=>`<tr>
        <td><b>${esc(x.p.nome)}</b><div class="t-mut" style="font-size:11px">${esc(x.p.sku||'')}</div></td>
@@ -32985,21 +32986,88 @@ function audProdFiscalHTML(){
    </tbody></table>${linhas.length>AUD_FISC_LIMITE?`<div class="card-pad" style="text-align:center;border-top:1px solid var(--line)"><span class="t-mut" style="font-size:12.5px">Mostrando ${NUM(AUD_FISC_LIMITE)} de ${NUM(linhas.length)} produto(s) com divergência.</span> <button class="btn btn-ghost btn-sm" onclick="audFiscMostrarTudo()">Mostrar todos</button><div class="t-mut" style="font-size:11.5px;margin-top:4px">O botão "Ajustar todos" corrige a lista inteira, não só o que está na tela.</div></div>`:''}`:`<div class="empty" style="padding:36px">${ico('check')}<h4>Nenhuma divergência de NCM/CFOP/ST</h4><p class="t-mut">Os produtos com substituição tributária estão com CFOP e NCM consistentes.</p></div>`}</div></div>
    <div class="card card-pad" style="margin-top:12px"><b style="font-size:13px">Como a auditoria avalia</b><p class="t-mut" style="font-size:12px;line-height:1.6;margin-top:6px">Considera-se <b>ST</b> o produto com CEST preenchido ou CSOSN/CST em (10, 30, 60, 70, 201, 202, 203, 500). Para venda de produto ST espera-se CFOP <b>5405</b> (dentro do estado) e <b>6404/6403</b> (fora do estado). Produtos sem ST não devem usar CFOP de ST. O NCM deve ter 8 dígitos.</p></div>`;
 }
-/* Monta a lista do que SERÁ alterado, sem gravar nada. Uma passada só. */
-function audAjustarPlano(){
+/* ---- TIPOS DE DIVERGÊNCIA — cada um com o seu botão de correção ----
+   cfop_st      produto ST com CFOP de venda comum (ou sem CFOP)       → 5405 / 6404
+   cfop_sem_st  CFOP de ST em produto sem CEST/CSOSN de ST             → 5102 / 6102
+   ncm_st       NCM que é ST (lista ou outro produto) em produto sem ST → 5405/6404 + CSOSN 500 (+ CEST do NCM)
+   cest         produto ST sem CEST                                    → copia o CEST de outro produto com o mesmo NCM; o resto é manual
+   ncm          NCM ausente/inválido                                   → manual (janela para digitar)  */
+const AUD_TIPOS=[
+  {k:'cfop_st',     rotulo:'CFOP de produto ST',        cor:'var(--neg)',   desc:'Produto com ST (CEST/CSOSN) usando CFOP de venda comum → 5405 (ES) e 6404 (outros estados).'},
+  {k:'cfop_sem_st', rotulo:'CFOP de ST sem ST',         cor:'#b45309',      desc:'CFOP de substituição tributária em produto sem CEST/CSOSN de ST → 5102 e 6102.'},
+  {k:'ncm_st',      rotulo:'NCM com ST sem ST',         cor:'#7c3aed',      desc:'NCM sujeito à ST, mas o produto está com venda comum → CFOP 5405/6404, CSOSN 500 e CEST do NCM.'},
+  {k:'cest',        rotulo:'ST sem CEST',               cor:'#2563eb',      desc:'Produto ST sem CEST. Automático quando outro produto com o mesmo NCM já tem CEST; os demais abrem para digitar.'},
+  {k:'ncm',         rotulo:'NCM ausente/inválido',      cor:'#f59e0b',      desc:'NCM precisa de 8 dígitos — abre a lista para digitar.'}];
+function audTiposDe(f, stNcm){ const t=new Set();
+  if(f.ncm.length!==8) t.add('ncm');
+  if(f.ncmST) t.add('ncm_st');
+  else if(f.isST){ if((f.cfop&&!ST_CFOP_SET.includes(f.cfop)) || (f.cfopI&&!ST_CFOP_SET.includes(f.cfopI)) || !f.cfop) t.add('cfop_st'); }
+  else if(ST_CFOP_SET.includes(f.cfop)||ST_CFOP_SET.includes(f.cfopI)) t.add('cfop_sem_st');
+  if(f.isST && !f.cest && !f.ncmST) t.add('cest');
+  return t; }
+/* Monta a lista do que SERÁ alterado, sem gravar nada. Uma passada só. Com `tipo`, só aquele tipo. */
+function audAjustarPlano(tipo){
   const ativos=DB.all('produtos').filter(p=>(p.situacao||'ativo')!=='inativo');
   const stNcm=stNcmMap();
-  const plano=[]; let divergentes=0;
+  const plano=[]; let divergentes=0; const manuais=[];
   for(let i=0;i<ativos.length;i++){ const p=ativos[i]; const f=prodFiscalProblemas(p,stNcm);
-    if(!f.probs.length) continue; divergentes++;
+    if(!f.probs.length) continue; const tipos=audTiposDe(f,stNcm); if(tipo && !tipos.has(tipo)) continue; divergentes++;
     const upd={};
-    if(f.ncmST){ upd.cfop='5405'; upd.cfopInter='6404'; if(!ST_CST_SET.includes(f.cst)) upd.cst='500'; if(!f.cest && stNcm[f.ncm] && stNcm[f.ncm].cest) upd.cest=stNcm[f.ncm].cest; }
-    else if(f.isST){ if(!ST_CFOP_SET.includes(f.cfop)) upd.cfop='5405'; if(!ST_CFOP_SET.includes(f.cfopI)) upd.cfopInter='6404'; if(f.cest && !ST_CST_SET.includes(f.cst)) upd.cst='500'; }
-    else { if(ST_CFOP_SET.includes(f.cfop)) upd.cfop='5102'; if(ST_CFOP_SET.includes(f.cfopI)) upd.cfopInter='6102'; }
+    if((!tipo||tipo==='ncm_st') && f.ncmST){ upd.cfop='5405'; upd.cfopInter='6404'; if(!ST_CST_SET.includes(f.cst)) upd.cst='500'; if(!f.cest && stNcm[f.ncm] && stNcm[f.ncm].cest) upd.cest=stNcm[f.ncm].cest; }
+    if((!tipo||tipo==='cfop_st') && f.isST && !f.ncmST){ if(!ST_CFOP_SET.includes(f.cfop)) upd.cfop='5405'; if(!ST_CFOP_SET.includes(f.cfopI)) upd.cfopInter='6404'; if(f.cest && !ST_CST_SET.includes(f.cst)) upd.cst='500'; }
+    if((!tipo||tipo==='cfop_sem_st') && !f.isST && !f.ncmST){ if(ST_CFOP_SET.includes(f.cfop)) upd.cfop='5102'; if(ST_CFOP_SET.includes(f.cfopI)) upd.cfopInter='6102'; }
+    if((!tipo||tipo==='cest') && f.isST && !f.cest && !f.ncmST){ if(stNcm[f.ncm] && stNcm[f.ncm].cest) upd.cest=stNcm[f.ncm].cest; else manuais.push(p); }
+    if(tipo==='ncm') manuais.push(p);
     if(Object.keys(upd).length) plano.push({p:p,upd:upd});
   }
-  return {plano:plano, divergentes:divergentes};
+  return {plano:plano, divergentes:divergentes, manuais:manuais};
 }
+function audTiposContagem(){ const ativos=DB.all('produtos').filter(p=>(p.situacao||'ativo')!=='inativo'); const stNcm=stNcmMap(); const c={};
+  ativos.forEach(p=>{ const f=prodFiscalProblemas(p,stNcm); if(!f.probs.length) return; audTiposDe(f,stNcm).forEach(t=>{ c[t]=(c[t]||0)+1; }); }); return c; }
+function audTiposBarraHTML(){ const c=audTiposContagem(); const L=AUD_TIPOS.filter(t=>c[t.k]);
+  if(!L.length) return '';
+  return `<div class="card-pad" style="border-bottom:1px solid var(--line);display:flex;flex-direction:column;gap:8px">
+    <div class="t-mut" style="font-size:12px">Corrigir por tipo de divergência:</div>
+    <div style="display:flex;gap:8px;flex-wrap:wrap">${L.map(t=>`<button class="btn btn-ghost btn-sm" style="border:1px solid ${t.cor};color:${t.cor}" title="${esc(t.desc)}" onclick="audCorrigirTipo('${t.k}')">${ico(t.k==='ncm'||t.k==='cest'?'edit':'check')} ${t.rotulo} <b>(${NUM(c[t.k])})</b></button>`).join('')}</div>
+  </div>`; }
+/* Botão de um tipo: o que é automático é aplicado em lote; o que precisa digitar abre a janela. */
+async function audCorrigirTipo(tipo){ const t=AUD_TIPOS.find(x=>x.k===tipo); if(!t) return;
+  if(tipo==='ncm'){ audPreencherModal('ncm'); return; }
+  const {plano, manuais}=audAjustarPlano(tipo);
+  if(plano.length){ await audAjustarTodos(tipo, plano, t); }
+  if(tipo==='cest' && manuais.length){ if(!plano.length) toast('Nenhum CEST pôde ser copiado de outro produto — digite na janela','ok'); audPreencherModal('cest'); }
+  else if(!plano.length) toast('Nada para corrigir neste tipo','ok'); }
+/* Janela para digitar NCM ou CEST nos produtos que ficaram sem — com busca, e salvando tudo de uma vez. */
+let AUD_PREEN={campo:'ncm',q:''};
+function audPreencherLista(){ const ativos=DB.all('produtos').filter(p=>(p.situacao||'ativo')!=='inativo'); const stNcm=stNcmMap();
+  const L=ativos.filter(p=>{ const f=prodFiscalProblemas(p,stNcm); return AUD_PREEN.campo==='ncm' ? f.ncm.length!==8 : (f.isST && !f.cest); });
+  const q=normTxt(AUD_PREEN.q||''); return (q?L.filter(p=>normTxt((p.nome||'')+' '+(p.sku||'')+' '+(p.ncm||'')).indexOf(q)>=0):L).sort((a,b)=>(a.nome||'').localeCompare(b.nome||'')); }
+function audPreencherModal(campo){ AUD_PREEN={campo:campo||'ncm',q:''};
+  const ncm=AUD_PREEN.campo==='ncm'; const L=audPreencherLista();
+  openModal(`<div class="modal-head"><h3>${ico('edit')} ${ncm?'Preencher NCM':'Preencher CEST'} — ${NUM(L.length)} produto(s)</h3><button class="btn-icon btn-ghost" onclick="closeModal();viewAuditoria()">${ico('x')}</button></div>
+   <div class="modal-body" style="max-height:70vh;overflow:auto">
+     <p class="t-mut" style="font-size:12.5px;margin:0 0 10px">${ncm?'Digite o NCM (8 números — está na nota de compra do produto). Dica: produtos do mesmo tipo costumam ter o mesmo NCM; use a busca para preencher em sequência.':'Digite o CEST (7 números) do produto sujeito à substituição tributária. Produtos com o mesmo NCM normalmente têm o mesmo CEST.'}</p>
+     <input class="pill-filter" placeholder="Buscar por nome, SKU ou NCM…" value="${esc(AUD_PREEN.q)}" oninput="AUD_PREEN.q=this.value;audPreencherRender()" style="width:100%;margin-bottom:8px">
+     <div id="aud-preen-list">${audPreencherRowsHTML(L)}</div>
+   </div>
+   <div class="modal-foot"><button class="btn btn-ghost" onclick="closeModal();viewAuditoria()">Fechar</button><div style="flex:1"></div><button class="btn btn-amber" onclick="audPreencherSalvar()">${ico('check')} Salvar os preenchidos</button></div>`, true);
+  setTimeout(()=>{ try{ const i=document.querySelector('#aud-preen-list input'); if(i) i.focus(); }catch(e){} },80); }
+function audPreencherRowsHTML(L){ const ncm=AUD_PREEN.campo==='ncm'; const max=300;
+  if(!L.length) return `<div class="empty" style="padding:30px">${ico('check')}<h4>Nenhum produto pendente</h4></div>`;
+  return `<table><thead><tr><th>Produto</th><th>NCM atual</th><th style="width:150px">${ncm?'NCM':'CEST'}</th></tr></thead><tbody>
+    ${L.slice(0,max).map(p=>`<tr><td><b>${esc(p.nome)}</b><div class="t-mut" style="font-size:11px">${esc(p.sku||'')}${p.categoria?(' · '+esc(p.categoria)):''}</div></td><td class="tnum t-mut">${esc((''+(p.ncm||'')).replace(/\D/g,'')||'—')}</td>
+      <td><input data-aud-pid="${p.id}" inputmode="numeric" maxlength="${ncm?10:9}" placeholder="${ncm?'0000.00.00':'00.000.00'}" style="width:140px" onkeydown="if(event.key==='Enter'){event.preventDefault();audPreencherProximo(this);}"></td></tr>`).join('')}
+  </tbody></table>${L.length>max?`<div class="t-mut" style="font-size:12px;padding:8px">Mostrando ${max} de ${NUM(L.length)} — use a busca para achar os demais.</div>`:''}`; }
+function audPreencherRender(){ const el=document.getElementById('aud-preen-list'); if(el) el.innerHTML=audPreencherRowsHTML(audPreencherLista()); }
+function audPreencherProximo(inp){ const all=[...document.querySelectorAll('#aud-preen-list input')]; const i=all.indexOf(inp); if(i>=0 && all[i+1]) all[i+1].focus(); }
+function audPreencherSalvar(){ const ncm=AUD_PREEN.campo==='ncm'; let n=0, ruins=0;
+  document.querySelectorAll('#aud-preen-list input[data-aud-pid]').forEach(inp=>{ const v=(inp.value||'').replace(/\D/g,''); if(!v) return;
+    if((ncm && v.length!==8) || (!ncm && v.length!==7)){ ruins++; inp.style.borderColor='var(--neg)'; return; }
+    const p=DB.get('produtos',inp.getAttribute('data-aud-pid')); if(!p) return; DB.update('produtos',p.id, ncm?{ncm:v}:{cest:v}); n++; });
+  if(ruins) toast(ruins+' valor(es) inválido(s) ficaram em vermelho — '+(ncm?'NCM tem 8 números':'CEST tem 7 números'),'err');
+  if(!n){ if(!ruins) toast('Nada preenchido','err'); return; }
+  try{ logAcao((ncm?'NCM':'CEST')+' preenchido pela auditoria fiscal', n+' produto(s)'); }catch(e){} try{ nuvemPushJa(); }catch(e){}
+  toast(n+' produto(s) salvos','ok'); audPreencherRender(); }
 let AUD_AJUSTANDO=false;
 function audProgressoHTML(feito,total){
   const pc = total? Math.round(feito*100/total) : 100;
@@ -33016,12 +33084,14 @@ function audProgressoSet(feito,total){
   const b=document.getElementById('aud-bar'); if(b) b.style.width=pc+'%';
   const n=document.getElementById('aud-num'); if(n) n.textContent=NUM(feito)+' de '+NUM(total)+' produto(s) — '+pc+'%';
 }
-async function audAjustarTodos(){
+async function audAjustarTodos(tipo, planoPronto, tipoInfo){
   if(AUD_AJUSTANDO){ toast('O ajuste já está em andamento','err'); return; }
-  const {plano, divergentes} = audAjustarPlano();
+  const _r = planoPronto ? {plano:planoPronto, divergentes:planoPronto.length} : audAjustarPlano(tipo);
+  const plano=_r.plano, divergentes=_r.divergentes;
   if(!divergentes){ toast('Nenhuma divergência para ajustar','ok'); return; }
   if(!plano.length){ toast('As '+NUM(divergentes)+' divergências restantes precisam de NCM/CEST manual','ok'); return; }
-  if(!confirm('Ajustar automaticamente '+NUM(plano.length)+' produto(s) com divergência?\n\n• CFOP de produtos com ST → 5405 / 6404\n• CFOP de produtos sem ST → 5102 / 6102\n• CSOSN de produto ST sem código de ST → 500 (substituído)\n\nNCM ausente/inválido e CEST faltando NÃO podem ser preenchidos automaticamente e continuarão na lista para ajuste manual.')) return;
+  if(tipoInfo){ if(!confirm('Corrigir "'+tipoInfo.rotulo+'" em '+NUM(plano.length)+' produto(s)?\n\n'+tipoInfo.desc+'\n\nConfira depois com o seu contador.')) return; }
+  else if(!confirm('Ajustar automaticamente '+NUM(plano.length)+' produto(s) com divergência?\n\n• CFOP de produtos com ST → 5405 / 6404\n• CFOP de produtos sem ST → 5102 / 6102\n• CSOSN de produto ST sem código de ST → 500 (substituído)\n\nNCM ausente/inválido e CEST faltando NÃO podem ser preenchidos automaticamente e continuarão na lista para ajuste manual.')) return;
   AUD_AJUSTANDO=true;
   let total=0, cfopFix=0, cstFix=0, ncmRest=0, cestRest=0;
   try{
@@ -33091,7 +33161,8 @@ function viewAuditoria(){
   const {de,ate}=fiscalRange();
   const vendas=DB.all('vendas').filter(v=>between(v.data,de,ate)&&v.status!=='cancelada');
   const comNota=new Set(fiscalNF().filter(n=>n.status==='autorizada').map(n=>n.vendaId).filter(Boolean));
-  const semNota=vendas.filter(v=>!comNota.has(v.id));
+  // só venda FATURADA conta: pedido pendente, receber no local ou aguardando nota ainda não é venda sem nota
+  const semNota=vendas.filter(v=>!comNota.has(v.id) && pedidoStatusInfo(v).k==='faturado');
   const canc=fiscalNF().filter(n=>n.status==='cancelada'&&between(n.data,de,ate));
   const semCliente=vendas.filter(v=>!v.clienteId && v.total>=500);
   const prodSemSku=DB.all('produtos').filter(p=>!p.sku);
