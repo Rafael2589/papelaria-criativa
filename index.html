@@ -48,7 +48,7 @@ const CONFIG_EMPRESA = {
      Aparece no topo do menu e no rodapé das Configurações. Troque a cada publicação.
      MANTENHA O FORMATO 'vDD/MM-X' — é ele que o sistema usa para comparar as máquinas
      da loja e avisar quando alguma ficou para trás.                                  */
-  versao: 'v02/10-G',
+  versao: 'v02/10-H',
 
   /* 4) NUVEM (Supabase)  ------------------------------------------------------------
      Cole aqui a Project URL e a chave PUBLISHABLE do projeto Supabase DESTA empresa
@@ -7191,6 +7191,7 @@ function viewTrocas(){
       </div>
       <div id="troca-area"></div>
     </div></div>
+    ${trocaSemPedidoCardHTML()}
     ${creditosAvisoHTML()}
     <div class="card" style="margin-bottom:14px"><div class="card-head"><div><h3>Créditos gerados</h3><div class="ch-sub">Vales de crédito por devolução/troca</div></div></div>
       <div class="tbl-wrap">${creditosTable()}</div></div>
@@ -7198,6 +7199,85 @@ function viewTrocas(){
       <button class="btn btn-ghost btn-sm no-print" onclick="printView()">${ico('print')} Imprimir (PDF)</button></div>
       <div class="tbl-wrap">${trocaMovsTable()}</div></div>`;
 }
+/* ===== DEVOLUÇÃO SEM PEDIDO NO SISTEMA =====================================
+   Venda feita antes do sistema (ou que não veio na migração): escolhe-se o cliente e os
+   produtos devolvidos, o estoque volta e nasce o crédito de troca — sem precisar do pedido. */
+let TSP={clienteId:'', clienteNome:'', itens:[], motivo:'', ref:''};
+function trocaSemPedidoCardHTML(){
+  return `<div class="card" style="margin-bottom:14px"><div class="card-head"><div><h3>${ico('ret')} Devolução sem pedido no sistema</h3><div class="ch-sub">Venda antiga ou que não veio na migração: escolha o cliente e os produtos devolvidos — o estoque volta e o <b>crédito de troca</b> é gerado</div></div></div>
+    <div class="card-pad">
+      <div class="field-row" style="align-items:flex-end">
+        <div class="field" style="flex:2;position:relative"><label>Cliente</label><input id="tsp-cli" autocomplete="off" placeholder="Nome, CPF/CNPJ ou telefone do cliente…" value="${esc(TSP.clienteNome)}" oninput="tspCliInput(this.value)" onkeydown="ddKeyNav(event,'tsp-cli-dd')"><div id="tsp-cli-dd" class="orc-dd"></div></div>
+        <div class="field" style="max-width:220px"><label>Nº do pedido / nota antiga (opcional)</label><input id="tsp-ref" placeholder="Ex.: 845 (sistema antigo)" value="${esc(TSP.ref)}" oninput="TSP.ref=this.value"></div>
+      </div>
+      <div id="tsp-cli-info" class="t-mut" style="font-size:12px;margin:-4px 0 10px">${tspCliInfoHTML()}</div>
+      <div style="display:flex;gap:8px;margin-bottom:8px"><input id="tsp-prod" list="tsp-prod-list" autocomplete="off" placeholder="Digite o produto devolvido e tecle Enter…" style="flex:1" onkeydown="if(event.key==='Enter'){event.preventDefault();tspAddProd();}"><datalist id="tsp-prod-list">${prodDatalistOpts()}</datalist><button class="btn btn-ghost btn-sm" onclick="tspAddProd()">${ico('plus')} Incluir</button></div>
+      <div id="tsp-itens">${tspItensHTML()}</div>
+      <div class="field" style="margin-top:8px"><label>Motivo</label><input id="tsp-motivo" placeholder="Avaria, compra equivocada, sobra de obra…" value="${esc(TSP.motivo)}" oninput="TSP.motivo=this.value"></div>
+      <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-top:6px"><div style="flex:1"></div>
+        <div style="font-size:14px">Crédito de troca: <b id="tsp-tot">${BRL(tspTotal())}</b></div>
+        <button class="btn btn-amber" onclick="tspConfirmar()">${ico('check')} Gerar crédito de troca</button></div>
+    </div></div>`; }
+function tspTotal(){ return Math.round(TSP.itens.reduce((s,l)=>s+(+l.qtd||0)*(+l.preco||0),0)*100)/100; }
+function tspCliInfoHTML(){ if(TSP.clienteId){ const c=DB.get('clientes',TSP.clienteId); const cred=creditosDoCliente(TSP.clienteId,TSP.clienteNome).filter(x=>!creditoCancelado(x)).reduce((s,x)=>s+(+x.saldo||0),0);
+    return `${ico('check')} Cliente do cadastro: <b>${esc(c?c.nome:TSP.clienteNome)}</b>${c&&c.doc?(' · '+esc(c.doc)):''}${cred>0?(' · já tem <b>'+BRL(cred)+'</b> de crédito em aberto'):''}`; }
+  if(TSP.clienteNome) return `${ico('alert')} <b>${esc(TSP.clienteNome)}</b> não está no cadastro — o vale ficará no nome digitado e é amarrado ao cadastro quando for usado.`;
+  return 'Escolha o cliente na lista (ou digite o nome, se ele não tiver cadastro).'; }
+/* Busca de cliente por relevância: 1) nome começa com o que foi digitado, 2) alguma palavra do nome
+   começa com ele (primeiro nome, sobrenome), 3) aparece no meio. Várias palavras: todas precisam
+   estar no nome, em qualquer ordem. Também acha por CPF/CNPJ e telefone. */
+function tspCliBuscar(q, limite){ const toks=tokensDe(q); const qd=(q||'').replace(/\D/g,''); const qn=normTxt((q||'').trim()); if(!toks.length && qd.length<4) return [];
+  const out=[];
+  DB.all('clientes').forEach(c=>{ if(!c || (c.situacao||'ativo')==='inativo') return; const nome=normTxt(c.nome||''); if(!nome) return; const palavras=nome.split(/\s+/);
+    let r=-1;
+    if(toks.length && toks.every(t=>nome.includes(t))){
+      if(nome===qn) r=0; else if(nome.startsWith(qn)) r=1;
+      else if(toks.every(t=>palavras.some(w=>w.startsWith(t)))) r=palavras[0].startsWith(toks[0])?2:3;
+      else r=4; }
+    else if(qd.length>=4){ const doc=((c.doc||'')+'').replace(/\D/g,''), tel=((c.telefone||'')+(c.celular||'')).replace(/\D/g,''); if(doc.includes(qd)||tel.includes(qd)) r=5; }
+    if(r>=0) out.push({c,r,nome}); });
+  out.sort((a,b)=>a.r-b.r || a.nome.localeCompare(b.nome,'pt-BR'));
+  return out.slice(0,limite||30).map(x=>x.c); }
+function tspCliInput(q){ TSP.clienteNome=(q||'').trim(); TSP.clienteId=''; const dd=document.getElementById('tsp-cli-dd'); const info=document.getElementById('tsp-cli-info'); if(info) info.innerHTML=tspCliInfoHTML(); if(!dd) return;
+  if(normTxt(TSP.clienteNome).length<2){ dd.classList.remove('on'); dd.innerHTML=''; return; }
+  const res=tspCliBuscar(TSP.clienteNome, 30);
+  dd.classList.add('on');
+  if(!res.length){ dd.innerHTML='<div class="orc-empty">Nenhum cliente com esse nome — pode seguir com o nome digitado</div>'; return; }
+  dd.innerHTML=res.map(c=>`<div class="orc-row" onclick="tspCliPick('${c.id}')"><div style="flex:1;min-width:0"><div class="orc-rn">${esc(c.nome)}</div><div class="orc-rs">${esc(c.doc||'')}${c.cidade?(' · '+esc(c.cidade)):''}${(c.telefone||c.celular)?(' · '+esc(c.celular||c.telefone)):''}</div></div></div>`).join('');
+  ddManterVisivel('tsp-cli-dd'); }
+function tspCliPick(id){ const c=DB.get('clientes',id); if(!c) return; TSP.clienteId=c.id; TSP.clienteNome=(c.nome||'').trim();
+  const inp=document.getElementById('tsp-cli'); if(inp) inp.value=TSP.clienteNome; const dd=document.getElementById('tsp-cli-dd'); if(dd){ dd.classList.remove('on'); dd.innerHTML=''; }
+  const info=document.getElementById('tsp-cli-info'); if(info) info.innerHTML=tspCliInfoHTML(); const pr=document.getElementById('tsp-prod'); if(pr) pr.focus(); }
+function tspItensHTML(){ if(!TSP.itens.length) return `<div class="t-mut" style="font-size:12.5px;padding:6px 0">Nenhum produto incluído ainda.</div>`;
+  return `<table><thead><tr><th>Produto devolvido</th><th class="t-right" style="width:110px">Qtd</th><th class="t-right" style="width:140px">Valor pago (un.)</th><th class="t-right" style="width:120px">Crédito</th><th style="width:40px"></th></tr></thead><tbody>
+    ${TSP.itens.map((l,i)=>`<tr><td><b>${esc(l.nome)}</b><div class="t-mut" style="font-size:11px">preço atual ${BRL(l.precoAtual||0)} · estoque ${NUM(l.estoque||0)} ${esc(l.unidade||'')}</div></td>
+      <td class="t-right"><input type="text" inputmode="decimal" value="${fmtQ(l.qtd)}" style="width:90px;text-align:right" onchange="tspQty(${i},this.value)"></td>
+      <td class="t-right"><input type="text" inputmode="decimal" value="${(+l.preco||0).toFixed(2).replace('.',',')}" style="width:120px;text-align:right" onchange="tspPreco(${i},this.value)" title="Valor que o cliente pagou por unidade — vira crédito"></td>
+      <td class="t-right tnum t-strong">${BRL((+l.qtd||0)*(+l.preco||0))}</td>
+      <td><button class="btn-icon btn-ghost" onclick="tspDel(${i})" title="Remover">${ico('x')}</button></td></tr>`).join('')}
+  </tbody></table>`; }
+function tspRedesenha(){ const el=document.getElementById('tsp-itens'); if(el) el.innerHTML=tspItensHTML(); const t=document.getElementById('tsp-tot'); if(t) t.textContent=BRL(tspTotal()); }
+function tspAddProd(){ const p=prodInputResolve('tsp-prod'); if(!p){ toast('Digite e selecione um produto da lista','err'); return; }
+  const ja=TSP.itens.find(l=>l.produtoId===p.id); if(ja){ ja.qtd=(+ja.qtd||0)+1; } else TSP.itens.push({produtoId:p.id,nome:p.nome,qtd:1,preco:+p.preco||0,precoAtual:+p.preco||0,custo:+p.custo||0,unidade:p.unidade||'',estoque:+p.estoque||0});
+  const el=document.getElementById('tsp-prod'); if(el){ el.value=''; el.focus(); } tspRedesenha(); }
+function tspQty(i,v){ if(!TSP.itens[i]) return; TSP.itens[i].qtd=Math.max(0.001, numBR(v)||1); tspRedesenha(); }
+function tspPreco(i,v){ if(!TSP.itens[i]) return; TSP.itens[i].preco=Math.max(0, numBR(v)); tspRedesenha(); }
+function tspDel(i){ TSP.itens.splice(i,1); tspRedesenha(); }
+function tspConfirmar(){
+  const nome=(TSP.clienteNome||'').trim(); if(!nome){ toast('Informe o cliente','err'); const i=document.getElementById('tsp-cli'); if(i) i.focus(); return; }
+  const itens=TSP.itens.filter(l=>(+l.qtd||0)>0); if(!itens.length){ toast('Inclua ao menos um produto devolvido','err'); return; }
+  const credito=tspTotal(); if(!(credito>0)){ toast('O valor pago precisa ser maior que zero para gerar crédito','err'); return; }
+  const cid=TSP.clienteId||clienteIdPorNome(nome); const nm=clienteNomeDe(cid)||nome;
+  const ref=(TSP.ref||'').trim(); const motivo=(TSP.motivo||'').trim()||'Devolução sem pedido no sistema';
+  const refTxt=ref?(' — pedido/nota antiga '+ref):'';
+  if(!confirm('Gerar crédito de troca de '+BRL(credito)+' para '+nm+'?\n\n• '+itens.length+' produto(s) voltam ao estoque\n• o vale fica disponível para abater em orçamentos, pedidos e no PDV')) return;
+  itens.forEach(l=>{ const p=l.produtoId?DB.get('produtos',l.produtoId):null; if(p){ DB.update('produtos',p.id,{estoque:(+p.estoque||0)+(+l.qtd||0)}); DB.insert('movEstoque',{produtoId:p.id,tipo:'entrada',qtd:+l.qtd,data:today(),motivo:'Devolução sem pedido'+refTxt+' — '+nm}); } });
+  const dev=DB.insert('devolucoes',{vendaId:null,semPedido:true,refAntiga:ref,data:today(),clienteId:cid||'',clienteNome:nm,tipo:'devolucao',itens:itens.map(l=>({produtoId:l.produtoId,nome:l.nome,qtd:+l.qtd,preco:+l.preco,custo:+l.custo||0})),valor:credito,motivo});
+  DB.insert('creditos',{clienteId:cid||'',clienteNome:nm,valor:credito,saldo:credito,data:today(),status:'aberto',origem:'Devolução sem pedido'+refTxt,devolucaoId:dev&&dev.id});
+  try{ logAcao('Devolução sem pedido no sistema', nm+' · '+BRL(credito)+' · '+itens.map(l=>l.nome+' ('+fmtQ(l.qtd)+')').join(', ')); }catch(e){}
+  try{ nuvemPushJa(); }catch(e){}
+  TSP={clienteId:'', clienteNome:'', itens:[], motivo:'', ref:''};
+  toast('Crédito de troca de '+BRL(credito)+' gerado para '+nm+' — estoque devolvido','ok'); viewTrocas(); }
 function trocaMovsTable(){
   const movs=[];
   DB.all('devolucoes').forEach(d=>movs.push({data:d.data,cliente:d.clienteNome,tipo:(d.tipo==='troca'?'Troca':'Devolução'),desc:(d.motivo||'')+' · '+d.itens.map(i=>i.nome+' ('+fmtQ(i.qtd)+')').join(', '),credito:+d.valor||0,uso:0}));
