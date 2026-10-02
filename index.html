@@ -48,7 +48,7 @@ const CONFIG_EMPRESA = {
      Aparece no topo do menu e no rodapé das Configurações. Troque a cada publicação.
      MANTENHA O FORMATO 'vDD/MM-X' — é ele que o sistema usa para comparar as máquinas
      da loja e avisar quando alguma ficou para trás.                                  */
-  versao: 'v01/10-K',
+  versao: 'v02/10-C',
 
   /* 4) NUVEM (Supabase)  ------------------------------------------------------------
      Cole aqui a Project URL e a chave PUBLISHABLE do projeto Supabase DESTA empresa
@@ -180,6 +180,32 @@ input::placeholder,textarea::placeholder{-webkit-text-fill-color:var(--muted);co
 .sidebar-foot b{color:#aebcd6;font-weight:600}
 
 .main{min-width:0;display:flex;flex-direction:column}
+/* ===== MENU LATERAL MINIMIZADO (botão « no topo do menu) =====
+   Fica só uma faixa com os ícones dos grupos. Clicar num ícone abre o menu de novo já naquele
+   grupo. A escolha fica guardada neste navegador. Só vale em tela larga. */
+.sb-toggle{position:absolute;top:14px;right:8px;width:28px;height:28px;border-radius:8px;border:1px solid rgba(255,255,255,.12);background:rgba(255,255,255,.06);color:#aebcd6;display:grid;place-items:center;cursor:pointer;transition:.13s}
+.sb-toggle:hover{background:rgba(255,255,255,.14);color:#fff}
+.sb-toggle svg{width:16px;height:16px}
+.sidebar{position:sticky}
+.sidebar .brand{position:relative;padding-right:44px}
+@media(min-width:901px){
+  body.sb-mini{--sbw:72px}
+  body.sb-mini .sidebar .brand{padding:16px 0 10px;justify-content:center;flex-direction:column;gap:8px}
+  body.sb-mini .sidebar .brand>div:not(.logo){display:none}
+  body.sb-mini .sb-toggle{position:static;margin:0 auto}
+  body.sb-mini .sb-toggle svg{transform:rotate(180deg)}
+  body.sb-mini .nav{padding:6px 8px}
+  body.sb-mini .nav-group{display:none}
+  body.sb-mini .nav-grp-head{justify-content:center;padding:11px 0}
+  body.sb-mini .nav-grp-head span,body.sb-mini .nav-grp-head .nav-chev{display:none}
+  body.sb-mini .nav-grp-head .ng-ico{width:21px;height:21px;opacity:.9}
+  body.sb-mini .nav-grp-items{display:none}
+  body.sb-mini .nav>.nav-item{justify-content:center;padding:11px 0}
+  body.sb-mini .nav>.nav-item span,body.sb-mini .nav>.nav-item .badge{display:none}
+  body.sb-mini .nav>.nav-item svg{width:21px;height:21px}
+  body.sb-mini .nav-grp.has-active .nav-grp-head{background:linear-gradient(90deg,var(--amber-d),var(--amber));color:#fff}
+  body.sb-mini .sidebar-foot{display:none}
+}
 .topbar{background:rgba(255,255,255,.85);backdrop-filter:blur(10px);border-bottom:1px solid var(--line);padding:14px 28px;display:flex;align-items:center;gap:18px;position:sticky;top:0;z-index:30}
 .topbar h2{font-family:var(--disp);font-size:20px;font-weight:600;letter-spacing:-.4px}
 .topbar .sub{font-size:12.5px;color:var(--muted);margin-top:1px}
@@ -469,7 +495,7 @@ tbody tr:hover{background:var(--surface-2)}
 .pp-card .pp-price{font-family:var(--disp);font-size:16px;font-weight:700;color:var(--amber-d)}
 .pp-card .pp-stock{font-size:11px;color:var(--muted)}
 .cart{position:sticky;top:90px}
-.cart-items{max-height:340px;overflow-y:auto;padding:4px 0;scroll-behavior:smooth}
+.cart-items{max-height:340px;overflow-y:auto;padding:4px 0;scroll-behavior:smooth;transition:max-height .12s}
 .orc-items-scroll{max-height:420px;overflow-y:auto;scroll-behavior:smooth}
 @keyframes itemFlash{0%{background:rgba(245,158,11,.35)}100%{background:transparent}}
 .item-novo{animation:itemFlash 1.1s ease-out}
@@ -1218,6 +1244,7 @@ thead{break-after:avoid;page-break-after:avoid;break-inside:avoid;page-break-ins
     <div class="brand">
       <div class="logo"><svg viewBox="0 0 24 24" fill="none"><path d="M3 21h18M5 21V7l7-4 7 4v14M9 21v-5h6v5M9 11h.01M15 11h.01" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
       <div><h1>Gestão Comercial Pro</h1><span id="brand-versao">ERP</span></div>
+      <button class="sb-toggle no-print" type="button" onclick="sbMiniToggle()" title="Minimizar / expandir o menu"><svg viewBox="0 0 24 24" fill="none"><path d="M15 6l-6 6 6 6" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
     </div>
     <nav class="nav" id="nav"></nav>
     <div class="sidebar-foot">
@@ -2262,12 +2289,13 @@ function buildNav(){
       const onclk = it.report?`navReport('${it.id}','${it.report}');return false`:`navGo('${it.id}');return false`;
       return `<a class="nav-item ${active?'active':''}" href="#/${it.id}" onclick="${onclk}">${ico(it.icon)}<span>${it.label}</span>${badge}</a>`;
     }).join('');
-    return `<div class="nav-grp ${closed?'closed':''}">
-      <button class="nav-grp-head" onclick="navToggleGrp('${grp.g.replace(/'/g,"")}')">${ico(grp.icon,'ng-ico')}<span>${grp.g}</span>${ico('chev','nav-chev')}</button>
+    return `<div class="nav-grp ${closed?'closed':''} ${grp.items.some(it=>it.id===STATE.menuId)?'has-active':''}">
+      <button class="nav-grp-head" title="${esc(grp.g)}" onclick="navToggleGrp('${grp.g.replace(/'/g,"")}')">${ico(grp.icon,'ng-ico')}<span>${grp.g}</span>${ico('chev','nav-chev')}</button>
       <div class="nav-grp-items">${items}</div></div>`;
   }).join('');
 }
-function navToggleGrp(g){ if(STATE.navClosed.has(g)){ STATE.navClosed=new Set(NAV.map(x=>x.g).filter(n=>n!==g)); } else { STATE.navClosed.add(g); } buildNav(); }
+function navToggleGrp(g){ if(document.body.classList.contains('sb-mini')){ sbMiniAbrirGrupo(g); STATE.navClosed=new Set(NAV.map(x=>x.g).filter(n=>n!==g)); buildNav(); return; }
+  if(STATE.navClosed.has(g)){ STATE.navClosed=new Set(NAV.map(x=>x.g).filter(n=>n!==g)); } else { STATE.navClosed.add(g); } buildNav(); }
 function navGroupOf(id){ const g=NAV.find(gr=>gr.items.some(it=>it.id===id)); return g?g.g:null; }
 function navInitCollapsed(){ const open=navGroupOf(STATE.menuId); STATE.navClosed=new Set(NAV.filter(g=>g.g!==open).map(g=>g.g)); }
 function navGo(id){ STATE.menuId=id; go(id); }
@@ -2405,6 +2433,13 @@ function uiAvisoAtualizar(){ uiAtualizarDados(); }
 function uiAvisoFechar(){ const el=document.getElementById('ui-atualizar'); if(el) el.remove(); }
 function uiAtualizarAgora(){ uiRedesenhar(); }
 function routeFromHash(){ try{ const m=(location.hash||'').match(/^#\/([a-zA-Z0-9_-]+)$/); if(m && (NAV_ITEMS[m[1]]||m[1]==='dash')) return m[1]; }catch(e){} return null; }
+function sbMiniEh(){ try{ return localStorage.getItem(LSK('sb_mini'))==='1'; }catch(e){ return false; } }
+function sbMiniAplicar(){ try{ document.body.classList.toggle('sb-mini', sbMiniEh()); }catch(e){} }
+function sbMiniToggle(){ const novo=!sbMiniEh(); try{ localStorage.setItem(LSK('sb_mini'), novo?'1':'0'); }catch(e){} sbMiniAplicar(); }
+/* No menu minimizado, clicar no ícone de um grupo expande o menu e abre aquele grupo. */
+function sbMiniAbrirGrupo(nome){ if(!document.body.classList.contains('sb-mini')) return false;
+  try{ localStorage.setItem(LSK('sb_mini'),'0'); }catch(e){} sbMiniAplicar(); return true; }
+try{ sbMiniAplicar(); }catch(e){}
 function toggleSidebar(open){ const o = open===undefined ? !document.getElementById('sidebar').classList.contains('open') : open;
   document.getElementById('sidebar').classList.toggle('open',o); document.getElementById('scrim').classList.toggle('on',o); }
 
@@ -3938,8 +3973,7 @@ function renderPDV(){
   ${!caixaSessaoAberta()?`<div class="card card-pad" style="margin-bottom:14px;border:1px solid var(--amber);background:var(--amber-soft);display:flex;align-items:center;gap:12px;flex-wrap:wrap">
      <b style="font-size:13px">${ico('alert')} Caixa fechado</b><span class="t-mut" style="font-size:12.5px;flex:1">É obrigatório abrir o caixa para registrar vendas e recebimentos.</span>
      <button class="btn btn-amber btn-sm" onclick="go('caixa')">${ico('bank')} Abrir caixa</button></div>`:''}
-  <div class="pdv-orc-banner">
-    <div>${ico('quote')} <b>Atendimento inicia pelo orçamento.</b> <span class="t-mut">Crie o orçamento do cliente e finalize aqui importando-o — o pedido fica vinculado e pode ser impresso na aba Pedidos.</span></div>
+  <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:14px">
     <div style="display:flex;gap:8px;flex-wrap:wrap">
       <button class="btn btn-ghost btn-sm" onclick="go('orc')">${ico('plus')} Novo orçamento</button>
       <button class="btn btn-amber btn-sm" onclick="pdvImportPed()">${ico('dl')} Importar pedido</button>
@@ -4021,7 +4055,19 @@ function renderPDV(){
      em três tempos, sempre respeitando onde o operador já estiver digitando. */
   if(window.__pdvFocoCliente) pdvFocoInicial(); else setTimeout(()=>{ const s=document.getElementById('pdv-q'); if(s)s.focus(); },60);
   pdvUpdCliComplete();
+  pdvAjustarAlturaItens();
 }
+/* A lista de itens cresce até a mesma altura do painel da direita (observações, desconto, totais e
+   botões). Com mais itens do que cabe, ela rola por dentro; com poucos, o quadro fica da mesma altura. */
+function pdvAjustarAlturaItens(){ const calc=()=>{ try{
+    const itens=document.getElementById('cart-items'); const grid=document.querySelector('.pdv-grid'); if(!itens||!grid) return;
+    const side=grid.querySelector('.cart-side > .card'); const card=itens.closest('.card'); if(!side||!card) return;
+    if(window.innerWidth<1000){ itens.style.maxHeight=''; return; }   // tela estreita: as colunas ficam uma embaixo da outra
+    const outros=card.offsetHeight-itens.offsetHeight;                 // cabeçalho, sugestões e espaçamentos do quadro
+    const alvo=Math.round(side.offsetHeight-outros);
+    itens.style.maxHeight=Math.max(340, alvo)+'px'; }catch(e){} };
+  requestAnimationFrame(calc); setTimeout(calc,120); }
+window.addEventListener('resize', ()=>{ try{ if(STATE.route==='pdv') pdvAjustarAlturaItens(); }catch(e){} });
 function pdvParseQty(raw){ const m=(''+(raw||'')).match(/^\s*(\d+(?:[.,]\d+)?)\s*\*\s*(.*)$/); if(m){ const q=parseFloat(m[1].replace(',','.')); return {qty:(q>0?q:null), rest:m[2]}; } return {qty:null, rest:raw||''}; }
 function pdvSearch(raw){ const parsed=pdvParseQty(raw); PDVS.qtyPrefix=parsed.qty; const q=(parsed.rest||'').trim().toLowerCase(); const dd=document.getElementById('pdv-dd'); if(!dd)return;
   if(q.length<1){ PDVS.results=[]; PDVS.activePid=null; dd.classList.remove('on'); dd.innerHTML=''; return; }
@@ -4177,7 +4223,8 @@ function cartTotals(){
 }
 function renderCartTotals(){ if(CART.descModo==='pct') pdvDescAplicaPct(); /* percentual acompanha mudanças nos itens */
   const el=document.getElementById('cart-totals'); if(el) el.innerHTML=cartTotals();
-  const inf=document.getElementById('cart-desc-info'); if(inf) inf.innerHTML=pdvDescInfo(); }
+  const inf=document.getElementById('cart-desc-info'); if(inf) inf.innerHTML=pdvDescInfo();
+  try{ pdvAjustarAlturaItens(); }catch(e){} }
 /* ---- múltiplas formas de pagamento ---- */
 function normalizePays(){ if(!CART.itens.length) return; const total=cartTotalValue();
   if(!CART.pagamentos||!CART.pagamentos.length) CART.pagamentos=[{forma:'',valor:total}];
