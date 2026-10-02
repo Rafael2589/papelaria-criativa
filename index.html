@@ -48,7 +48,7 @@ const CONFIG_EMPRESA = {
      Aparece no topo do menu e no rodapé das Configurações. Troque a cada publicação.
      MANTENHA O FORMATO 'vDD/MM-X' — é ele que o sistema usa para comparar as máquinas
      da loja e avisar quando alguma ficou para trás.                                  */
-  versao: 'v01/10-I',
+  versao: 'v01/10-J',
 
   /* 4) NUVEM (Supabase)  ------------------------------------------------------------
      Cole aqui a Project URL e a chave PUBLISHABLE do projeto Supabase DESTA empresa
@@ -8008,14 +8008,56 @@ function viewProd(){
       <input class="pill-filter" id="prod-q" placeholder="Buscar produto..." oninput="renderProdTableD()" style="width:230px" value="${esc(PROD_Q)}">
       <span id="prod-filtros" style="display:contents">${prodFiltrosHTML()}</span>
       <select class="pill-filter" id="prod-flt" onchange="renderProdTable()"><option value="">Todos</option><option value="low">Só estoque crítico</option></select>
+      <button class="btn btn-ghost btn-sm" id="prod-prob-btn" onclick="prodProbToggle()" style="${PROD_PROB.aberto?'border-color:var(--amber);color:var(--amber-d)':''}">${ico('alert')} Problemas de cadastro${(function(){ const n=prodProblemasTotal(); return n?` <span class="badge" style="background:var(--neg);color:#fff;font-weight:800;font-size:10.5px;padding:0 6px;border-radius:9px;margin-left:2px">${NUM(n)}</span>`:''; })()}</button>
       <div class="spacer"></div>
       <button class="btn btn-ghost btn-sm" onclick="exportCSV('produtos')">${ico('dl')} CSV</button>
       <button class="btn btn-ghost btn-sm" onclick="produtoImportar()">${ico('dl')} Importar planilha</button>
       <button class="btn btn-ghost btn-sm" onclick="modalCompradosJuntos(3)">${ico('layers')} Comprados juntos</button>
       <button class="btn btn-amber btn-sm" onclick="prodForm()">${ico('plus')} Novo produto</button>
     </div>
+    <div id="prod-prob-barra">${prodProbBarraHTML()}</div>
     <div class="card"><div class="tbl-wrap" id="prod-table">${prodTable(prodFiltrados(PROD_Q,''))}</div></div>`;
 }
+/* ===== PROBLEMAS DE CADASTRO =====
+   Botões que filtram a lista pelos produtos com algum dado faltando ou errado. Cada botão mostra
+   quantos produtos têm aquele problema; clicando, a lista fica só com eles (clique de novo para sair). */
+let PROD_PROB={aberto:false, k:''};
+const PROD_PROBLEMAS=[
+  {k:'ean',      rotulo:'Sem código de barras', cor:'var(--neg)', teste:p=>!((p.codigoBarras||'')+'').replace(/\D/g,'') && !(Array.isArray(p.codigosBarrasAdic)&&p.codigosBarrasAdic.length)},
+  {k:'ean_ruim', rotulo:'Código de barras inválido', cor:'var(--neg)', desc:'Não tem 8, 12, 13 ou 14 dígitos', teste:p=>{ const d=((p.codigoBarras||'')+'').replace(/\D/g,''); return !!d && ![8,12,13,14].includes(d.length); }},
+  {k:'preco',    rotulo:'Sem preço de venda', cor:'var(--neg)', teste:p=>!(+p.preco>0)},
+  {k:'custo',    rotulo:'Sem custo', cor:'#b45309', teste:p=>!(+p.custo>0)},
+  {k:'abaixo',   rotulo:'Preço abaixo do custo', cor:'#b45309', teste:p=>(+p.preco>0)&&(+p.custo>0)&&(+p.preco<+p.custo)},
+  {k:'ncm',      rotulo:'Sem NCM', cor:'#f59e0b', desc:'NCM ausente ou sem 8 dígitos — trava a nota fiscal', teste:p=>((p.ncm||'')+'').replace(/\D/g,'').length!==8},
+  {k:'cat',      rotulo:'Sem categoria', cor:'#7c3aed', teste:p=>!((p.categoria||'')+'').trim() || /^outros$/i.test((p.categoria||'')+'')},
+  {k:'grupo',    rotulo:'Sem grupo', cor:'#7c3aed', desc:'Sem grupo, ou com o grupo igual à categoria', teste:p=>!((p.grupo||'')+'').trim() || normTxt(p.grupo)===normTxt(p.categoria||'')},
+  {k:'sub',      rotulo:'Sem sub-grupo', cor:'#7c3aed', teste:p=>!((p.subgrupo||'')+'').trim()},
+  {k:'marca',    rotulo:'Sem marca', cor:'#2563eb', teste:p=>!((p.marca||'')+'').trim()},
+  {k:'un',       rotulo:'Sem unidade', cor:'#2563eb', teste:p=>!((p.unidade||'')+'').trim()},
+  {k:'sku',      rotulo:'Sem SKU', cor:'#2563eb', teste:p=>!((p.sku||'')+'').trim()},
+  {k:'nomedup',  rotulo:'Nome repetido', cor:'#0d9488', desc:'Dois ou mais produtos ativos com o mesmo nome', teste:(p,ctx)=>ctx.nomes[normTxt(p.nome||'')]>1},
+  {k:'eandup',   rotulo:'Código de barras repetido', cor:'#0d9488', teste:(p,ctx)=>{ const d=((p.codigoBarras||'')+'').replace(/\D/g,''); return !!d && ctx.eans[d]>1; }},
+];
+function prodProbContexto(){ const ativos=DB.all('produtos').filter(p=>p && (p.situacao||'ativo')!=='inativo'); const nomes={}, eans={};
+  ativos.forEach(p=>{ const n=normTxt(p.nome||''); if(n) nomes[n]=(nomes[n]||0)+1; const d=((p.codigoBarras||'')+'').replace(/\D/g,''); if(d) eans[d]=(eans[d]||0)+1; });
+  return {ativos, nomes, eans}; }
+function prodProblemasContagem(){ const ctx=prodProbContexto(); const c={}; let qualquer=0;
+  ctx.ativos.forEach(p=>{ let tem=false; PROD_PROBLEMAS.forEach(t=>{ try{ if(t.teste(p,ctx)){ c[t.k]=(c[t.k]||0)+1; tem=true; } }catch(e){} }); if(tem) qualquer++; });
+  return {c, qualquer}; }
+function prodProblemasTotal(){ try{ return prodProblemasContagem().qualquer; }catch(e){ return 0; } }
+function prodProblemasDe(p, ctx){ ctx=ctx||prodProbContexto(); return PROD_PROBLEMAS.filter(t=>{ try{ return t.teste(p,ctx); }catch(e){ return false; } }); }
+function prodProbBarraHTML(){ if(!PROD_PROB.aberto) return '';
+  const {c, qualquer}=prodProblemasContagem();
+  const btn=t=>`<button class="btn btn-sm ${PROD_PROB.k===t.k?'btn-amber':'btn-ghost'}" style="${PROD_PROB.k===t.k?'':('border:1px solid '+t.cor+';color:'+t.cor)}" title="${esc(t.desc||t.rotulo)}" onclick="prodProbFiltrar('${t.k}')">${t.rotulo} <b>(${NUM(c[t.k]||0)})</b></button>`;
+  return `<div class="card card-pad" style="margin-bottom:12px;display:flex;flex-direction:column;gap:8px">
+    <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap"><b style="font-size:13px">${ico('alert')} Problemas de cadastro</b><span class="t-mut" style="font-size:12px">${qualquer?NUM(qualquer)+' produto(s) ativo(s) com algum dado faltando ou errado. Clique num botão para ver só esses produtos.':'Nenhum problema encontrado nos produtos ativos.'}</span>
+      <div style="flex:1"></div>${PROD_PROB.k?`<button class="btn btn-ghost btn-sm" onclick="prodProbFiltrar('')">${ico('x')} Mostrar todos</button>`:''}<button class="btn btn-ghost btn-sm" onclick="exportCSV('produtos-problemas')" title="Exporta a lista de produtos com problema e o que falta em cada um">${ico('dl')} CSV dos problemas</button></div>
+    <div style="display:flex;gap:6px;flex-wrap:wrap">${PROD_PROBLEMAS.filter(t=>c[t.k]).map(btn).join('')}</div>
+  </div>`; }
+function prodProbToggle(){ PROD_PROB.aberto=!PROD_PROB.aberto; if(!PROD_PROB.aberto) PROD_PROB.k=''; viewProd(); }
+function prodProbFiltrar(k){ PROD_PROB.k=(PROD_PROB.k===k)?'':k; const el=document.getElementById('prod-prob-barra'); if(el) el.innerHTML=prodProbBarraHTML(); renderProdTable(); }
+function prodProbAplicar(lista){ if(!PROD_PROB.aberto || !PROD_PROB.k) return lista; const t=PROD_PROBLEMAS.find(x=>x.k===PROD_PROB.k); if(!t) return lista; const ctx=prodProbContexto();
+  return lista.filter(p=>(p.situacao||'ativo')!=='inativo' && (function(){ try{ return t.teste(p,ctx); }catch(e){ return false; } })()); }
 function prodInativarRapido(id){ const p=DB.get('produtos',id); if(!p) return;
   if(!confirm('Inativar "'+(p.nome||'produto')+'"? Ele deixa de aparecer no PDV e nos orçamentos, mas continua no cadastro.')) return;
   DB.update('produtos',id,{situacao:'inativo'});
@@ -8251,7 +8293,7 @@ function prodFiltroGrupo(v){ PROD_F.grupo=v; PROD_F.sub=''; prodFiltrosRedesenha
 function prodFiltroSub(v){ PROD_F.sub=v; renderProdTable(); }
 function prodFiltroMarca(v){ PROD_F.marca=v; renderProdTable(); }
 function prodFiltrados(q,flt){ q=(q||'').toLowerCase(); const toks=tokensDe(q);
-  const prods=DB.all('produtos').filter(p=>
+  const prods=prodProbAplicar(DB.all('produtos')).filter(p=>
        (!PROD_F.cat   || p.categoria===PROD_F.cat)
     && (!PROD_F.grupo || p.grupo===PROD_F.grupo)
     && (!PROD_F.sub   || p.subgrupo===PROD_F.sub)
@@ -10368,9 +10410,13 @@ function catRegistrar(nome, tipo){ nome=(''+(nome||'')).replace(/\s+/g,' ').trim
   const ex=DB.all('categorias').find(c=>catKey(c.nome||'')===catKey(nome));
   if(ex){ if(!ex.tipo && tipo) DB.update('categorias',ex.id,{tipo}); return ex; }
   return DB.insert('categorias',{nome, tipo:tipo||'produto'}); }
-function gruposDaCategoria(cat){ return DB.all('gruposProd').filter(g=>g.categoria===cat).sort((a,b)=>a.nome.localeCompare(b.nome)); }
-function subgruposDoGrupo(cat,grupo){ return DB.all('subgruposProd').filter(s=>s.categoria===cat&&s.grupo===grupo).sort((a,b)=>a.nome.localeCompare(b.nome)); }
-function viewCat(){ const tab=CAT_TAB;
+function gruposDaCategoria(cat){ const L=DB.all('gruposProd').filter(g=>g.categoria===cat); const vis=new Set(L.map(g=>normTxt(g.nome)));
+  DB.all('produtos').forEach(p=>{ if(p && p.categoria===cat && p.grupo && normTxt(p.grupo)!==normTxt(cat) && !vis.has(normTxt(p.grupo))){ vis.add(normTxt(p.grupo)); L.push({nome:p.grupo,categoria:cat}); } });
+  return L.sort((a,b)=>a.nome.localeCompare(b.nome)); }
+function subgruposDoGrupo(cat,grupo){ const L=DB.all('subgruposProd').filter(s=>s.categoria===cat&&s.grupo===grupo); const vis=new Set(L.map(s=>normTxt(s.nome)));
+  DB.all('produtos').forEach(p=>{ if(p && p.categoria===cat && p.grupo===grupo && p.subgrupo && !vis.has(normTxt(p.subgrupo))){ vis.add(normTxt(p.subgrupo)); L.push({nome:p.subgrupo,categoria:cat,grupo}); } });
+  return L.sort((a,b)=>a.nome.localeCompare(b.nome)); }
+function viewCat(){ const tab=CAT_TAB; try{ gruposSincronizarDosProdutos(); }catch(e){}
   const tabs=[['categorias','Categorias','layers'],['grupos','Grupos','grid'],['subgrupos','Sub-grupos','list'],['marcas','Marcas','box'],['troca','Troca em lote','edit']];
   document.getElementById('view').innerHTML=`
    <div class="bi-banner" style="margin-bottom:14px"><div>${ico('layers')}</div><div><b>Classificação de produtos</b><p>Organize seus produtos em <b>Categoria → Grupo → Sub-grupo</b>. Cadastre aqui antes de usar no cadastro do produto. Cada grupo pertence a uma categoria, e cada sub-grupo pertence a um grupo.</p></div></div>
@@ -10503,7 +10549,19 @@ function catUnificarDuplicadas(){ const dups=catDuplicadas(); if(!dups.length){ 
     DB.remove('categorias', d.remover.id); });
   toast(dups.length+' categoria(s) unificada(s)'+(movidos?(' · '+movidos+' produto(s) remanejado(s)'):''),'ok');
   go('cat'); }
+/* GRUPOS E SUB-GRUPOS QUE EXISTEM NOS PRODUTOS MAS NÃO ESTÃO CADASTRADOS: registra.
+   Acontece quando a planilha foi importada por uma versão antiga, quando os produtos vieram da
+   nuvem antes das listas, ou quando o produto foi salvo com um grupo digitado. Roda ao abrir
+   Categorias de Produtos, o cadastro do produto e no fim da importação. */
+function gruposSincronizarDosProdutos(){ let g=0, sg=0; try{
+    const temG=new Set(DB.all('gruposProd').map(x=>normTxt((x.categoria||'')+'|'+(x.nome||''))));
+    const temS=new Set(DB.all('subgruposProd').map(x=>normTxt((x.categoria||'')+'|'+(x.grupo||'')+'|'+(x.nome||''))));
+    DB.all('produtos').forEach(p=>{ if(!p) return; const cat=(p.categoria||'').trim(), gr=(p.grupo||'').trim(), sb=(p.subgrupo||'').trim(); if(!cat) return;
+      if(gr && normTxt(gr)!==normTxt(cat)){ const k=normTxt(cat+'|'+gr); if(!temG.has(k)){ temG.add(k); DB.insert('gruposProd',{nome:gr,categoria:cat}); g++; } }
+      if(sb && gr){ const k=normTxt(cat+'|'+gr+'|'+sb); if(!temS.has(k)){ temS.add(k); DB.insert('subgruposProd',{nome:sb,categoria:cat,grupo:gr}); sg++; } } });
+  }catch(e){} return {grupos:g, subgrupos:sg}; }
 function categoriasImportarDeProdutos(){
+  { const r=gruposSincronizarDosProdutos(); if(r.grupos||r.subgrupos) toast(NUM(r.grupos)+' grupo(s) e '+NUM(r.subgrupos)+' sub-grupo(s) registrados a partir dos produtos','ok'); }
   const prods=DB.all('produtos');
   if(!prods.length){ toast('Nenhum produto carregado nesta sessão. Faça "Baixar da nuvem" e tente de novo.','err'); return; }
   const vistos=new Set(categoriasProduto().map(c=>normTxt(c.nome)));
@@ -24029,6 +24087,12 @@ function exportCSV(col){
       const lucro=v.total-v.custoTotal;
       rows.push([fDate(v.data),v.clienteNome,v.itens.reduce((s,i)=>s+i.qtd,0),v.formaPagamento,csvNum(v.desconto),csvNum(v.total),csvNum(v.custoTotal),csvNum(lucro),v.status]);
     });
+  } else if(col==='produtos-problemas'){
+    rows=[['SKU','Produto','Categoria','Grupo','Sub-grupo','Marca','Código de barras','NCM','Custo','Preço','Unidade','Problemas']];
+    const ctx=prodProbContexto();
+    ctx.ativos.forEach(p=>{ const pr=prodProblemasDe(p,ctx); if(!pr.length) return;
+      rows.push([p.sku,p.nome,p.categoria,p.grupo,p.subgrupo,p.marca,p.codigoBarras,p.ncm,csvNum(p.custo),csvNum(p.preco),p.unidade,pr.map(t=>t.rotulo).join(' | ')]); });
+    col='produtos-problemas';
   } else if(col==='produtos'){
     rows=[['SKU','Produto','Categoria','Marca','Custo','Preço','Margem %','Estoque','Estoque mín.','Unidade','Valor em estoque (custo)']];
     DB.all('produtos').forEach(p=>{ const margem=p.preco?(p.preco-p.custo)/p.preco*100:0;
@@ -28261,7 +28325,7 @@ function importProdArquivo(file, opts){ opts=opts||{}; if(!file) return; const r
       // grupo e sub-grupo vêm das colunas próprias; sem coluna de grupo, o grupo repete a categoria (como antes)
       data.grupo=((obj.grupo==null?'':obj.grupo)+'').trim()||data.categoria; data.subgrupo=((obj.subgrupo==null?'':obj.subgrupo)+'').trim();
       data.cor=colorFor(data.categoria);
-      try{ if(data.grupo!==data.categoria) prodGrupoRegistrar(data.categoria, data.grupo); if(data.subgrupo) prodSubgrupoRegistrar(data.categoria, data.grupo, data.subgrupo); }catch(e){}
+
       // Mesmo nome com SKU DIFERENTE é outro produto (cores/tamanhos com a mesma descrição): só casa pelo
       // nome quando a linha não tem SKU ou quando o produto existente ainda não tem SKU.
       const _pn=byNome.get(nome.toLowerCase());
@@ -28274,11 +28338,12 @@ function importProdArquivo(file, opts){ opts=opts||{}; if(!file) return; const r
     const dd=DB._load(); dd.categorias=dd.categorias||[]; const ex=new Set(dd.categorias.map(c=>(c.nome||'').trim().toLowerCase())); const vis=new Set(); let catsNovas=0;
     prods.forEach(p=>{ const c=(p.categoria||'').trim(); if(!c) return; const k=c.toLowerCase(); if(vis.has(k))return; vis.add(k); if(!ex.has(k)){ dd.categorias.push({id:uid(), nome:c, cor:colorFor(c)}); ex.add(k); catsNovas++; } });
     DB._persist();   // grava UMA vez só (não por linha) — evita o travamento
+    const _gs=gruposSincronizarDosProdutos();   // grupos e sub-grupos da planilha entram nas listas
     // envia à nuvem uma única vez
     try{ if((typeof nuvemCfg==='function') && nuvemCfg().url && nuvemCfg().key && !(typeof _nuvemOffline!=='undefined'&&_nuvemOffline)){
       if(substituir && typeof nuvemSalvarSubstituir==='function') nuvemSalvarSubstituir(); else if(typeof nuvemSalvar==='function') nuvemSalvar();
     } }catch(e){}
-    if(res) res.innerHTML=`<div class="card card-pad" style="background:var(--amber-soft)"><b>${opts.inclusao?'Inclusão concluída (catálogo preservado):':'Importação concluída:'}</b> ${novos} novo(s), ${atual} atualizado(s)${catsNovas?`, ${catsNovas} categoria(s) cadastrada(s)`:''}${pulados?`, ${pulados} ignorado(s) (sem nome)`:''}.</div>`;
+    if(res) res.innerHTML=`<div class="card card-pad" style="background:var(--amber-soft)"><b>${opts.inclusao?'Inclusão concluída (catálogo preservado):':'Importação concluída:'}</b> ${novos} novo(s), ${atual} atualizado(s)${catsNovas?`, ${catsNovas} categoria(s) cadastrada(s)`:''}${(_gs.grupos||_gs.subgrupos)?`, ${NUM(_gs.grupos)} grupo(s) e ${NUM(_gs.subgrupos)} sub-grupo(s) registrados`:''}${pulados?`, ${pulados} ignorado(s) (sem nome)`:''}.</div>`;
     toast(`Produtos: ${novos} novos, ${atual} atualizados`,'ok');
   }catch(err){ if(res) res.innerHTML=`<span style="color:var(--neg)">Erro ao ler a planilha: ${esc(err.message)}</span>`; }
   };
