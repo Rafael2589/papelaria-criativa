@@ -48,7 +48,7 @@ const CONFIG_EMPRESA = {
      Aparece no topo do menu e no rodapé das Configurações. Troque a cada publicação.
      MANTENHA O FORMATO 'vDD/MM-X' — é ele que o sistema usa para comparar as máquinas
      da loja e avisar quando alguma ficou para trás.                                  */
-  versao: 'v02/10-D',
+  versao: 'v02/10-F',
 
   /* 4) NUVEM (Supabase)  ------------------------------------------------------------
      Cole aqui a Project URL e a chave PUBLISHABLE do projeto Supabase DESTA empresa
@@ -216,7 +216,7 @@ input::placeholder,textarea::placeholder{-webkit-text-fill-color:var(--muted);co
 .period-pick{display:flex;background:var(--surface-2);border:1px solid var(--line);border-radius:10px;padding:3px;gap:2px}
 .period-pick button{padding:6px 11px;border-radius:7px;font-size:12.5px;font-weight:600;color:var(--muted);transition:.12s}
 .period-pick button.on{background:var(--surface);color:var(--ink);box-shadow:var(--sh)}
-.content{padding:26px 28px 60px;max-width:1400px;width:100%}
+.content{padding:26px 28px 60px;max-width:none;width:100%}   /* ocupa toda a largura: nada de faixa em branco à direita em telas largas */
 
 /* ---------- Generic UI ---------- */
 .btn{display:inline-flex;align-items:center;gap:7px;padding:9px 16px;border-radius:10px;font-weight:600;font-size:13.5px;transition:.14s;white-space:nowrap}
@@ -3979,7 +3979,7 @@ function renderPDV(){
   <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:14px">
     <div style="display:flex;gap:8px;flex-wrap:wrap">
       <button class="btn btn-ghost btn-sm" onclick="go('orc')">${ico('plus')} Novo orçamento</button>
-      <button class="btn btn-amber btn-sm" onclick="pdvImportPed()">${ico('dl')} Importar pedido</button>
+      <button class="btn btn-amber btn-sm" onclick="pdvImportPed()" title="Atalho: F2">${ico('dl')} Importar pedido (F2)</button>
       ${(function(){ const n=DB.all('vendas').filter(v=>v&&v.status==='receber_local').length; return `<button class="btn btn-ghost btn-sm" onclick="pdvBuscarReceberLocal()">${ico('money')} Receber no local${n?` <span class="badge" style="background:var(--amber-d);color:#fff;font-weight:800;font-size:10.5px;padding:0 6px;border-radius:9px;margin-left:2px">${n}</span>`:''}</button>`; })()}
     </div>
   </div>
@@ -3987,8 +3987,8 @@ function renderPDV(){
        O canal começa SEM nada escolhido: quem vende decide de onde veio a venda. -->
   <div id="pdv-notas-pend">${pdvNotasPendentesHTML()}</div>
   <div class="orc-top">
-    <div class="orc-sel" style="gap:6px">${ico('cli')}${acHTML({id:'cart-cli',col:'clientes',value:CART.clienteId||'',ph:'Cliente [F2] — nome, CPF ou CNPJ',proximo:'cart-vend',soDigitando:true,onchange:'pdvSetCliente(this.value)',style:'border:none;background:none;outline:none;color:var(--ink);width:100%'})}<button class="btn-icon btn-ghost" onclick="clienteAddModal('pdv')" title="Cadastrar cliente" style="width:28px;height:28px;flex:0 0 auto">${ico('plus')}</button></div>
-    <div class="orc-sel">${ico('people')}${acHTML({id:'cart-vend',col:'vendedores',value:CART.vendedorId||'',ph:'Vendedor [F3] — digite o nome',proximo:'cart-canal',onchange:'pdvSetVend(this.value)',style:'border:none;background:none;outline:none;color:var(--ink);width:100%'})}</div>
+    <div class="orc-sel" style="gap:6px">${ico('cli')}${acHTML({id:'cart-cli',col:'clientes',value:CART.clienteId||'',ph:'Cliente — nome, CPF ou CNPJ',proximo:'cart-vend',soDigitando:true,onchange:'pdvSetCliente(this.value)',style:'border:none;background:none;outline:none;color:var(--ink);width:100%'})}<button class="btn-icon btn-ghost" onclick="clienteAddModal('pdv')" title="Cadastrar cliente" style="width:28px;height:28px;flex:0 0 auto">${ico('plus')}</button></div>
+    <div class="orc-sel">${ico('people')}${acHTML({id:'cart-vend',col:'vendedores',value:CART.vendedorId||'',ph:'Vendedor — digite o nome',proximo:'cart-canal',onchange:'pdvSetVend(this.value)',style:'border:none;background:none;outline:none;color:var(--ink);width:100%'})}</div>
     <div class="orc-sel"><select id="cart-canal" onchange="CART.canal=this.value;acIrPara('pdv-q')" onfocus="abrirLista(this)" onkeydown="if(event.key==='Enter'){event.preventDefault();acIrPara('pdv-q');}">
       <option value="" ${!CART.canal?'selected':''}>Canal de venda…</option>
       ${['Balcão','WhatsApp','Telefone','Externo'].map(c=>`<option ${CART.canal===c?'selected':''}>${c}</option>`).join('')}</select></div>
@@ -4045,7 +4045,7 @@ function renderPDV(){
         <!-- As formas de pagamento ficam SÓ na tela de pagamento (F4 / Finalizar venda). -->
         <div id="cart-totals">${cartTotals()}</div>
         <button class="btn btn-amber" style="width:100%;justify-content:center;margin-top:14px;padding:13px" onclick="pdvPagtoModal()">${ico('check')} Finalizar venda (F4)</button>
-        <button class="btn btn-ghost" style="width:100%;justify-content:center;margin-top:8px;border:1px solid var(--line)" onclick="pdvSalvarPedido()" title="Guarda esta venda como PEDIDO PENDENTE (sem faturar, sem mexer no caixa nem no estoque). Depois é só clicar em Importar pedido para buscar e faturar.">${ico('doc')} ${CART.faturaPedidoId?('Salvar alterações do pedido'+(CART.faturaPedidoNumero?(' Nº '+CART.faturaPedidoNumero):'')):'Salvar pedido'}</button>
+        <button class="btn btn-ghost" style="width:100%;justify-content:center;margin-top:8px;border:1px solid var(--line)" onclick="pdvSalvarPedido()" title="Guarda esta venda como PEDIDO PENDENTE (sem faturar, sem mexer no caixa nem no estoque). Depois é só clicar em Importar pedido para buscar e faturar.">${ico('doc')} ${CART.faturaPedidoId?('Salvar alterações do pedido'+(CART.faturaPedidoNumero?(' Nº '+CART.faturaPedidoNumero):'')):'Salvar pedido'} (F3)</button>
         <button class="btn btn-ghost btn-sm" style="width:100%;justify-content:center;margin-top:8px;color:var(--amber-d)" onclick="pdvReceberLocal()">${ico('money')} Receber no local (enviar para Pedidos)</button>
         <button class="btn btn-ghost btn-sm" style="width:100%;justify-content:center;margin-top:8px" onclick="pixModalPDV()">${ico('money')} Cobrar via PIX (copia e cola / QR)</button>
         `:`<div class="empty" style="padding:30px 14px">${ico('money')}<h4>Sem itens</h4><p class="t-mut">Adicione produtos para informar pagamento e finalizar.</p></div>`}
@@ -4065,10 +4065,12 @@ function renderPDV(){
 function pdvAjustarAlturaItens(){ const calc=()=>{ try{
     const itens=document.getElementById('cart-items'); const grid=document.querySelector('.pdv-grid'); if(!itens||!grid) return;
     const side=grid.querySelector('.cart-side > .card'); const card=itens.closest('.card'); if(!side||!card) return;
-    if(window.innerWidth<1000){ itens.style.maxHeight=''; return; }   // tela estreita: as colunas ficam uma embaixo da outra
+    if(window.innerWidth<1000){ itens.style.maxHeight=''; card.style.minHeight=''; return; }   // tela estreita: as colunas ficam uma embaixo da outra
+    card.style.minHeight='';
     const outros=card.offsetHeight-itens.offsetHeight;                 // cabeçalho, sugestões e espaçamentos do quadro
     const alvo=Math.round(side.offsetHeight-outros);
-    itens.style.maxHeight=Math.max(340, alvo)+'px'; }catch(e){} };
+    itens.style.maxHeight=Math.max(340, alvo)+'px';
+    card.style.minHeight=side.offsetHeight+'px'; }catch(e){} };
   requestAnimationFrame(calc); setTimeout(calc,120); }
 window.addEventListener('resize', ()=>{ try{ if(STATE.route==='pdv') pdvAjustarAlturaItens(); }catch(e){} });
 function pdvParseQty(raw){ const m=(''+(raw||'')).match(/^\s*(\d+(?:[.,]\d+)?)\s*\*\s*(.*)$/); if(m){ const q=parseFloat(m[1].replace(',','.')); return {qty:(q>0?q:null), rest:m[2]}; } return {qty:null, rest:raw||''}; }
@@ -4987,6 +4989,13 @@ window.addEventListener('keydown', function(e){
   if(e.key==='F4' && rota==='pdv'){ e.preventDefault();
     if(pdvPagAberta()) pdvPagFinalizar(); else pdvPagtoModal(); return; }
   if(e.key==='Escape' && pdvPagAberta()){ setTimeout(()=>{ try{ renderPDV(); }catch(_){} },30); return; }
+  // F2 = Importar pedido · F3 = Salvar pedido (só no PDV e sem nenhuma janela aberta;
+  // com a tela de pagamento aberta, F2/F3 continuam escolhendo a forma de pagamento)
+  if((e.key==='F2'||e.key==='F3') && rota==='pdv' && !pdvPagAberta() && !(document.getElementById('modal-bg')||{classList:{contains:()=>false}}).classList.contains('open')){
+    e.preventDefault();
+    if(e.key==='F2'){ try{ pdvImportPed(); }catch(_){} }
+    else { if(CART.itens.length){ try{ pdvSalvarPedido(); }catch(_){} } else toast('Sem itens no carrinho para salvar como pedido','err'); }
+    return; }
   if(pdvPagAberta() && /^F\d{1,2}$/.test(e.key)){ const k=PDV_PAG_TECLAS.indexOf(e.key);
     if(k>=0 && k<FORMAS_PAG_ESCOLHA.length){ e.preventDefault(); pdvPagEscolher(k); } }
 });
@@ -21328,10 +21337,16 @@ function orcRefreshItens(idxNovo, sempreRolar){ const it=document.getElementById
 function prodSearchSort(list, q){ q=normTxt((q||'').trim());
   if(!q) return list.slice().sort(cmpNome);
   const fw=q.split(/\s+/)[0]||q;
+  // SKU ou código de barras DIGITADO EXATAMENTE vem primeiro (e por isso já fica selecionado):
+  // a busca inteira igual ao SKU/código = -2; um dos termos igual ao SKU/código = -1.
+  const toks=q.split(/\s+/).filter(Boolean);
+  const codigos=o=>{ const L=[normTxt(((o&&o.sku)||'')+'').trim(), ((o&&o.codigoBarras)||'')+''].concat(Array.isArray(o&&o.codigosBarrasAdic)?o.codigosBarrasAdic.map(x=>x+''):[]);
+    return L.map(x=>normTxt(x).trim()).filter(Boolean); };
   // relevância calculada UMA vez por produto (antes era 2x por comparação)
   const rank=new Map();
-  const rk=o=>{ let r=rank.get(o); if(r===undefined){ const n=ordKey(o);
-      r = n.startsWith(q)?0 : n.startsWith(fw)?1 : ((' '+n).indexOf(' '+fw)>=0?2 : (n.indexOf(fw)>=0?3:4)); rank.set(o,r); } return r; };
+  const rk=o=>{ let r=rank.get(o); if(r===undefined){ const n=ordKey(o); const cs=codigos(o);
+      r = cs.includes(q)?-2 : (toks.length>1 && toks.some(t=>cs.includes(t)))?-1
+        : n.startsWith(q)?0 : n.startsWith(fw)?1 : ((' '+n).indexOf(' '+fw)>=0?2 : (n.indexOf(fw)>=0?3:4)); rank.set(o,r); } return r; };
   return list.slice().sort((a,b)=>{ const ra=rk(a), rb=rk(b); if(ra!==rb) return ra-rb; return cmpNome(a,b); }); }
 function prodInputResolve(id){ const el=document.getElementById(id); const nome=((el&&el.value)||'').trim().toLowerCase(); if(!nome)return null; const all=DB.all('produtos'); return all.find(p=>(p.nome||'').toLowerCase()===nome) || all.find(p=>(p.sku||'').toLowerCase()===nome) || all.find(p=>(p.nome||'').toLowerCase().includes(nome)) || null; }
 function prodDatalistOpts(excludeId){ return DB.all('produtos').filter(p=>p.id!==excludeId&&(p.situacao||'ativo')!=='inativo').slice().sort((a,b)=>(a.nome||'').localeCompare(b.nome||'')).map(p=>`<option value="${esc(p.nome)}"></option>`).join(''); }
@@ -27717,8 +27732,8 @@ function confChecklist(){ const e=DB._load().empresa||{}; const fc=DB._load().fi
   ];
   return `<div style="margin-bottom:10px">${items.map(([l,ok])=>`<div class="conf-row"><span class="conf-ic ${ok?'ok':'no'}">${ok?ico('check'):ico('x')}</span><span>${l}</span></div>`).join('')}</div>`;
 }
-function importProdModelo(){ const linhas=[['nome','sku','codigo de barras','categoria','grupo','sub grupo','unidade','custo','preco','estoque','estoque minimo','ncm','status','CFOP_VENDA_ES','CFOP_VENDA_OUTRO_ESTADO','CSOSN_PADRAO','marca'],
-  ['Caderno 96 folhas 1/4','CAD96','7891234567890','Papelaria e Escritório','Cadernos e Blocos','Cadernos','UN','8,90','16,90','120','20','4820.20.00','Ativo','5102','6102','102','Exemplo']];
+function importProdModelo(){ const linhas=[['nome','sku','codigo de barras','codigos de barras adicionais','categoria','grupo','sub grupo','unidade','custo','preco','estoque','estoque minimo','ncm','status','CFOP_VENDA_ES','CFOP_VENDA_OUTRO_ESTADO','CSOSN_PADRAO','marca'],
+  ['Caderno 96 folhas 1/4','CAD96','7891234567890','17891234567897, 27891234567894','Papelaria e Escritório','Cadernos e Blocos','Cadernos','UN','8,90','16,90','120','20','4820.20.00','Ativo','5102','6102','102','Exemplo']];
   const csv=linhas.map(l=>l.map(c=>/[;,\n"]/.test(c)?'"'+String(c).replace(/"/g,'""')+'"':c).join(';')).join('\r\n');
   const blob=new Blob(['\ufeff'+csv],{type:'text/csv;charset=utf-8'}); const url=URL.createObjectURL(blob);
   const a=document.createElement('a'); a.href=url; a.download='modelo_produtos.csv'; document.body.appendChild(a); a.click(); a.remove(); setTimeout(()=>URL.revokeObjectURL(url),1000); }
@@ -27729,6 +27744,7 @@ function impProdKey(h){ h=(h||'').toString().toLowerCase().trim().replace(/[áà
   if(/csosn/.test(h)) return 'cst';
   if(/cfop/.test(h)) return /outro|inter/.test(h)?'cfopInter':'cfop';
   if(/nome|descri|produto/.test(h)) return 'nome';
+  if(/(barra|ean|gtin|codigo).*(adicion|extra|outros|secund)|(adicion|extra|secund).*(barra|ean|gtin|codigo)/.test(h)) return 'codigosBarrasAdic';
   if(/barra|ean|gtin/.test(h)) return 'codigoBarras';
   if(/custo|compra/.test(h)) return 'custo';
   if(/sku|codigo|cod\b|ref/.test(h)) return 'sku';
@@ -28375,6 +28391,9 @@ function importProdArquivo(file, opts){ opts=opts||{}; if(!file) return; const r
         categoria:(obj.categoria||'Outros').toString().trim().toUpperCase()||'OUTROS', unidade:((obj.unidade||'UN').toString().trim()||'UN').toUpperCase(),
         custo:impProdNum(obj.custo), preco:impProdNum(obj.preco), estoque:impProdNum(obj.estoque), estoqueMinimo:impProdNum(obj.estoqueMinimo),
         ncm:(obj.ncm==null?'':obj.ncm).toString().replace(/\.0$/,'').trim(), cest:(obj.cest==null?'':obj.cest).toString().trim(), marca:marcaCanon((obj.marca||'').toString().trim()) };
+      // códigos de barras adicionais: separados por vírgula, | ou espaço; sem repetir o principal
+      if(heads.includes('codigosBarrasAdic')){ const prin=(data.codigoBarras||'').replace(/\D/g,'');
+        data.codigosBarrasAdic=[...new Set(((obj.codigosBarrasAdic==null?'':obj.codigosBarrasAdic)+'').split(/[,;|\/\s]+/).map(x=>x.replace(/\.0$/,'').trim()).filter(x=>x && x.replace(/\D/g,'')!==prin))]; }
       if(obj.cfop!=null && obj.cfop!=='') data.cfop=(''+obj.cfop).replace(/\.0$/,'').trim();
       if(obj.cfopInter!=null && obj.cfopInter!=='') data.cfopInter=(''+obj.cfopInter).replace(/\.0$/,'').trim();
       if(obj.cst!=null && obj.cst!=='') data.cst=(''+obj.cst).replace(/\.0$/,'').trim();
