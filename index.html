@@ -48,7 +48,7 @@ const CONFIG_EMPRESA = {
      Aparece no topo do menu e no rodapé das Configurações. Troque a cada publicação.
      MANTENHA O FORMATO 'vDD/MM-X' — é ele que o sistema usa para comparar as máquinas
      da loja e avisar quando alguma ficou para trás.                                  */
-  versao: 'v01/10-J',
+  versao: 'v01/10-K',
 
   /* 4) NUVEM (Supabase)  ------------------------------------------------------------
      Cole aqui a Project URL e a chave PUBLISHABLE do projeto Supabase DESTA empresa
@@ -14862,7 +14862,13 @@ function impArquivoHTML(){ const emp=DB._load().empresa||{};
 function sefazConfig(){ const c=DB._load().sefazConfig||{}; const emp=DB._load().empresa||{}; const f=(typeof fiscalCfg==='function')?fiscalCfg():{};
   // Se a Focus já está configurada e não há integrador próprio, ela é a origem padrão.
   const padraoOrigem = (f && (f.focusUrl||'').trim() && !((c.endpoint||'').trim())) ? 'focus' : 'integrador';
-  return Object.assign({origem:padraoOrigem,endpoint:'',apiKey:'',cnpj:emp.cnpj||'',modoDemo:true,ultimoNSU:0,ultimaSync:null,ultimoErro:'',ultimoErroEm:''}, c); }
+  // NUNCA simula por padrão: a busca só traz notas REAIS (Focus NFe / integrador). O modo demonstração
+  // existe só para instalação de teste e precisa ser ligado de propósito; com o Focus configurado ele é ignorado.
+  const cfg=Object.assign({origem:padraoOrigem,endpoint:'',apiKey:'',cnpj:emp.cnpj||'',modoDemo:false,ultimoNSU:0,ultimaSync:null,ultimoErro:'',ultimoErroEm:''}, c);
+  if(cfg.modoDemo && f && (f.focusUrl||'').trim()) cfg.modoDemo=false;
+  // sem integrador próprio e com o Focus configurado: a origem é o Focus (mesmo que a configuração antiga diga 'integrador')
+  if(cfg.origem!=='focus' && !((cfg.endpoint||'').trim()) && f && (f.focusUrl||'').trim()) cfg.origem='focus';
+  return cfg; }
 function saveSefazConfig(patch){ const d=DB._load(); d.sefazConfig=cfgStamp(Object.assign(sefazConfig(),patch||{})); try{ nuvemConfMarcar(); }catch(e){} DB._persist(); }
 function impSefazHTML(){ const c=sefazConfig();
   return `<div class="bi-banner" style="margin-bottom:16px"><div>${ico('alert')}</div>
@@ -14882,7 +14888,8 @@ function impSefazHTML(){ const c=sefazConfig();
        <div class="field"><label>CNPJ da empresa</label><input id="sf-cnpj" value="${esc(c.cnpj)}" placeholder="00.000.000/0000-00"></div></div>
      <div class="field"><label>Referência (ref) <span class="t-mut" style="font-weight:400">— só se a sua Edge Function exigir; em branco, usa o CNPJ</span></label>
        <input id="sf-ref" value="${esc(c.ref||'')}" placeholder="deixe em branco para enviar o CNPJ"></div>`}
-     <div class="switch-row" onclick="sefazToggleDemo()"><div><b>Modo demonstração</b><p class="t-mut">Simula a busca da SEFAZ com notas de exemplo (sem integrador real).</p></div><span class="switch ${c.modoDemo?'on':''}" id="sw-demo"></span></div>
+     ${(fiscalCfg().focusUrl||'').trim()?`<div class="card card-pad" style="background:var(--pos-soft);color:var(--pos);font-size:12.5px">${ico('check')} <b>Busca real ligada.</b> As notas vêm da SEFAZ pelo Focus NFe, para o CNPJ da empresa. Nenhuma nota de exemplo é criada.</div>`
+     :`<div class="switch-row" onclick="sefazToggleDemo()"><div><b>Modo demonstração</b><p class="t-mut">Desligado por padrão. Só para instalação de teste: simula a busca com notas de exemplo. Com o Focus NFe configurado ele é ignorado.</p></div><span class="switch ${c.modoDemo?'on':''}" id="sw-demo"></span></div>`}
      <div style="display:flex;gap:10px;justify-content:space-between;align-items:center;margin-top:14px;flex-wrap:wrap">
        <span class="t-mut" style="font-size:12px">${c.ultimaSync?('Última sincronização: '+esc(c.ultimaSync)+' · NSU '+c.ultimoNSU):'Nunca sincronizado'}</span>
        <div style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn btn-ghost btn-sm" onclick="fiscalVerificar()" title="Roda TODAS as verificações fiscais de uma vez e mostra um relatório">${ico('shield')} Verificar fiscal</button><button class="btn btn-ghost btn-sm" onclick="sefazZerarNSU()" title="Zera o ponteiro NSU e reconsulta todos os documentos dos últimos 90 dias (não duplica notas já lançadas)">Buscar desde o início</button><button class="btn btn-ghost btn-sm" onclick="sefazSalvar()">Salvar</button>
