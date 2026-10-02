@@ -48,7 +48,7 @@ const CONFIG_EMPRESA = {
      Aparece no topo do menu e no rodapé das Configurações. Troque a cada publicação.
      MANTENHA O FORMATO 'vDD/MM-X' — é ele que o sistema usa para comparar as máquinas
      da loja e avisar quando alguma ficou para trás.                                  */
-  versao: 'v02/10-F',
+  versao: 'v02/10-G',
 
   /* 4) NUVEM (Supabase)  ------------------------------------------------------------
      Cole aqui a Project URL e a chave PUBLISHABLE do projeto Supabase DESTA empresa
@@ -1821,6 +1821,16 @@ const DB = {
           if(cl) out[k]=cl;
         }
       });
+      // MARCAS DE EXCLUSÃO (tombstones) — com a nuvem ligada, as das coleções que vivem na nuvem/IndexedDB
+      // já estão guardadas lá (o IndexedDB recebe as marcas de cada coleção e a nuvem guarda a exclusão).
+      // No navegador ficam só as dos últimos 7 dias, que cobrem o que ainda não subiu. Antes ficavam TODAS:
+      // apagar ou reimportar o catálogo deixava dezenas de milhares de marcas e enchia os ~5 MB do site.
+      try{ if(out._meta && out._meta.del && typeof out._meta.del==='object'){
+        const corte=new Date(Date.now()-7*86400000).toISOString(); const del2={};
+        Object.keys(out._meta.del).forEach(col=>{ const m=out._meta.del[col]||{};
+          if(LOCAL_KEEP.indexOf(col)>=0 || LOCAL_PERSIST.indexOf(col)>=0){ del2[col]=m; return; }   // coleção guardada aqui: marcas inteiras
+          const r={}; for(const id in m){ if((''+m[id])>=corte) r[id]=m[id]; } if(Object.keys(r).length) del2[col]=r; });
+        out._meta=Object.assign({}, out._meta, {del:del2}); } }catch(e){}
     }
     return out; },
   _bulk:0,
@@ -28586,6 +28596,8 @@ function _ehImagem(v){ return typeof v==='string' && (v.indexOf('data:image')===
 function analiseArmazenamento(){
   const d=DB._load(); const tam=v=>{ try{ return (JSON.stringify(v)||'').length; }catch(e){ return 0; } };
   const linhas=[]; let imgBytes=0, imgCount=0;
+  try{ const md=(d._meta&&d._meta.del)||{}; let nDel=0; Object.keys(md).forEach(c=>{ nDel+=Object.keys(md[c]||{}).length; });
+    if(nDel) linhas.push({k:'marcas de exclusão ('+NUM(nDel)+')', bytes:tam(md), n:nDel, imgs:0, ib:0}); }catch(e){}
   Object.keys(d).forEach(k=>{ if(k==='_meta') return; const v=d[k]; const bytes=tam(v); let imgs=0, ib=0;
     if(Array.isArray(v)) v.forEach(rec=>{ if(rec&&typeof rec==='object') Object.keys(rec).forEach(f=>{ if(_ehImagem(rec[f])){ imgs++; ib+=rec[f].length; } }); });
     else if(v&&typeof v==='object') Object.keys(v).forEach(f=>{ if(_ehImagem(v[f])){ imgs++; ib+=(''+v[f]).length; } });
