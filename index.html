@@ -48,7 +48,7 @@ const CONFIG_EMPRESA = {
      Aparece no topo do menu e no rodapé das Configurações. Troque a cada publicação.
      MANTENHA O FORMATO 'vDD/MM-X' — é ele que o sistema usa para comparar as máquinas
      da loja e avisar quando alguma ficou para trás.                                  */
-  versao: 'v02/10-C',
+  versao: 'v02/10-D',
 
   /* 4) NUVEM (Supabase)  ------------------------------------------------------------
      Cole aqui a Project URL e a chave PUBLISHABLE do projeto Supabase DESTA empresa
@@ -784,12 +784,15 @@ html.sync-lock #app, html.sync-lock .app, html.sync-lock #sidebar, html.sync-loc
 .conf-ic svg{width:13px;height:13px}
 .conf-ic.ok{background:var(--pos-soft);color:var(--pos)}
 .conf-ic.no{background:var(--amber-soft);color:var(--amber-d)}
-.cart-row2{padding:11px 2px;border-bottom:1px solid var(--line)}
+/* Item do carrinho numa linha só: Retira · nome · quantidade · R$ · % · lixeira · subtotal.
+   Em tela estreita os controles descem para a linha de baixo. */
+.cart-row2{display:flex;align-items:center;gap:10px;padding:9px 2px;border-bottom:1px solid var(--line)}
 .cart-row2:last-child{border-bottom:none}
-.cr2-top{display:flex;justify-content:space-between;align-items:flex-start;gap:10px}
-.cr2-top > .cr-name{flex:1;min-width:0}   /* nome ocupa o espaço: a marcação 'Retira' fica à esquerda e o subtotal à direita */
-.cr2-sub{font-size:14px;white-space:nowrap}
-.cr2-bot{display:flex;align-items:center;gap:8px;margin-top:8px;flex-wrap:wrap}
+.cr2-top{display:flex;align-items:center;gap:10px;flex:1;min-width:0}
+.cr2-top > .cr-name{flex:1;min-width:0}
+.cr2-sub{font-size:14px;white-space:nowrap;min-width:84px;text-align:right}
+.cr2-bot{display:flex;align-items:center;gap:6px;flex:0 0 auto}
+@media(max-width:1100px){ .cart-row2{flex-wrap:wrap} .cr2-top{flex-basis:100%} .cr2-bot{flex-wrap:wrap} .cr2-sub{margin-left:auto} }
 .cr2-inp{display:flex;align-items:center;gap:4px;background:var(--surface);border:1px solid var(--line);border-radius:8px;padding:3px 8px}
 .cr2-inp label{font-size:11px;color:var(--muted);font-weight:700}
 .cr2-inp input{width:62px;border:none;background:transparent;font-size:13px;text-align:right;outline:none;color:var(--ink);padding:2px 0}
@@ -4180,7 +4183,6 @@ function cartRows(){
           <span style="font-size:11px;font-weight:${it.retiradoLoja?'700':'500'}">Retira</span></label>
         <div class="cr-name"><div class="n">${esc(it.nome)}${it.kitId?` <span style="background:#7c3aed;color:#fff;font-size:9px;font-weight:700;padding:1px 5px;border-radius:8px;vertical-align:middle">KIT</span>`:''}${it.madeira?` <span style="background:#7c3aed;color:#fff;font-size:9px;font-weight:700;padding:1px 5px;border-radius:8px;vertical-align:middle">MADEIRA</span>`:''}${it.retiradoLoja?` <span style="background:#dc2626;color:#fff;font-size:9px;font-weight:800;padding:1px 5px;border-radius:8px;vertical-align:middle" title="Marcado no pedido como retirado na loja">RETIRADO</span>`:''}</div>
           <div class="p tnum">${it.madeira?`peça ${fmtQ(it.tamanho||0.5)} m · ${BRL(it.precoMetro||0)}/m · total ${fmtQ(Math.round((it.qtd*(it.tamanho||0))*1000)/1000)} m`:`${it.embalagem?`${fmtQ(it.qtd)} ${un} · `:''}lista ${BRL(lista)}/${un}${it.preco<lista?` · <span style="color:var(--pos)">−${PCT(pct)}</span>`:''}`}</div></div>
-        <b class="tnum cr2-sub">${BRL(it.qtd*it.preco)}</b>
       </div>
       <div class="cr2-bot">
         <div class="qty-ctrl"><button onclick="chgQty(${idx},-1)">−</button><span class="tnum">${qtyDisplay}</span><button onclick="chgQty(${idx},1)">+</button></div>
@@ -4189,6 +4191,7 @@ function cartRows(){
         <div class="cr2-inp"><label>%</label><input type="number" step="0.01" min="0" max="100" value="${+pct.toFixed(2)}" onchange="cartDisc(${idx},this.value)"></div>
         <button class="btn-icon btn-ghost" onclick="cartDel(${idx})" title="Remover">${ico('trash')}</button>
       </div>
+      <b class="tnum cr2-sub">${BRL(it.qtd*it.preco)}</b>
     </div>`; }).join('');
 }
 function cartPrice(idx,v){ const it=CART.itens[idx]; if(!it)return; it.preco=Math.max(0,Math.round((+v||0)*100)/100);
