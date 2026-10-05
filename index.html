@@ -48,7 +48,7 @@ const CONFIG_EMPRESA = {
      Aparece no topo do menu e no rodapé das Configurações. Troque a cada publicação.
      MANTENHA O FORMATO 'vDD/MM-X' — é ele que o sistema usa para comparar as máquinas
      da loja e avisar quando alguma ficou para trás.                                  */
-  versao: 'v05/10-C',
+  versao: 'v05/10-D',
 
   /* 4) NUVEM (Supabase)  ------------------------------------------------------------
      Cole aqui a Project URL e a chave PUBLISHABLE do projeto Supabase DESTA empresa
@@ -29107,16 +29107,18 @@ function contFiltersHTML(){ const cats=catFinNomes(); const neg=contNegCount(); 
       <option value="zeroneg" ${CONT.filtro==='zeroneg'?'selected':''}>Zerados ou negativos</option>
       <option value="inativos" ${CONT.filtro==='inativos'?'selected':''}>Produtos INATIVOS (${NUM(inat)})</option>
     </select>`; }
-function contSetFiltro(v){ CONT.filtro=v||''; contRefreshFilters(); }
-function contSetCat(v){ CONT.cat=v||''; CONT.grupo=''; CONT.sub=''; contRefreshFilters(); }
+function contSetFiltro(v){ CONT.filtro=v||''; CONT.lim=300; contRefreshFilters(); }
+function contSetCat(v){ CONT.cat=v||''; CONT.grupo=''; CONT.sub=''; CONT.lim=300; contRefreshFilters(); }
 function contSetGrupo(v){ CONT.grupo=v||''; CONT.sub=''; contRefreshFilters(); }
 function contSetSub(v){ CONT.sub=v||''; contRefreshFilters(); }
 function contRefreshFilters(){ const el=document.getElementById('cont-filters'); if(el) el.innerHTML=contFiltersHTML(); const b=document.getElementById('cont-body'); if(b) b.innerHTML=contBodyHTML(); const r=document.getElementById('cont-resumo'); if(r) r.textContent=contResumoTxt(); }
-function contBuscaD(v){ CONT.q=v; clearTimeout(_contQT); _contQT=setTimeout(function(){ const el=document.getElementById('cont-body'); if(el) el.innerHTML=contBodyHTML(); const r=document.getElementById('cont-resumo'); if(r) r.textContent=contResumoTxt(); }, 200); }
+function contBuscaD(v){ CONT.q=v; CONT.lim=300; clearTimeout(_contQT); _contQT=setTimeout(function(){ const el=document.getElementById('cont-body'); if(el) el.innerHTML=contBodyHTML(); const r=document.getElementById('cont-resumo'); if(r) r.textContent=contResumoTxt(); }, 200); }
 function contBodyHTML(){ const q=(CONT.q||'').toLowerCase(); const inativos=CONT.filtro==='inativos';
   let prods=contProdsFiltrados();
   if(q) prods=prodSearchSort(prods.filter(p=>matchTokens((p.nome||'')+' '+(p.sku||'')+' '+(p.categoria||'')+' '+(p.codigoBarras||''),q)),q);
   const total=prods.length;
+  // Lista grande (milhares de itens) trava o navegador ao desenhar: mostra em páginas.
+  const _lim=Math.max(200, +CONT.lim||300); const _mais=total>_lim; if(_mais) prods=prods.slice(0,_lim);
   if(!total) return `<div class="empty" style="padding:30px">${ico('box')}<h4>Nenhum produto</h4><p class="t-mut">${CONT.filtro==='neg'?'Nenhum produto está com estoque negativo — é assim que tem que ser.':(CONT.filtro?'Nada encontrado com este filtro.':'')}</p></div>`;
   return `<table><thead><tr><th>Produto</th><th>SKU</th><th class="t-right">Sistema</th><th class="t-right" style="width:120px">Contado</th><th class="t-right">Divergência</th><th style="width:104px"></th></tr></thead><tbody>
      ${prods.map(p=>{ const c=CONT.cont[p.id]; const div=(c==null||c==='')?null:(c-(+p.estoque||0)); const est=+p.estoque||0;
@@ -29128,7 +29130,7 @@ function contBodyHTML(){ const q=(CONT.q||'').toLowerCase(); const inativos=CONT
           ? `<button class="btn btn-ghost btn-sm" style="color:var(--pos);white-space:nowrap" onclick="contReativar('${p.id}')" title="Volta a aparecer no PDV, nas buscas de venda e nesta contagem">${ico('check')} Reativar</button>`
           : `<button class="btn btn-ghost btn-sm" style="color:var(--neg);white-space:nowrap" onclick="contInativar('${p.id}')" title="Tira o produto do PDV, das buscas de venda e desta lista. O histórico de vendas, compras e movimentações é preservado, e dá para reativar depois.">${ico('x')} Inativar</button>`
         }</td></tr>`; }).join('')}
-   </tbody></table><div class="t-mut" style="padding:9px 13px;font-size:12px;border-top:1px solid var(--line)">${NUM(total)} produto(s) ${inativos?'inativo(s)':(CONT.filtro?'com este filtro':'cadastrado(s)')} na lista.</div>`;
+   </tbody></table><div class="t-mut" style="padding:9px 13px;font-size:12px;border-top:1px solid var(--line);display:flex;gap:10px;align-items:center;flex-wrap:wrap">${_mais?`Mostrando ${NUM(_lim)} de ${NUM(total)} produto(s) — use a busca ou os filtros para achar um item.`:`${NUM(total)} produto(s) ${inativos?'inativo(s)':(CONT.filtro?'com este filtro':'cadastrado(s)')} na lista.`}${_mais?` <button class="btn btn-ghost btn-sm" onclick="CONT.lim=(+CONT.lim||300)+500;contRefreshFilters()">Mostrar mais 500</button>`:''}</div>`;
 }
 /* Inativa o produto direto da contagem. Não apaga nada: o histórico continua
    inteiro e o produto pode ser reativado pelo filtro "Produtos INATIVOS". */
@@ -29244,10 +29246,23 @@ function contAplicar(){ const ks=Object.keys(CONT.cont).filter(k=>CONT.cont[k]!=
   const ajustes=ks.map(k=>{ const p=DB.get('produtos',k); if(!p) return null; const novo=+CONT.cont[k]; const div=novo-(+p.estoque||0); return div===0?null:{p,novo,div}; }).filter(Boolean);
   if(!ajustes.length){ toast('Nenhuma divergência para ajustar','err'); return; }
   if(!confirm(`Aplicar ${ajustes.length} ajuste(s) de estoque? Isso atualiza o saldo e registra a movimentação.`)) return;
-  ajustes.forEach(a=>{ DB.update('produtos',a.p.id,{estoque:a.novo});
-    DB.insert('movEstoque',{produtoId:a.p.id,tipo:a.div>0?'entrada':'saida',qtd:Math.abs(a.div),data:today(),motivo:'Ajuste de inventário (contagem)'}); });
-  logAcao('Contagem de inventário', `${ajustes.length} produto(s) ajustado(s)`);
-  toast(`${ajustes.length} ajuste(s) aplicado(s)`,'ok'); CONT.cont={}; viewContagem();
+  // Grava TUDO de uma vez (DB.bulk): antes cada item salvava a base inteira duas vezes —
+  // com milhares de ajustes (planilha importada) o navegador travava.
+  const _btn=[...document.querySelectorAll('button')].find(b=>/Aplicar ajustes/.test(b.textContent||'')); if(_btn){ _btn.disabled=true; _btn.textContent='Aplicando…'; }
+  toast(`Aplicando ${ajustes.length} ajuste(s)…`,'ok');
+  setTimeout(()=>{ try{
+    const agora=new Date().toISOString(), hoje=today();
+    DB.bulk(()=>{ const d=DB._load(); if(!Array.isArray(d.movEstoque)) d.movEstoque=[];
+      const movs=[];
+      ajustes.forEach(a=>{ a.p.estoque=a.novo; a.p._mod=agora;
+        movs.push({id:uid(), _mod:agora, _cri:agora, produtoId:a.p.id, tipo:a.div>0?'entrada':'saida', qtd:Math.round(Math.abs(a.div)*1000)/1000, data:hoje, motivo:'Ajuste de inventário (contagem)'}); });
+      d.movEstoque=movs.concat(d.movEstoque); });
+    try{ ajustes.forEach(a=>{ try{ edLinhaGravou(a.p.id); }catch(e){} }); }catch(e){}
+    logAcao('Contagem de inventário', `${ajustes.length} produto(s) ajustado(s)`);
+    try{ nuvemPushJa(); }catch(e){}
+    toast(`${ajustes.length} ajuste(s) aplicado(s)`,'ok');
+  }catch(e){ console.error('contagem aplicar',e); try{ alert('Erro ao aplicar os ajustes: '+((e&&e.message)||e)); }catch(_){} }
+  CONT.cont={}; if(CONT.filtro==='div') CONT.filtro=''; viewContagem(); }, 30);
 }
 async function importBackup(file){
   if(!file) return;
