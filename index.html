@@ -48,7 +48,7 @@ const CONFIG_EMPRESA = {
      Aparece no topo do menu e no rodapé das Configurações. Troque a cada publicação.
      MANTENHA O FORMATO 'vDD/MM-X' — é ele que o sistema usa para comparar as máquinas
      da loja e avisar quando alguma ficou para trás.                                  */
-  versao: 'v05/10-B',
+  versao: 'v05/10-C',
 
   /* 4) NUVEM (Supabase)  ------------------------------------------------------------
      Cole aqui a Project URL e a chave PUBLISHABLE do projeto Supabase DESTA empresa
@@ -5084,6 +5084,12 @@ function finalizarVenda(){
     fromOrcId: CART.fromOrcId||null, fromOrcNumero: CART.fromOrcNumero||null, obs: CART.obs||'', faturadoPDV:true,
     origemTroca: !!CART.origemTroca, creditoAplicado: +CART.creditoAplicado||0, devolucaoVendaId: CART.devolucaoVendaId||null };
   const orcId=CART.fromOrcId;
+  // Quanto de cada produto REALMENTE sai do estoque: a baixa abaixo não deixa o saldo ficar negativo,
+  // então o estorno só pode devolver isto (senão vender com saldo 0 e estornar cria estoque fantasma).
+  try{ const _bx={}, _sal={}; CART.itens.forEach(i=>{ const p=DB.get('produtos',i.id); if(!p) return;
+      if(_sal[p.id]==null) _sal[p.id]=+p.estoque||0; const q=+i.qtd||0; const sai=Math.max(0,Math.min(q,_sal[p.id]));
+      _sal[p.id]=Math.max(0,_sal[p.id]-q); _bx[p.id]=Math.round(((+_bx[p.id]||0)+sai)*1000)/1000; });
+    venda.estoqueBaixa=_bx; }catch(e){}
   pdvGravarVenda(venda);   // pedido importado: MESMO registro (nunca remove + recria — isso gerava cópias)
   if(_choque){ try{ alert('ATENÇÃO — O NÚMERO '+_numPed+' JÁ ESTAVA EM USO.\n\n'
       +'Ele pertence ao pedido de '+((_choque.clienteNome||'Consumidor'))+' de '+fDate(_choque.data)+' ('+BRL(_choque.total)+').\n\n'
@@ -6759,6 +6765,10 @@ function pedidoEstornarPelaNota(vendaId){
      </div>
    </div>
    <div class="modal-foot"><button class="btn btn-ghost" onclick="closeModal()">Voltar sem estornar</button></div>`, true); }
+/* Devolução de estoque de uma venda/pedido: só devolve o que a venda REALMENTE tirou (v.estoqueBaixa,
+   gravado no faturamento). Vendas antigas, sem esse registro, devolvem a quantidade vendida. */
+function vendaDevolveEstoque(v){ const b=(v&&v.estoqueBaixa&&typeof v.estoqueBaixa==='object')?Object.assign({},v.estoqueBaixa):null;
+  return function(pid, qtd){ qtd=+qtd||0; if(!b) return qtd; const r=Math.max(0,Math.min(qtd, +b[pid]||0)); b[pid]=Math.round(((+b[pid]||0)-r)*1000)/1000; return r; }; }
 function vendaEstornar(id, render, manterPedido, skipConfirm, ignoraNotaId){
   manterPedido=true;   // REGRA: estorno SEMPRE devolve a venda à forma de PEDIDO (volta para Pendente). Nunca remove a venda nem cria cópia — o mesmo registro é reaproveitado e refaturado no PDV.
   const info=vendaEstornoInfo(id, ignoraNotaId); if(!info){ toast('Venda não encontrada','err'); return; }
@@ -6786,7 +6796,8 @@ function vendaEstornar(id, render, manterPedido, skipConfirm, ignoraNotaId){
   if(!skipConfirm && !confirm(linhas.join('\n'))) return;
 
   // 1) estoque de volta
-  (v.itens||[]).forEach(i=>{ const p=DB.get('produtos',i.produtoId); const q=+i.qtd||0; if(!p||!(q>0)) return;
+  const _dev=vendaDevolveEstoque(v);
+  (v.itens||[]).forEach(i=>{ const p=DB.get('produtos',i.produtoId); const q=p?_dev(p.id, i.qtd):0; if(!p||!(q>0)) return;
     DB.update('produtos',p.id,{estoque:Math.round(((+p.estoque||0)+q)*1000)/1000});
     DB.insert('movEstoque',{produtoId:p.id,tipo:'entrada',qtd:q,data:today(),motivo:'Estorno da venda'+(v.numero?(' PV-'+v.numero):'')}); });
   // 2) contas a receber geradas pela venda (boleto/prazo e ficha)
@@ -6815,7 +6826,7 @@ function vendaEstornar(id, render, manterPedido, skipConfirm, ignoraNotaId){
   if(manterPedido){
     DB.update('vendas',v.id,{ status:'pendente', pedido:true, faturadoPDV:false, sessaoId:null,
       pagamentos:[], formaPagamento:'', valorAberto:0, troco:0, taxaCartao:0, recebimentoLocal:null,
-      notaEmitida:false, notaNumero:null, notaModelo:null, estoqueBaixado:false, recebidoLocalEm:null,
+      notaEmitida:false, notaNumero:null, notaModelo:null, estoqueBaixado:false, estoqueBaixa:{}, recebidoLocalEm:null,
       creditoTrocaUsado:0, creditoUsado:0, aReceber:+v.total||0 });   // o crédito já voltou para o cliente (passo 4)
     logAcao('Pedido estornado (voltou a Pendente)',(v.numero?('#'+v.numero+' · '):'')+BRL(v.total)+(v.clienteNome?(' · '+v.clienteNome):''));
     toast('Pedido estornado — voltou para Pendente e permanece em Pedidos','ok');
@@ -6831,7 +6842,7 @@ function vendaEstornar(id, render, manterPedido, skipConfirm, ignoraNotaId){
 function pedidoVoltarOrcamento(id, skipConfirm){ const v=DB.get('vendas',id); if(!v)return;
   if(!skipConfirm && !confirm('Retornar este pedido para Orçamentos?\n\nO estoque e o financeiro lançados serão estornados e o pedido sairá da lista de pedidos.')) return;
   const baixado=['faturado','pago'].includes(v.status)||v.estoqueBaixado;
-  if(baixado){ v.itens.forEach(it=>{ const pid=it.produtoId||it.id; const p=pid?DB.get('produtos',pid):null; if(p){ DB.update('produtos',p.id,{estoque:(+p.estoque||0)+it.qtd}); DB.insert('movEstoque',{produtoId:p.id,tipo:'entrada',qtd:it.qtd,data:today(),motivo:'Retorno p/ orçamento'+(v.numero?(' #'+v.numero):'')}); } }); }
+  if(baixado){ const _dev=vendaDevolveEstoque(v); v.itens.forEach(it=>{ const pid=it.produtoId||it.id; const p=pid?DB.get('produtos',pid):null; const _q=p?_dev(p.id,it.qtd):0; if(p&&_q>0){ DB.update('produtos',p.id,{estoque:(+p.estoque||0)+_q}); DB.insert('movEstoque',{produtoId:p.id,tipo:'entrada',qtd:_q,data:today(),motivo:'Retorno p/ orçamento'+(v.numero?(' #'+v.numero):'')}); } }); }
   DB.all('financeiro').filter(f=>f.vendaId===id && f.status!=='cancelado').forEach(f=>DB.update('financeiro',f.id,{status:'cancelado'}));
   registraEstorno(v, baixado?Math.max(0,v.total-(v.valorAberto||0)):0, 'Retorno pedido p/ orçamento'+(v.numero?(' #'+v.numero):''));
   vendaDevolverCreditoPreso(v, 'Crédito devolvido (pedido voltou para orçamento)');
@@ -6843,7 +6854,7 @@ function pedidoCancelar(id){ const v=DB.get('vendas',id); if(!v||v.status==='can
   const aviso = nota ? `\n\nATENÇÃO: este pedido tem ${nota.modelo==='65'?'NFC-e':'NF-e'} nº ${nota.numero||''} autorizada. Em seguida o sistema vai pedir a justificativa para CANCELAR a nota na SEFAZ (respeite o prazo legal do seu estado).` : '';
   if(!confirm(`Cancelar o pedido${v.numero?(' #'+v.numero):''}?\n\nO estoque será estornado (se já tinha saído) e o financeiro ajustado, mesmo que o caixa da venda já esteja fechado.${aviso}`)) return;
   const baixado=['faturado','pago'].includes(v.status)||v.estoqueBaixado;
-  if(baixado){ v.itens.forEach(it=>{ const pid=it.produtoId||it.id; const p=pid?DB.get('produtos',pid):null; if(p){ DB.update('produtos',p.id,{estoque:(+p.estoque||0)+it.qtd}); DB.insert('movEstoque',{produtoId:p.id,tipo:'entrada',qtd:it.qtd,data:today(),motivo:'Cancelamento pedido'+(v.numero?(' #'+v.numero):'')}); } }); }
+  if(baixado){ const _dev=vendaDevolveEstoque(v); v.itens.forEach(it=>{ const pid=it.produtoId||it.id; const p=pid?DB.get('produtos',pid):null; const _q=p?_dev(p.id,it.qtd):0; if(p&&_q>0){ DB.update('produtos',p.id,{estoque:(+p.estoque||0)+_q}); DB.insert('movEstoque',{produtoId:p.id,tipo:'entrada',qtd:_q,data:today(),motivo:'Cancelamento pedido'+(v.numero?(' #'+v.numero):'')}); } }); }
   DB.all('financeiro').filter(f=>f.vendaId===id && (f.tipo==='receber'||/futuro/i.test(f.origem||'')||/futuro/i.test(f.categoria||'')) && f.status!=='cancelado').forEach(f=>DB.update('financeiro',f.id,{status:'cancelado'}));
   const recebido = baixado ? Math.max(0, v.total-(v.valorAberto||0)) : 0;
   registraEstorno(v, recebido, 'Cancelamento pedido'+(v.numero?(' #'+v.numero):''));
@@ -29059,7 +29070,8 @@ function contProdsFiltrados(){
   const f=CONT.filtro||'';
   let prods=DB.all('produtos').filter(p=> f==='inativos' ? p.situacao==='inativo' : p.situacao!=='inativo');
   prods=prods.filter(p=>(!CONT.cat||p.categoria===CONT.cat)&&(!CONT.grupo||p.grupo===CONT.grupo)&&(!CONT.sub||p.subgrupo===CONT.sub));
-  if(f==='neg') prods=prods.filter(p=>(+p.estoque||0)<0);
+  if(f==='div') prods=prods.filter(p=>{ const c=CONT.cont[p.id]; return c!=null && c!=='' && (+c)!==(+p.estoque||0); });
+  else if(f==='neg') prods=prods.filter(p=>(+p.estoque||0)<0);
   else if(f==='zero') prods=prods.filter(p=>(+p.estoque||0)===0);
   else if(f==='zeroneg') prods=prods.filter(p=>(+p.estoque||0)<=0);
   return prods;
@@ -29074,6 +29086,8 @@ function viewContagem(){
      <div class="spacer"></div>
      <span id="cont-resumo" class="t-mut" style="font-size:12.5px">${contResumoTxt()}</span>
      <button class="btn btn-ghost btn-sm" onclick="CONT.cont={};CONT.q='';CONT.cat='';CONT.grupo='';CONT.sub='';CONT.filtro='';viewContagem()">${ico('x')} Limpar</button>
+     <button class="btn btn-ghost btn-sm" onclick="document.getElementById('cont-imp-file').click()" title="Lê uma planilha (CSV ou Excel) com o estoque de cada item e preenche a coluna Contado — associa pelo código de barras e, sem ele, pela descrição ou SKU">${ico('dl')} Importar planilha de estoque</button>
+     <input type="file" id="cont-imp-file" accept=".csv,.txt,.xlsx,.xls" style="display:none" onchange="contImportarArquivo(this.files[0]);this.value=''">
      <button class="btn btn-amber btn-sm" onclick="contAplicar()">${ico('check')} Aplicar ajustes</button>
    </div>
    <div class="card"><div class="tbl-wrap" id="cont-body">${contBodyHTML()}</div></div>`;
@@ -29087,6 +29101,7 @@ function contFiltersHTML(){ const cats=catFinNomes(); const neg=contNegCount(); 
     <select class="pill-filter" onchange="contSetSub(this.value)" ${CONT.grupo?'':'disabled'}><option value="">Todos sub-grupos</option>${subs.map(su=>`<option ${CONT.sub===su?'selected':''}>${esc(su)}</option>`).join('')}</select>
     <select class="pill-filter" onchange="contSetFiltro(this.value)" title="Estoque negativo é sempre erro: saída lançada sem entrada, baixa em duplicidade ou produto que não existe mais." style="${CONT.filtro?'border-color:var(--amber-d);color:var(--amber-d);font-weight:700':''}">
       <option value="" ${CONT.filtro===''?'selected':''}>Todo o estoque</option>
+      <option value="div" ${CONT.filtro==='div'?'selected':''}>Só com DIVERGÊNCIA (contado ≠ sistema)</option>
       <option value="neg" ${CONT.filtro==='neg'?'selected':''}>Só estoque NEGATIVO (${NUM(neg)})</option>
       <option value="zero" ${CONT.filtro==='zero'?'selected':''}>Só zerados</option>
       <option value="zeroneg" ${CONT.filtro==='zeroneg'?'selected':''}>Zerados ou negativos</option>
@@ -29153,6 +29168,78 @@ function contResumoTxt(){ const ks=Object.keys(CONT.cont).filter(k=>CONT.cont[k]
 function contSet(pid,val){ CONT.cont[pid]= (val===''?'':(+(''+val).replace(',','.')||0)); const p=DB.get('produtos',pid); const cell=document.getElementById('cont-div-'+pid);
   if(cell){ const c=CONT.cont[pid]; const div=(c===''||c==null)?null:(c-(+p.estoque||0)); cell.textContent=div==null?'—':(div>0?'+':'')+NUM(div); cell.style.color=div==null?'var(--muted)':div===0?'var(--muted)':div>0?'var(--pos)':'var(--neg)'; }
   const r=document.getElementById('cont-resumo'); if(r) r.textContent=contResumoTxt(); }
+/* ===== IMPORTAR PLANILHA DE ESTOQUE NA CONTAGEM =====
+   Lê CSV/Excel com a quantidade de cada item e preenche a coluna "Contado". Associação, nesta ordem:
+   1) SKU + descrição iguais (planilha já conferida); 2) CÓDIGO DE BARRAS (principal ou adicional);
+   3) DESCRIÇÃO igual; 4) SKU com descrição parecida. Nada é gravado aqui: o operador confere as
+   divergências e clica em "Aplicar ajustes" (que registra a movimentação e o log). */
+function contImpNorm(t){ return normTxt(t).toUpperCase().replace(/[^A-Z0-9 ]/g,' ').replace(/\s+/g,' ').trim(); }
+function contImpBarras(v){ let x=(v==null?'':''+v).trim(); if(/^\d+\.0$/.test(x)) x=x.slice(0,-2); if(/e\+/i.test(x)){ const n=Number(x); if(isFinite(n)) x=n.toFixed(0); }
+  x=x.replace(/\D/g,'').replace(/^0+/,''); return x.length>=6?x:''; }
+function contImpSim(a,b){ const A=new Set(contImpNorm(a).split(' ').filter(Boolean)), B=new Set(contImpNorm(b).split(' ').filter(Boolean));
+  let i=0; A.forEach(t=>{ if(B.has(t)) i++; }); return i/Math.max(1, new Set([...A,...B]).size); }
+function contImportarArquivo(file){ if(!file) return;
+  const ehTexto=/\.(csv|txt)$/i.test(file.name||'');
+  if(!ehTexto && typeof XLSX==='undefined'){ toast('Biblioteca de planilha não carregada — salve como CSV ou recarregue','err'); return; }
+  const reader=new FileReader();
+  reader.onload=e=>{ try{
+    const rows = ehTexto ? impCsvLinhas(String(e.target.result)).filter(r=>r.some(c=>String(c).trim()!==''))
+      : (()=>{ const wb=XLSX.read(e.target.result,{type:'binary'}); const ws=wb.Sheets[wb.SheetNames[0]]; return XLSX.utils.sheet_to_json(ws,{header:1,defval:'',raw:false}).filter(r=>r.some(c=>String(c).trim()!=='')); })();
+    contImportarLinhas(rows, file.name||'planilha');
+  }catch(err){ toast('Erro ao ler a planilha: '+((err&&err.message)||err),'err'); } };
+  if(ehTexto) reader.readAsText(file,'utf-8'); else reader.readAsBinaryString(file); }
+function contImportarLinhas(rows, nomeArq){
+  if(!rows || rows.length<2){ toast('Planilha vazia','err'); return null; }
+  const heads=rows[0].map(h=>{ const k=impProdKey(h); return (k==='nome'||k==='sku'||k==='codigoBarras'||k==='codigosBarrasAdic'||k==='estoque')?k:null; });
+  if(!heads.includes('estoque')){ toast('Não encontrei a coluna de ESTOQUE (quantidade) na planilha','err'); return null; }
+  if(!heads.includes('codigoBarras') && !heads.includes('nome') && !heads.includes('sku')){ toast('A planilha precisa ter código de barras, descrição ou SKU','err'); return null; }
+  const prods=DB.all('produtos').filter(p=>p);
+  const bySku=new Map(), byBar=new Map(), byNome=new Map();
+  const push=(m,k,p)=>{ if(!k) return; const a=m.get(k)||[]; if(a.indexOf(p)<0) a.push(p); m.set(k,a); };
+  prods.forEach(p=>{ const sk=(''+(p.sku||'')).trim().toLowerCase(); if(sk && !bySku.has(sk)) bySku.set(sk,p);
+    push(byBar, contImpBarras(p.codigoBarras), p); (p.codigosBarrasAdic||[]).forEach(c=>push(byBar, contImpBarras(c), p));
+    push(byNome, contImpNorm(p.nome), p); });
+  const rel={arquivo:nomeArq, linhas:0, por:{sku:0,barras:0,descricao:0,skuParecido:0}, naoAch:[], soma:{}, divergem:0};
+  for(let i=1;i<rows.length;i++){ const row=rows[i]; const o={}; heads.forEach((k,ci)=>{ if(k && o[k]===undefined) o[k]=row[ci]; });
+    const nome=(o.nome==null?'':''+o.nome).trim(), sku=(o.sku==null?'':''+o.sku).trim().replace(/\.0$/,''), qtd=impProdNum(o.estoque);
+    if(!nome && !sku && !o.codigoBarras) continue; rel.linhas++;
+    const nN=contImpNorm(nome); let alvo=null, como='';
+    const pSku=sku?bySku.get(sku.toLowerCase()):null;
+    if(pSku && nN && contImpNorm(pSku.nome)===nN){ alvo=pSku; como='sku'; }
+    if(!alvo){ const cods=[o.codigoBarras].concat(((o.codigosBarrasAdic==null?'':''+o.codigosBarrasAdic)).split(/[,;|\/\s]+/)).map(contImpBarras).filter(Boolean);
+      let cand=[]; cods.forEach(c=>(byBar.get(c)||[]).forEach(p=>{ if(cand.indexOf(p)<0) cand.push(p); }));
+      if(cand.length>1){ const c2=cand.filter(p=>sku && (''+p.sku)===sku); const c3=c2.length?c2:cand.filter(p=>nN && contImpNorm(p.nome)===nN); cand=c3.length===1?c3:(c3.length?c3:cand); }
+      if(cand.length===1){ alvo=cand[0]; como='barras'; } }
+    if(!alvo && nN){ let c=byNome.get(nN)||[]; if(c.length>1){ const c2=c.filter(p=>sku && (''+p.sku)===sku); if(c2.length===1) c=c2; }
+      if(c.length===1){ alvo=c[0]; como='descricao'; } }
+    if(!alvo && pSku && (!nN || contImpSim(pSku.nome,nome)>=0.5)){ alvo=pSku; como='skuParecido'; }
+    if(!alvo){ rel.naoAch.push({sku, nome, barras:(o.codigoBarras==null?'':''+o.codigoBarras), qtd}); continue; }
+    rel.por[como]++; rel.soma[alvo.id]=Math.round(((+rel.soma[alvo.id]||0)+qtd)*1000)/1000; }
+  Object.keys(rel.soma).forEach(pid=>{ CONT.cont[pid]=rel.soma[pid]; const p=DB.get('produtos',pid); if(p && (+rel.soma[pid])!==(+p.estoque||0)) rel.divergem++; });
+  window.__contImpRel=rel; CONT.filtro='div'; CONT.q='';
+  try{ logAcao('Contagem: planilha de estoque importada', nomeArq+' · '+Object.keys(rel.soma).length+' produto(s) associados · '+rel.divergem+' divergência(s) · '+rel.naoAch.length+' não encontrado(s)'); }catch(e){}
+  try{ if(STATE.route==='contagem' || document.getElementById('cont-body')) viewContagem(); }catch(e){}
+  contImpRelModal(); return rel; }
+function contImpRelModal(){ const r=window.__contImpRel; if(!r) return;
+  const assoc=Object.keys(r.soma).length;
+  openModal(`<div class="modal-head"><h3>${ico('layers')} Planilha de estoque — ${esc(r.arquivo)}</h3><button class="btn-icon btn-ghost" onclick="closeModal()">${ico('x')}</button></div>
+   <div class="modal-body">
+     <div class="card card-pad" style="margin-bottom:10px;font-size:13px;line-height:1.6">
+       <b>${NUM(r.linhas)}</b> linha(s) lidas · <b>${NUM(assoc)}</b> produto(s) associados<br>
+       pelo código de barras: <b>${NUM(r.por.barras)}</b> · pela descrição: <b>${NUM(r.por.descricao)}</b> · pelo SKU: <b>${NUM(r.por.sku+r.por.skuParecido)}</b><br>
+       <span style="color:${r.divergem?'var(--amber-d)':'var(--pos)'}"><b>${NUM(r.divergem)}</b> com quantidade diferente do sistema</span> — a lista abaixo da tela já está filtrada nelas.
+       ${r.naoAch.length?`<br><span style="color:var(--neg)"><b>${NUM(r.naoAch.length)}</b> linha(s) sem produto correspondente</span> (não alteram nada).`:''}
+     </div>
+     ${r.naoAch.length?`<div class="tbl-wrap" style="max-height:260px;overflow:auto"><table><thead><tr><th>SKU</th><th>Descrição</th><th>Cód. barras</th><th class="t-right">Qtd</th></tr></thead><tbody>
+       ${r.naoAch.slice(0,300).map(x=>`<tr><td class="t-mut">${esc(x.sku||'—')}</td><td>${esc(x.nome||'')}</td><td class="t-mut">${esc(x.barras||'')}</td><td class="t-right tnum">${NUM(x.qtd)}</td></tr>`).join('')}
+     </tbody></table></div>`:''}
+     <p class="t-mut" style="font-size:12px;margin:10px 0 0">Nada foi gravado ainda. Confira as divergências na lista e clique em <b>Aplicar ajustes</b> — o estoque é atualizado e a movimentação fica registrada.</p>
+   </div>
+   <div class="modal-foot">${r.naoAch.length?`<button class="btn btn-ghost" onclick="contImpBaixarNaoAch()">${ico('dl')} Baixar não encontrados</button>`:''}<div style="flex:1"></div><button class="btn btn-amber" onclick="closeModal()">${ico('check')} Conferir na lista</button></div>`, true); }
+function contImpBaixarNaoAch(){ const r=window.__contImpRel; if(!r) return;
+  const q=v=>{ v=(v==null?'':''+v); return /[;"\n]/.test(v)?'"'+v.replace(/"/g,'""')+'"':v; };
+  const csv=['sku;produto;codigo de barras;estoque'].concat(r.naoAch.map(x=>[x.sku,x.nome,x.barras,(''+x.qtd).replace('.',',')].map(q).join(';'))).join('\r\n');
+  _baixarArquivoTxt('estoque-nao-encontrados-'+today()+'.csv', '\ufeff'+csv, 'text/csv'); }
 function contAplicar(){ const ks=Object.keys(CONT.cont).filter(k=>CONT.cont[k]!=null&&CONT.cont[k]!==''); 
   const ajustes=ks.map(k=>{ const p=DB.get('produtos',k); if(!p) return null; const novo=+CONT.cont[k]; const div=novo-(+p.estoque||0); return div===0?null:{p,novo,div}; }).filter(Boolean);
   if(!ajustes.length){ toast('Nenhuma divergência para ajustar','err'); return; }
