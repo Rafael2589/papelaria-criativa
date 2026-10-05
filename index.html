@@ -48,7 +48,7 @@ const CONFIG_EMPRESA = {
      Aparece no topo do menu e no rodapé das Configurações. Troque a cada publicação.
      MANTENHA O FORMATO 'vDD/MM-X' — é ele que o sistema usa para comparar as máquinas
      da loja e avisar quando alguma ficou para trás.                                  */
-  versao: 'v05/10-D',
+  versao: 'v05/10-F',
 
   /* 4) NUVEM (Supabase)  ------------------------------------------------------------
      Cole aqui a Project URL e a chave PUBLISHABLE do projeto Supabase DESTA empresa
@@ -15034,7 +15034,8 @@ function nfeAplicarLoteValidade(prodId, it, atualizarEstoque){
     if(!atual){ upd.validade=it.validade; upd.controleValidade=true; mexeu=true; } }
   if(mexeu) DB.update('produtos',prodId,upd);
 }
-function importarNota(nf, atualizarEstoque){
+function importarNota(nf, atualizarEstoque){ return dbTransacao(()=>importarNotaExec(nf, atualizarEstoque)); }
+function importarNotaExec(nf, atualizarEstoque){
   if(jaImportada(nf.chave)) return {skip:true};
   const dir=nfeDirecao(nf);
   if(dir==='entrada'){
@@ -15062,7 +15063,7 @@ function importarNota(nf, atualizarEstoque){
         nfeAplicarLoteValidade(pid, it, atualizarEstoque);
         if(atualizarEstoque) DB.insert('movEstoque',{produtoId:pid,tipo:'entrada',qtd:it.qCom,data:nf.data,motivo:'NF-e entrada (novo)'}); }
       return {produtoId:pid,nome:it.xProd,qtd:it.qCom,preco:it.vUnCom,custo:_custoUn,valorItem:Math.round((+it.vUnCom||0)*100)/100}; });
-    DB.insert('compras',{fornecedorId:forn?forn.id:null,fornecedorNome:(forn?forn.nome:nf.emitNome)||'Fornecedor',data:nf.data,situacao:'recebida',total:nf.vNF,itens,chaveNFe:nf.chave,numeroNF:nf.nNF,produtosCriados:criados,lancadaEm:new Date().toISOString()});
+    DB.insert('compras',{fornecedorId:forn?forn.id:null,fornecedorNome:(forn?forn.nome:nf.emitNome)||'Fornecedor',data:nf.data,situacao:'recebida',total:nf.vNF,itens,estoqueLancado:!!atualizarEstoque,chaveNFe:nf.chave,numeroNF:nf.nNF,produtosCriados:criados,lancadaEm:new Date().toISOString()});
     nfRecebidaBaixar(nf.chave);
     return {dir,total:nf.vNF};
   } else {
@@ -16255,9 +16256,11 @@ function renderImpList(){ const el=document.getElementById('imp-list'); const no
 }
 function importarTodas(){ const atualizar=(document.getElementById('imp-estoque')||{checked:true}).checked!==false;
   let imp=0,skip=0,ent=0,sai=0,totEnt=0,totSai=0;
-  IMPXML.notas.forEach(nf=>{ if(jaImportada(nf.chave)){skip++;return;} const r=importarNota(nf,atualizar);
+  let _erros=[];
+  IMPXML.notas.forEach(nf=>{ if(jaImportada(nf.chave)){skip++;return;} let r=null; try{ r=importarNota(nf,atualizar); }catch(e){ console.error('importar nota',e); _erros.push('NF '+(nf.nNF||'')+': '+((e&&e.message)||e)); return; }
     if(r&&!r.skip){ imp++; if(r.dir==='entrada'){ent++;totEnt+=r.total;}else{sai++;totSai+=r.total;} } });
   buildNav();
+  if(_erros.length){ try{ alert(_erros.length+' nota(s) NÃO foram importadas (nada delas entrou no estoque nem no financeiro):\n\n'+_erros.slice(0,10).join('\n')); }catch(e){} }
   toast(`${imp} nota(s) importada(s)`+(skip?` · ${skip} ignorada(s)`:''),'ok');
   openModal(`<div class="modal-body" style="text-align:center;padding:32px 24px">
     <div class="ic" style="width:54px;height:54px;border-radius:50%;background:var(--pos-soft);color:var(--pos);display:grid;place-items:center;margin:0 auto 14px">${ico('check')}</div>
@@ -29090,6 +29093,7 @@ function viewContagem(){
      <input type="file" id="cont-imp-file" accept=".csv,.txt,.xlsx,.xls" style="display:none" onchange="contImportarArquivo(this.files[0]);this.value=''">
      <button class="btn btn-amber btn-sm" onclick="contAplicar()">${ico('check')} Aplicar ajustes</button>
    </div>
+   ${(function(){ try{ return entradasOrfasBannerHTML(); }catch(e){ return ''; } })()}
    <div class="card"><div class="tbl-wrap" id="cont-body">${contBodyHTML()}</div></div>`;
 }
 let _contQT;
@@ -30739,9 +30743,66 @@ let NFENT={tab:'recebidas', verResumos:false};
 let WIZ=null;
 function wizReset(){ WIZ={ step:1, nf:null, fornMode:'novo', fornId:null, fornNome:'', transpMode:'nao', transpId:null, transpNome:'', itens:[], margemPadrao:0, freteFora:0, finGerar:true, finCategoria:'Fornecedores', parcelas:[], lancarEstoque:true, imprimirConf:true }; }
 const WIZ_STEPS=['Upload XML','Fornecedor','Itens','Revisão Fiscal','Financeiro','Confirmar'];
+/* ===== ESTOQUE LANÇADO POR NOTA DE ENTRADA QUE NÃO FOI FINALIZADA =====
+   Antes da v05/10-E a entrada somava o estoque item a item; se desse erro no meio (ou o
+   assistente travasse), o estoque ficava somado SEM a nota lançada — e, ao tentar de novo,
+   somava outra vez. Aqui: toda movimentação "NF-e entrada…"/"Entrada de nota (manual)" precisa
+   ter um item correspondente numa nota de entrada (mesmo produto, mesma data, mesma quantidade,
+   inclusive notas canceladas e itens trocados por correção). As que sobram são órfãs.
+   Se o produto teve CONTAGEM de inventário DEPOIS da entrada órfã, o saldo já foi acertado pela
+   contagem: a órfã só é marcada, sem mexer no estoque de novo. */
+function entradasOrfas(){ try{
+  const todas=DB.all('movEstoque');
+  const movs=todas.filter(m=>m && m.tipo==='entrada' && !m.orfaEstornada && m.produtoId && /^(NF-e entrada|Entrada de nota \(manual\))/.test(m.motivo||''));
+  if(!movs.length) return [];
+  const k=(pid,data,q)=>pid+'|'+(''+(data||'')).slice(0,10)+'|'+Math.round((+q||0)*1000);
+  const vagas=new Map(); const add=key=>vagas.set(key,(vagas.get(key)||0)+1);
+  DB.all('compras').forEach(c=>{ if(!c) return;
+    (c.itens||[]).forEach(i=>{ if(i && i.produtoId) add(k(i.produtoId,c.data,i.qtd)); });
+    (c.correcoes||[]).forEach(h=>(h.itens||[]).forEach(x=>{ if(x && x.produtoDe) add(k(x.produtoDe,c.data,x.qtdDe)); })); });
+  const ultCont={}; todas.forEach(m=>{ if(m && m.produtoId && /contagem|invent[aá]rio/i.test(m.motivo||'')){ const t=m._cri||m._mod||''; if(!ultCont[m.produtoId] || t>ultCont[m.produtoId]) ultCont[m.produtoId]=t; } });
+  // a mais recente de cada grupo fica com a vaga (a tentativa que deu certo é a última); as anteriores sobram
+  const ord=movs.slice().sort((a,b)=>((b._cri||b._mod||'')+'').localeCompare((a._cri||a._mod||'')+''));
+  const orf=[];
+  ord.forEach(m=>{ const key=k(m.produtoId,m.data,m.qtd); const n=vagas.get(key)||0; if(n>0){ vagas.set(key,n-1); return; }
+    const p=DB.get('produtos',m.produtoId); if(!p) return;
+    const t=m._cri||m._mod||''; const acertado=!!(ultCont[m.produtoId] && t && ultCont[m.produtoId]>t);
+    orf.push({mov:m, p, qtd:+m.qtd||0, acertado}); });
+  return orf.sort((a,b)=>(a.p.nome||'').localeCompare(b.p.nome||''));
+}catch(e){ console.error('entradasOrfas',e); return []; } }
+function entradasOrfasBannerHTML(){ const o=entradasOrfas(); if(!o.length) return '';
+  const est=o.filter(x=>!x.acertado);
+  return `<div class="card card-pad" style="margin-bottom:14px;border:1px solid #fecaca;background:#fef2f2;display:flex;gap:12px;align-items:center;flex-wrap:wrap">
+    <div style="flex:1;min-width:240px;font-size:13px;line-height:1.5">${ico('alert')} <b>${NUM(o.length)} entrada(s) de estoque de notas que NÃO foram finalizadas</b> — o estoque foi somado sem a nota ter sido lançada${est.length?` (${NUM(est.length)} a estornar)`:''}.</div>
+    <button class="btn btn-amber btn-sm" onclick="entradasOrfasModal()">${ico('check')} Ver e estornar</button></div>`; }
+function entradasOrfasModal(){ const o=entradasOrfas(); if(!o.length){ toast('Nenhuma entrada de estoque sem nota encontrada','ok'); return; }
+  window.__orfas=o; const est=o.filter(x=>!x.acertado);
+  openModal(`<div class="modal-head"><h3>${ico('alert')} Estoque somado por notas não finalizadas</h3><button class="btn-icon btn-ghost" onclick="closeModal()">${ico('x')}</button></div>
+   <div class="modal-body">
+    <p class="t-mut" style="font-size:12.5px;margin:0 0 10px">Estas entradas de estoque não têm nota de entrada lançada (a entrada deu erro ou travou antes de terminar). Ao estornar, a quantidade sai do estoque de cada produto e a movimentação fica registrada. Itens marcados "já acertado pela contagem" tiveram contagem de inventário depois — o saldo já está certo e não é mexido.</p>
+    <div class="tbl-wrap" style="max-height:360px;overflow:auto"><table><thead><tr><th>Produto</th><th>SKU</th><th>Data</th><th>Origem</th><th class="t-right">Qtd somada</th><th class="t-right">Estoque hoje</th><th class="t-right">Após estorno</th></tr></thead><tbody>
+    ${o.map(x=>`<tr><td><b>${esc(x.p.nome||'')}</b></td><td class="t-mut">${esc(x.p.sku||'')}</td><td class="tnum">${x.mov.data?fDate(x.mov.data):'—'}</td><td class="t-mut" style="font-size:11.5px">${esc(x.mov.motivo||'')}</td>
+      <td class="t-right tnum">${NUM(x.qtd)}</td><td class="t-right tnum">${NUM(+x.p.estoque||0)}</td>
+      <td class="t-right tnum">${x.acertado?'<span class="tag gray" style="font-size:10.5px">já acertado pela contagem</span>':NUM(Math.round(((+x.p.estoque||0)-x.qtd)*1000)/1000)}</td></tr>`).join('')}
+    </tbody></table></div></div>
+   <div class="modal-foot"><button class="btn btn-ghost" onclick="closeModal()">Agora não</button><div style="flex:1"></div>
+     <button class="btn btn-amber" onclick="entradasOrfasEstornar()">${ico('check')} Estornar ${NUM(est.length)} entrada(s)${o.length>est.length?` e marcar ${NUM(o.length-est.length)}`:''}</button></div>`, true); }
+function entradasOrfasEstornar(){ const o=entradasOrfas(); if(!o.length){ closeModal(); return; }
+  let n=0, un=0, marc=0; const agora=new Date().toISOString();
+  try{ dbTransacao(()=>{ o.forEach(x=>{ const m=DB.get('movEstoque',x.mov.id); if(!m || m.orfaEstornada) return;
+      if(!x.acertado){ const p=DB.get('produtos',x.p.id); if(!p) return;
+        DB.update('produtos',p.id,{estoque:Math.round(((+p.estoque||0)-x.qtd)*1000)/1000});
+        DB.insert('movEstoque',{produtoId:p.id,tipo:'saida',qtd:x.qtd,data:today(),motivo:'Estorno — entrada de NF não finalizada ('+(x.mov.data?fDate(x.mov.data):'')+')'});
+        n++; un+=x.qtd; } else marc++;
+      DB.update('movEstoque',m.id,{orfaEstornada:true, orfaEstornadaEm:agora, orfaAcertadaContagem:!!x.acertado}); }); });
+  }catch(e){ try{ alert('Não foi possível estornar (nada foi alterado): '+((e&&e.message)||e)); }catch(_){} return; }
+  try{ logAcao('Estorno de estoque — notas de entrada não finalizadas', n+' entrada(s) estornada(s), '+NUM(un)+' unidade(s)'+(marc?(' · '+marc+' já acertada(s) pela contagem'):'')); }catch(e){}
+  try{ nuvemPushJa(); }catch(e){}
+  closeModal(); toast(n+' entrada(s) estornada(s) do estoque'+(marc?(' · '+marc+' já estavam acertadas pela contagem'):''),'ok');
+  try{ go(STATE.route); }catch(e){} }
 function viewNfeEntrada(){ if(!WIZ) wizReset();
   try{ nfentJuntarDuplicadas({silencioso:false}); }catch(e){}   // nota repetida nunca chega à lista
-  document.getElementById('view').innerHTML=`<div id="nfent-body"></div>`;
+  document.getElementById('view').innerHTML=`<div id="nfent-orfas">${(function(){ try{ return entradasOrfasBannerHTML(); }catch(e){ return ''; } })()}</div><div id="nfent-body"></div>`;
   // Sem abas: a tela mostra "Notas Recebidas" por padrão. O assistente de entrada só aparece
   // quando uma nota é aberta (Lançar, Buscar no SEFAZ ou Procurar XML no computador).
   if(NFENT.tab==='entrada') wizRender(); else document.getElementById('nfent-body').innerHTML=nfentRecebidasHTML();
@@ -31221,10 +31282,21 @@ function wizStep6(){ const nf=WIZ.nf; const assoc=WIZ.itens.filter(i=>i.associar
 }
 /* Finalizar NUNCA fica mudo: se algo der errado no meio, o erro aparece na tela. */
 let _wizFinalizando=false;
+/* TRANSAÇÃO NA BASE LOCAL: roda fn() sem gravar nada no meio do caminho. Se der erro, TODA a
+   base volta exatamente como estava antes (estoque, produtos criados, financeiro, compra...) e só
+   então é gravada — nunca fica meia operação (ex.: estoque somado sem a nota lançada). */
+function dbTransacao(fn){ const d=DB._load(); let snap=null;
+  try{ snap=JSON.stringify(d); }catch(e){ snap=null; }
+  DB._bulk=(DB._bulk||0)+1;
+  try{ return fn(); }
+  catch(e){ if(snap){ try{ const o=JSON.parse(snap); Object.keys(d).forEach(k=>{ if(!(k in o)) delete d[k]; }); Object.keys(o).forEach(k=>{ d[k]=o[k]; }); }catch(_){ } }
+    try{ e._revertido=!!snap; }catch(_){}
+    throw e; }
+  finally{ DB._bulk--; if(!DB._bulk) DB._persist(); } }
 function wizFinalizar(){ if(_wizFinalizando) return; _wizFinalizando=true;
   const _btn=[...document.querySelectorAll('button')].find(b=>/Confirmar e Finalizar/i.test(b.textContent||'')); if(_btn){ _btn.disabled=true; }
-  try{ wizFinalizarExec(); }
-  catch(e){ console.error('wizFinalizar',e); try{ alert('A ENTRADA NÃO FOI FINALIZADA.\n\nErro: '+((e&&e.message)||e)+'\n\nNada foi descartado: confira os passos e tente de novo. Se repetir, mande um print desta mensagem.'); }catch(_){} }
+  try{ dbTransacao(()=>wizFinalizarExec()); }
+  catch(e){ console.error('wizFinalizar',e); try{ alert('A ENTRADA NÃO FOI FINALIZADA.\n\nErro: '+((e&&e.message)||e)+'\n\n'+(e&&e._revertido?'NADA foi lançado: o estoque, os produtos, o contas a pagar e a nota ficaram exatamente como antes. ':'')+'Os dados do assistente continuam aqui: confira os passos e tente de novo. Se repetir, mande um print desta mensagem.'); }catch(_){} }
   finally{ _wizFinalizando=false; if(_btn && document.body.contains(_btn)) _btn.disabled=false; } }
 function wizFinalizarExec(){ const nf=WIZ.nf;
   // TRAVA FINAL CONTRA DUPLICIDADE — última porta antes de gravar estoque e financeiro.
@@ -31307,7 +31379,7 @@ function wizFinalizarExec(){ const nf=WIZ.nf;
   // Snapshot da CONFERÊNCIA DE PREÇOS gerada nesta entrada (para reabrir depois no histórico).
   const confPreco=WIZ.itens.filter(it=>it._incluir!==false).map(it=>{ const p=it.associarId?DB.get('produtos',it.associarId):null;
     return { cProd:it.cProd||'', sku:(p&&p.sku)||'', nome:(p&&p.nome)||it.xProd||'', qtd:Math.round((+it.qCom||0)*1000)/1000, custo:Math.round((+it.custoCalc||0)*100)/100, precoVenda:Math.round((+it.precoVenda||0)*100)/100 }; });
-  const compra=DB.insert('compras',{fornecedorId:WIZ.fornId||null,fornecedorNome:fornNome,transportadoraId:transpId||null,transportadoraNome:transpNome||'',data:nf.data,situacao:'recebida',total:nf.vNF,itens:itensCompra,chaveNFe:nf.chave,numeroNF:nf.nNF,serieNF:nf.serie,produtosCriados:produtosCriados,confPreco:confPreco,lancadaEm:new Date().toISOString()});
+  const compra=DB.insert('compras',{fornecedorId:WIZ.fornId||null,fornecedorNome:fornNome,transportadoraId:transpId||null,transportadoraNome:transpNome||'',data:nf.data,situacao:'recebida',total:nf.vNF,itens:itensCompra,estoqueLancado:!!WIZ.lancarEstoque,chaveNFe:nf.chave,numeroNF:nf.nNF,serieNF:nf.serie,produtosCriados:produtosCriados,confPreco:confPreco,lancadaEm:new Date().toISOString()});
   // financeiro
   if(WIZ.finGerar){ const parcVal=WIZ.parcelas.filter(p=>(+p.valor||0)>0); const nParc=parcVal.length; const pad3=x=>(''+x).padStart(3,'0');
     parcVal.forEach((p,pi)=>{
@@ -31320,8 +31392,9 @@ function wizFinalizarExec(){ const nf=WIZ.nf;
   window._posEnt={ itens:WIZ.itens.filter(it=>it._incluir!==false), forn:fornNome, nf:nf, etiq:itensCompra.map(i=>({pid:i.produtoId,qtd:Math.max(1,Math.ceil(+i.qtd||1))})) };
   if(WIZ._recebidaId){ try{ DB.update('notasRecebidas',WIZ._recebidaId,{status:'lancada'}); }catch(_){} }
   try{ nfRecebidaBaixar(compra.chaveNFe); }catch(_){}
-  buildNav(); wizReset(); NFENT.tab='recebidas'; viewNfeEntrada();
-  wizPosEntrada();
+  // daqui para baixo é só tela: um erro aqui NÃO desfaz a entrada já gravada
+  try{ buildNav(); wizReset(); NFENT.tab='recebidas'; viewNfeEntrada(); }catch(e){ console.error('tela pós-entrada',e); }
+  setTimeout(()=>{ try{ wizPosEntrada(); }catch(e){ console.error('pós-entrada',e); } },0);
 }
 function wizPosEntrada(){ const pe=window._posEnt; if(!pe)return;
   openModal(`<div class="modal-head"><h3>${ico('check')} Entrada concluída</h3><button class="btn-icon btn-ghost" onclick="closeModal()">${ico('x')}</button></div>
@@ -31618,13 +31691,16 @@ function compraCancelar(id){ const c=DB.get('compras',id); if(!c||c.situacao==='
     +'   – '+_ab.length+' parcela(s) em aberto ('+BRL(_vab)+') serão CANCELADAS\n'
     +'   – '+_pg.length+' parcela(s) já paga(s) ('+BRL(_vpg)+') viram crédito "a receber" do fornecedor\n\n'
     +'Atenção: ajustes de preço/custo feitos nos produtos não são desfeitos.')) return;
-  (c.itens||[]).forEach(i=>{ if(i.produtoId){ const p=DB.get('produtos',i.produtoId); if(p){ DB.update('produtos',p.id,{estoque:Math.round(((p.estoque||0)-(+i.qtd||0))*1000)/1000}); DB.insert('movEstoque',{produtoId:p.id,tipo:'saida',qtd:+i.qtd||0,data:today(),motivo:'Cancelamento entrada NF '+(c.numeroNF||'')}); } } });
+  // Estorna SÓ o estoque que esta entrada lançou: entrada sem "lançar estoque", pedido de compra ainda
+  // não recebido e itens de uso e consumo não somaram nada — então não podem tirar nada.
+  const _lancou = c.estoqueLancado!==false && c.situacao!=='pendente';
+  if(_lancou) dbTransacao(()=>{ (c.itens||[]).forEach(i=>{ if(i.produtoId && !i.usoConsumo){ const q=+i.qtd||0; if(!(q>0)) return; const p=DB.get('produtos',i.produtoId); if(p){ DB.update('produtos',p.id,{estoque:Math.round(((+p.estoque||0)-q)*1000)/1000}); DB.insert('movEstoque',{produtoId:p.id,tipo:'saida',qtd:q,data:today(),motivo:'Cancelamento entrada NF '+(c.numeroNF||'')}); } } }); });
   const rev=estornarFinanceiroCompra(c,{motivo:'Cancelamento da entrada NF '+(c.numeroNF||'')});
   DB.update('compras',id,{situacao:'cancelada',canceladaEm:today(),financeiroEstornado:true});
   let voltou=false; const rec=DB.all('notasRecebidas').find(r=>r.chave && r.chave===c.chaveNFe); if(rec){ DB.update('notasRecebidas',rec.id,{status:'pendente'}); voltou=true; }
   const txt=estornoResumoTxt(rev);
   try{ logAcao('Entrada cancelada — financeiro estornado', 'NF '+(c.numeroNF||'')+' · '+(txt||'sem financeiro vinculado')); }catch(e){}
-  toast('Entrada cancelada: estoque estornado'+(txt?(' · '+txt):'')+(voltou?'. A nota voltou para "Notas Recebidas".':''),'ok');
+  toast('Entrada cancelada: '+(_lancou?'estoque estornado':'estoque não mexido (esta entrada não tinha lançado estoque)')+(txt?(' · '+txt):'')+(voltou?'. A nota voltou para "Notas Recebidas".':''),'ok');
   nfentRefresh(); }
 /* ===== CORREÇÃO DE ITENS DE UMA NOTA DE ENTRADA JÁ LANÇADA =====
    Permite acertar o PRODUTO vinculado, a QUANTIDADE e o VALOR (custo) de cada item de uma
