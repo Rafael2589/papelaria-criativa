@@ -48,7 +48,7 @@ const CONFIG_EMPRESA = {
      Aparece no topo do menu e no rodapé das Configurações. Troque a cada publicação.
      MANTENHA O FORMATO 'vDD/MM-X' — é ele que o sistema usa para comparar as máquinas
      da loja e avisar quando alguma ficou para trás.                                  */
-  versao: 'v02/10-H',
+  versao: 'v04/10-A',
 
   /* 4) NUVEM (Supabase)  ------------------------------------------------------------
      Cole aqui a Project URL e a chave PUBLISHABLE do projeto Supabase DESTA empresa
@@ -8345,7 +8345,7 @@ function procImportProdutos(data, fname){
    "...arr" estoura o limite de argumentos em alguns navegadores (RangeError) e o
    clique em "Cadastrar Novo Produto" morria sem abrir a tela — parecia travamento. */
 function maxNumSeguro(arr){ let m=0; for(let i=0;i<arr.length;i++){ const v=+arr[i]; if(!isNaN(v)&&v>m) m=v; } return m; }
-function prodNovoSKUFromCache(d){ const usados=new Set((d.produtos||[]).map(x=>(x.sku||'').trim()).filter(Boolean)); let n=maxNumSeguro((d.produtos||[]).map(x=>seqNumDe(x.sku))); let cand, guard=0; do{ n++; cand=String(n).padStart(4,'0'); }while(usados.has(cand) && ++guard<500000); return cand; }
+function prodNovoSKUFromCache(d){ return prodNovoSKUDe((d&&d.produtos)||[]); }
 function unidadesList(){ const d=DB._load(); if(!Array.isArray(d.unidades)||!d.unidades.length){ d.unidades=['UN','PC','CX','KG','G','M','M²','M³','L','ML','SC','PCT','FD','RL','DZ','BR','PAR','JG','MIL','LT','GL','KIT','CJ','TON']; DB._persist(); } return d.unidades.slice(); }
 function unidadesChips(){ const uns=unidadesList(); return uns.length?`<div style="display:flex;flex-wrap:wrap;gap:6px">${uns.map((u,i)=>`<span class="tag" style="display:inline-flex;align-items:center;gap:5px;padding:6px 9px;font-size:13px;font-weight:700">${esc(u)} <button class="btn-icon btn-ghost" style="width:18px;height:18px;color:var(--neg)" onclick="unidadeDel(${i})" title="Remover">${ico('x')}</button></span>`).join('')}</div>`:`<div class="t-mut">Nenhuma unidade cadastrada.</div>`; }
 function unidadesManager(){ openModal(`<div class="modal-head"><h3>${ico('box')} Unidades de medida</h3><button class="btn-icon btn-ghost" onclick="closeModal()">${ico('x')}</button></div>
@@ -8464,9 +8464,14 @@ let PROD_Q='';  // mantém o texto da busca de produtos entre edições (D4)
    clicar em "Cadastrar Novo Produto". O teto de 1e9 mantém as sequências reais (V0217894 → 217894)
    e descarta os códigos enormes. */
 function seqNumDe(s){ const n=parseInt((''+(s||'')).replace(/\D/g,''),10); return (!isNaN(n) && n>0 && n<1e9) ? n : 0; }
-function prodNovoSKU(){ const usados=new Set(DB.all('produtos').map(x=>(x.sku||'').trim()).filter(Boolean));
-  let n=maxNumSeguro(DB.all('produtos').map(x=>seqNumDe(x.sku)));
-  let cand, guard=0; do{ n++; cand=String(n).padStart(4,'0'); }while(usados.has(cand) && ++guard<500000); return cand; }
+/* SKU PRÓPRIO DA LOJA, EM SEQUÊNCIA. Só contam os SKUs que são número puro e seguem a sequência da
+   loja (1, 2, 3… sem saltos de mais de 1.000). Códigos de fornecedor que entraram como SKU no passado
+   (ex.: 1382226, MJ48801CB) NÃO puxam a numeração para longe: o próximo é sempre o fim da sequência + 1. */
+function prodSkuSeqFim(prods){ const nums=[...new Set((prods||[]).map(x=>((x&&x.sku)||'')+'').filter(v=>/^\d{1,7}$/.test(v.trim())).map(v=>+v.trim()).filter(n=>n>0))].sort((a,b)=>a-b);
+  let fim=0; for(const n of nums){ if(n-fim>1000) break; fim=n; } return fim; }
+function prodNovoSKUDe(prods){ const usados=new Set((prods||[]).map(x=>((x&&x.sku)||'')+'').map(v=>v.trim()).filter(Boolean));
+  let n=prodSkuSeqFim(prods); let cand, guard=0; do{ n++; cand=String(n).padStart(4,'0'); }while((usados.has(cand)||usados.has(String(n))) && ++guard<500000); return cand; }
+function prodNovoSKU(){ return prodNovoSKUDe(DB.all('produtos')); }
 function prodDuplicar(id){ const p=DB.get('produtos',id); if(!p){ toast('Salve o produto antes de duplicar','err'); return; }
   // NÃO grava ainda: abre o formulário PREENCHIDO com os mesmos dados e um SKU novo.
   // O produto só passa a existir quando o usuário clicar em Cadastrar — assim,
@@ -14898,7 +14903,9 @@ function matchProduto(it, fornId){ const prods=DB.all('produtos'); const ativos=
   if(cProd && fornId){ const p=prods.find(x=>x.codigosFornecedor && x.codigosFornecedor[fornId] && (''+x.codigosFornecedor[fornId]).trim()===cProd); if(p) return p; }
   if(cProd){ // referência aprendida de OUTRO fornecedor não vale para este (o código "1001" da Tigre não é o "1001" da Votorantim)
     const deOutro=x=>!!(fornId && x.codigosFornecedor && !x.codigosFornecedor[fornId] && Object.keys(x.codigosFornecedor).some(k=>k!==fornId && (''+x.codigosFornecedor[k]).trim()===cProd));
-    const p=prods.find(x=>(x.sku&&(''+x.sku).trim()===cProd)||(x.referencia&&(''+x.referencia).trim()===cProd&&!deOutro(x))); if(p)return p; }
+    // Só pela REFERÊNCIA (código do fornecedor). O SKU é a numeração própria da loja: comparar o código
+    // da nota com o SKU ligava produtos errados (código 166 do fornecedor → SKU 166 da loja).
+    const p=prods.find(x=>x.referencia&&(''+x.referencia).trim()===cProd&&!deOutro(x)); if(p)return p; }
   if(it.xProd){ const p=prods.find(x=>x.nome&&x.nome.toLowerCase().trim()===(it.xProd+'').toLowerCase().trim()); if(p)return p; }
   return null; }
 /* Como o item foi reconhecido (para mostrar no assistente). */
@@ -14906,7 +14913,7 @@ function matchProdutoMotivo(it, p, fornId){ if(!p) return '';
   const eans=[eanNorm(it.cEAN), eanNorm(it.cEANTrib)].filter(Boolean); if(eans.length && prodEans(p).some(e=>eans.includes(e))) return 'código de barras';
   const cProd=((it.cProd==null?'':it.cProd)+'').trim();
   if(cProd && fornId && p.codigosFornecedor && (''+(p.codigosFornecedor[fornId]||'')).trim()===cProd) return 'código deste fornecedor';
-  if(cProd && ((p.referencia&&(''+p.referencia).trim()===cProd)||(p.sku&&(''+p.sku).trim()===cProd))) return 'referência/SKU';
+  if(cProd && p.referencia&&(''+p.referencia).trim()===cProd) return 'referência do fornecedor';
   return 'nome'; }
 /* Ao ligar um item da nota a um produto, o cadastro APRENDE: o código de barras da nota
    (como principal se estava vazio, senão como adicional) e o código que o fornecedor usa.
@@ -14945,7 +14952,7 @@ function importarNota(nf, atualizarEstoque){
   if(dir==='entrada'){
     const forn=fornecedorDoXML(nf);
     const criados=[];
-    const itens=nf.itens.map(it=>{ const p=matchProduto(it); let pid; const cp=contrapartidaDe(it.cfop);
+    const itens=nf.itens.map(it=>{ const p=matchProduto(it, forn&&forn.id); let pid; const cp=contrapartidaDe(it.cfop);
       // Custo REAL da mercadoria = valor unitário + ST + IPI + OUTRAS DESPESAS (vOutro) rateados por unidade.
       const _extraUn = (+it.qCom>0) ? Math.round((((+it.vICMSST||0)+(+it.vIPI||0)+(+it.vOutro||0))/(+it.qCom))*100)/100 : 0;
       const _custoUn = Math.round(((+it.vUnCom||0)+_extraUn)*100)/100;
@@ -14961,7 +14968,7 @@ function importarNota(nf, atualizarEstoque){
         if(Object.keys(upd).length) DB.update('produtos',p.id,upd);
         nfeAplicarLoteValidade(p.id, it, atualizarEstoque);
         if(atualizarEstoque) DB.insert('movEstoque',{produtoId:pid,tipo:'entrada',qtd:it.qCom,data:nf.data,motivo:'NF-e entrada'}); }
-      else { const np=DB.insert('produtos',{nome:it.xProd||'Produto NF',sku:it.cProd||'',codigoBarras:it.cEAN||'',referencia:it.cProd||'',categoria:'Importado',
+      else { const np=DB.insert('produtos',{nome:it.xProd||'Produto NF',sku:prodNovoSKU(),codigoBarras:((it.cEAN||'')+'').replace(/SEM ?GTIN/i,'').trim(),referencia:it.cProd||'',categoria:'Importado',
           unidade:it.uCom||'UN',custo:_custoUn||0,preco:Math.round((_custoUn||0)*1.4*100)/100,estoque:atualizarEstoque?it.qCom:0,estoqueMinimo:0,ncm:it.ncm,cest:it.cest||'',
           origem:it.orig||'0',cfop:cp?cp.cfop:'5102',cst:csosnVendaDeEntrada(it.csosn)||(cp?cp.cst:'')||'',cstPis:it.cstPis||'',cstCofins:it.cstCofins||'',situacao:'ativo'}); pid=np.id; criados.push(pid);
         nfeAplicarLoteValidade(pid, it, atualizarEstoque);
@@ -30729,6 +30736,7 @@ function wizStep3(){ const nf=WIZ.nf; const cats=catProdNomes();
          return wizClassBotao(i, mostra); })()}</td>
        <td><input class="mini-input" style="width:120px;text-transform:uppercase" list="wiz-marcas" value="${esc(it.marca||'')}" placeholder="Marca (opc.)" oninput="this.value=this.value.toUpperCase();marcaDatalistFill('wiz-marcas',this.value)" onchange="WIZ.itens[${i}].marca=this.value.trim().toUpperCase()"></td>
        <td>${ (function(){ if(it.associarId){ const pp=DB.get('produtos',it.associarId); return `<div style="display:flex;align-items:flex-start;gap:4px"><span style="flex:1 1 0;min-width:0;display:inline-block;background:var(--pos-soft);color:var(--pos);font-weight:600;font-size:11px;padding:3px 8px;border-radius:12px;white-space:normal;overflow-wrap:anywhere;word-break:break-word;line-height:1.3;text-align:left;text-transform:uppercase" title="${esc(pp?pp.nome:'Produto')}${it._assocMotivo?(' — reconhecido pelo '+esc(it._assocMotivo)):''}">${esc(pp?pp.nome:'Produto')}</span><button class="btn-icon btn-ghost" onclick="wizAssocClear(${i})" title="Trocar / cadastrar novo" style="flex:0 0 auto">${ico('x')}</button></div>${it._assocMotivo?`<div class="t-mut" style="font-size:10.5px;margin-top:2px">reconhecido pelo ${esc(it._assocMotivo)}</div>`:''}`; }
+         if(it.finalidade && it.finalidade!=='Revenda') return `<span class="tag gray" style="font-size:10.5px;white-space:normal" title="Uso e consumo e imobilizado não entram no cadastro de produtos nem no estoque — só no valor da compra e no financeiro">não cadastra · ${esc(it.finalidade.toLowerCase())}</span>`;
          return `<div class="wiz-assoc-trigger" id="wiz-assoc-trg-${i}" tabindex="0" onclick="wizAssocOpen(${i})" onkeydown="if(event.key==='Enter'||event.key==='ArrowDown'){event.preventDefault();wizAssocOpen(${i});}">${ico('search')}<span>Associar…</span></div><div id="wiz-assoc-res-${i}" class="wiz-assoc-pop-host"></div>`; })() }</td>
      </tr>`).join('')}
      </tbody></table></div>
@@ -30773,6 +30781,7 @@ function wizAssocMatches(q){ q=(q||'').trim(); if(q.length<2) return [];
    nunca cortado pela tabela), com espaço de sobra para pesquisar e clicar em "Cadastrar Novo Produto". */
 function wizAssocOpen(i){
   wizAssocCloseAll();
+  { const it=WIZ.itens[i]; if(it && it.finalidade && it.finalidade!=='Revenda'){ toast(it.finalidade+' não é cadastrado como produto — entra só no valor da compra','err'); return; } }
   const trg=document.getElementById('wiz-assoc-trg-'+i); if(!trg) return;
   const tr=trg.closest('tr'); if(!tr) return;
   const cols=tr.children.length;
@@ -30823,6 +30832,7 @@ function wizAssocPick(i,pid){ wizAssocCloseAll(); const it=WIZ.itens[i]; it.asso
     if(+p.preco>0){ it.precoVenda=+p.preco; const c=+it.custoCalc||0; it.margem = c>0 ? Math.round(((+p.preco/c)-1)*1000)/10 : it.margem; } }
   if(WIZ._assocHi)WIZ._assocHi[i]=-1; wizRefreshRow(); }
 function wizAssocNovo(i){ wizAssocCloseAll(); const it=WIZ.itens[i]||{};
+  if(it.finalidade && it.finalidade!=='Revenda'){ toast(it.finalidade+' não é cadastrado como produto','err'); return; }
   // Blindagem: nada aqui pode travar/impedir a abertura do cadastro. Se qualquer cálculo
   // (ex.: geração de SKU) falhar, usamos um valor de reserva e ABRIMOS a tela mesmo assim.
   let skuNovo=''; try{ skuNovo=prodNovoSKU(); }catch(e){ skuNovo='P'+Date.now(); }
@@ -30845,6 +30855,9 @@ function wizAssocClear(i){ WIZ.itens[i].associarId=null; wizRefreshRow(); }
 function wizCfopUsoConsumo(){ const emp=DB._load().empresa||{}; const mesmoUF = WIZ.nf && WIZ.nf.emitUF && emp.estado && WIZ.nf.emitUF.toUpperCase()===(emp.estado||'').toUpperCase(); return mesmoUF?'1556':'2556'; }
 function wizCfopImobilizado(){ const emp=DB._load().empresa||{}; const mesmoUF = WIZ.nf && WIZ.nf.emitUF && emp.estado && WIZ.nf.emitUF.toUpperCase()===(emp.estado||'').toUpperCase(); return mesmoUF?'1551':'2551'; }
 function wizSetFinalidade(i,val){ const it=WIZ.itens[i]; it.finalidade=val; it._fed=it._fed||{};
+  // Uso e consumo / Imobilizado NÃO é produto da loja: desfaz a associação (e a refaz se voltar para Revenda).
+  if(val!=='Revenda'){ if(it.associarId){ it._assocAntes=it.associarId; it._assocMotivoAntes=it._assocMotivo; } it.associarId=null; it._assocMotivo=''; }
+  else if(!it.associarId && it._assocAntes && DB.get('produtos',it._assocAntes)){ it.associarId=it._assocAntes; it._assocMotivo=it._assocMotivoAntes||''; }
   if(val==='Uso e consumo'){ it.f_cfop=wizCfopUsoConsumo(); it.f_csosn=''; it.inativo=true; it._fed.f_cfop=1; }
   else if(val==='Imobilizado'){ it.f_cfop=wizCfopImobilizado(); it.f_csosn=''; it.inativo=true; it._fed.f_cfop=1; }
   else { const cp=contrapartidaDe(it.cfop); it.f_cfop=(cp&&cp.cfop)||'5102'; it.f_csosn=csosnVendaDeEntrada(it.csosn)||(cp&&cp.cst)||it.f_csosn||''; it.inativo=false; delete it._fed.f_cfop; delete it._fed.f_csosn; }
@@ -31027,7 +31040,14 @@ function wizStep6(){ const nf=WIZ.nf; const assoc=WIZ.itens.filter(i=>i.associar
      <div style="display:flex;justify-content:space-between;margin-top:18px"><button class="btn btn-ghost" onclick="wizGo(5)">${ico('chev')} Voltar</button><button class="btn btn-amber" onclick="wizFinalizar()">${ico('check')} Confirmar e Finalizar</button></div>
    </div>`;
 }
-function wizFinalizar(){ const nf=WIZ.nf;
+/* Finalizar NUNCA fica mudo: se algo der errado no meio, o erro aparece na tela. */
+let _wizFinalizando=false;
+function wizFinalizar(){ if(_wizFinalizando) return; _wizFinalizando=true;
+  const _btn=[...document.querySelectorAll('button')].find(b=>/Confirmar e Finalizar/i.test(b.textContent||'')); if(_btn){ _btn.disabled=true; }
+  try{ wizFinalizarExec(); }
+  catch(e){ console.error('wizFinalizar',e); try{ alert('A ENTRADA NÃO FOI FINALIZADA.\n\nErro: '+((e&&e.message)||e)+'\n\nNada foi descartado: confira os passos e tente de novo. Se repetir, mande um print desta mensagem.'); }catch(_){} }
+  finally{ _wizFinalizando=false; if(_btn && document.body.contains(_btn)) _btn.disabled=false; } }
+function wizFinalizarExec(){ const nf=WIZ.nf;
   // TRAVA FINAL CONTRA DUPLICIDADE — última porta antes de gravar estoque e financeiro.
   { const _d=nfeEntradaExistente({chave:nf&&nf.chave, cnpj:((nf&&nf.emitCNPJ)||'').replace(/\D/g,''), numero:nf&&nf.nNF, serie:(nf&&(nf.serie||nf.serieNF))});
     if(_d){ try{ alert('ESTA NOTA JÁ FOI LANÇADA — a entrada foi cancelada para não duplicar.\n\n'
@@ -31037,8 +31057,13 @@ function wizFinalizar(){ const nf=WIZ.nf;
       toast('Nota já lançada — entrada cancelada para não duplicar','err');
       if(WIZ._recebidaId){ try{ DB.update('notasRecebidas',WIZ._recebidaId,{status:'lancada'}); }catch(_){} }
       wizReset(); NFENT.tab='recebidas'; viewNfeEntrada(); return; } }
-  { const semAssoc=WIZ.itens.filter(it=>it._incluir!==false && !it.associarId);
-    if(semAssoc.length && !confirm('Atenção: '+semAssoc.length+' item(ns) SEM produto associado:\n\n'+semAssoc.slice(0,8).map(i=>'• '+(i.xProd||'')).join('\n')+(semAssoc.length>8?'\n…':'')+'\n\nEles NÃO serão cadastrados automaticamente e NÃO entram no estoque (entram só no valor da compra/financeiro).\n\nPara dar entrada no estoque, volte ao passo Itens e associe cada um a um produto existente.\n\nContinuar mesmo assim?')) return; }
+  { const _inc=WIZ.itens.filter(it=>it._incluir!==false);
+    const novos=_inc.filter(it=>(!it.finalidade||it.finalidade==='Revenda') && !it.associarId);
+    const usoC=_inc.filter(it=>it.finalidade && it.finalidade!=='Revenda');
+    if((novos.length||usoC.length) && !confirm('Confirmar a entrada da NF '+(nf.nNF||'')+'?\n\n'
+        +(novos.length?('• '+novos.length+' produto(s) NOVO(s) serão cadastrados com SKU próprio da loja (a partir de '+prodNovoSKU()+'). O código do fornecedor fica em "Referência (fornecedor)":\n'+novos.slice(0,8).map(i=>'   – '+(i.xProd||'')).join('\n')+(novos.length>8?'\n   …':'')+'\n\n'):'')
+        +(usoC.length?('• '+usoC.length+' item(ns) de uso e consumo / imobilizado NÃO viram produto nem estoque — entram só no valor da compra e no financeiro.\n\n'):'')
+        +'Para associar a um produto que já existe, clique em Cancelar e volte ao passo Itens.')) return; }
   // fornecedor
   let fornNome=nf.emitNome||'Fornecedor';
   if(WIZ.fornMode==='vinculado'&&WIZ.fornId){ const f=DB.get('fornecedores',WIZ.fornId); fornNome=f?f.nome:fornNome;
@@ -31056,6 +31081,18 @@ function wizFinalizar(){ const nf=WIZ.nf;
   // produtos + estoque
   const itensCompra=WIZ.itens.filter(it=>it._incluir!==false).map(it=>{ let pid; const inativo = it.finalidade && it.finalidade!=='Revenda';
     const qtdEstoque = Math.round((+it.qCom||0)*1000)/1000;
+    // USO E CONSUMO / IMOBILIZADO: não cadastra, não mexe em produto nem em estoque.
+    if(inativo) return {produtoId:null,nome:it.xProd,qtd:qtdEstoque,preco:it.custoCalc,custo:it.custoCalc,valorItem:Math.round((+it.vUnCom||0)*100)/100,usoConsumo:true,finalidade:it.finalidade,cProd:it.cProd||''};
+    // associado a um produto que não existe mais neste computador: trata como novo
+    if(it.associarId && !DB.get('produtos',it.associarId)){ it.associarId=null; }
+    // REVENDA SEM PRODUTO: cadastra agora, com SKU próprio em sequência; o código do fornecedor vai para a Referência.
+    if(!it.associarId){ const ean=((it.cEAN||'')+'').replace(/SEM ?GTIN/i,'').trim();
+      const np=DB.insert('produtos',{ nome:(it.xProd||'Produto NF').trim(), sku:prodNovoSKU(), referencia:it.cProd||'', codigoBarras:ean,
+        codigosFornecedor:(WIZ.fornId&&it.cProd)?{[WIZ.fornId]:(''+it.cProd).trim()}:{},
+        unidade:((+it.fator||1)===1?(it.uCom||'UN'):'UN').toUpperCase(), custo:+it.custoCalc||0, preco:+it.precoVenda||0, estoque:0, estoqueMinimo:0,
+        categoria:it.categoria||'Importado', grupo:(it.grupo||'').trim()||(it.categoria||'Importado'), subgrupo:(it.subgrupo||'').trim(), marca:(it.marca||'').trim()?marcaCanon(it.marca.trim()):'',
+        ncm:it.f_ncm||'', cfop:it.f_cfop||'', origem:it.f_orig||'0', cst:it.f_csosn||'', cest:it.f_cest||'', cstPis:it.f_cstpis||'', cstCofins:it.f_cstcofins||'', situacao:'ativo', criadoPorNF:nf.nNF||'' });
+      it.associarId=np.id; it._novoProduto=true; }
     if(it.associarId){ const p=DB.get('produtos',it.associarId); pid=p.id; const upd={custo:it.custoCalc};
       if(it.finalidade==='Revenda'&&it.precoVenda>0) upd.preco=it.precoVenda;
       // Preenche automaticamente o que estiver VAZIO no cadastro (dados do XML).
@@ -31083,8 +31120,6 @@ function wizFinalizar(){ const nf=WIZ.nf;
       if(inativo) upd.situacao='inativo';
       if(WIZ.lancarEstoque) upd.estoque=(p.estoque||0)+qtdEstoque;
       DB.update('produtos',pid,upd);
-    } else {
-      pid=null; // sem associação: não cadastra produto automaticamente
     }
     if(pid && WIZ.lancarEstoque) DB.insert('movEstoque',{produtoId:pid,tipo:'entrada',qtd:qtdEstoque,data:nf.data,motivo:'NF-e entrada (assistente)'+((+it.fator||1)>1?(' · '+(+it.qBase||0)+'x'+(+it.fator||1)):'')});
     return {produtoId:pid,nome:it.xProd,qtd:qtdEstoque,preco:it.custoCalc,custo:it.custoCalc,valorItem:Math.round((+it.vUnCom||0)*100)/100}; });
@@ -31098,8 +31133,11 @@ function wizFinalizar(){ const nf=WIZ.nf;
   if(WIZ.finGerar){ const parcVal=WIZ.parcelas.filter(p=>(+p.valor||0)>0); const nParc=parcVal.length; const pad3=x=>(''+x).padStart(3,'0');
     parcVal.forEach((p,pi)=>{
     DB.insert('financeiro',{tipo:'pagar',status:'aberto',compraId:compra.id,descricao:p.desc||('NF '+nf.nNF),categoria:WIZ.finCategoria,valor:+p.valor||0,emissao:nf.data,vencimento:p.venc||today(),parcela:nParc>1?(pad3(pi+1)+'/'+pad3(nParc)):'',parcelaNum:pi+1,parcelaTotal:nParc,nf:nf.nNF||'',fornecedorId:WIZ.fornId||null}); }); }
-  const resumo={novos:WIZ.itens.filter(i=>!i.associarId).length, assoc:WIZ.itens.filter(i=>i.associarId).length, total:nf.vNF};
-  toast(`Entrada finalizada: ${resumo.novos} novo(s), ${resumo.assoc} vinculado(s)`,'ok');
+  const _incl=WIZ.itens.filter(it=>it._incluir!==false);
+  const resumo={novos:_incl.filter(i=>i._novoProduto).length, assoc:_incl.filter(i=>i.associarId && !i._novoProduto).length, uso:_incl.filter(i=>i.finalidade&&i.finalidade!=='Revenda').length, total:nf.vNF};
+  toast(`Entrada finalizada: ${resumo.novos} produto(s) novo(s), ${resumo.assoc} vinculado(s)${resumo.uso?`, ${resumo.uso} de uso e consumo`:''}`,'ok');
+  try{ logAcao('Entrada de NF-e', 'NF '+(nf.nNF||'')+' · '+fornNome+' · '+BRL(nf.vNF||0)+' · '+resumo.novos+' novo(s), '+resumo.assoc+' vinculado(s), '+resumo.uso+' uso e consumo'); }catch(e){}
+  try{ nuvemPushJa(); }catch(e){}
   window._posEnt={ itens:WIZ.itens.filter(it=>it._incluir!==false), forn:fornNome, nf:nf, etiq:itensCompra.map(i=>({pid:i.produtoId,qtd:Math.max(1,Math.ceil(+i.qtd||1))})) };
   if(WIZ._recebidaId){ try{ DB.update('notasRecebidas',WIZ._recebidaId,{status:'lancada'}); }catch(_){} }
   try{ nfRecebidaBaixar(compra.chaveNFe); }catch(_){}
