@@ -48,7 +48,7 @@ const CONFIG_EMPRESA = {
      Aparece no topo do menu e no rodapé das Configurações. Troque a cada publicação.
      MANTENHA O FORMATO 'vDD/MM-X' — é ele que o sistema usa para comparar as máquinas
      da loja e avisar quando alguma ficou para trás.                                  */
-  versao: 'v05/10-F',
+  versao: 'v07/10-B',
 
   /* 4) NUVEM (Supabase)  ------------------------------------------------------------
      Cole aqui a Project URL e a chave PUBLISHABLE do projeto Supabase DESTA empresa
@@ -1630,6 +1630,17 @@ function acKey(id,e){
     if(AC.open===id && AC.lista.length){
       // Tab só confirma se o usuário já escolheu algo com a seta; senão segue para o próximo campo
       if(e.key==='Tab' && AC.idx<0) return;
+      if(AC.idx<0){
+        // versão TD — Enter SEM nada escolhido: antes confirmava o PRIMEIRO da lista. Com o campo vazio
+        // (lista completa aberta), isso amarrava a venda ao primeiro cliente em ordem alfabética — era o
+        // "63.980.972 FABIANO…", que começa com número e fica no topo. Agora: campo vazio = só fecha a lista;
+        // com texto digitado, confirma só quando não há dúvida (um resultado só, ou o nome COMEÇA pelo
+        // que foi digitado); senão destaca o primeiro e espera um novo Enter.
+        const inp=document.getElementById(id+'__ac'); const q=normTxt(((inp&&inp.value)||'')+'').trim();
+        if(!q){ e.preventDefault(); acClose(); return; }
+        const certo = AC.lista.length===1 || acRank(AC.lista[0], q)===0;
+        if(!certo){ e.preventDefault(); AC.idx=0; acMarca(); return; }
+      }
       e.preventDefault(); acPick(id, AC.idx<0?0:AC.idx); } }
   else if(e.key==='Escape'){ acClose(); } }
 function acBlur(id){ setTimeout(()=>{ const cfg=AC.reg[id]; const h=document.getElementById(id), inp=document.getElementById(id+'__ac');
@@ -1739,7 +1750,7 @@ function outboxAplicar(base){
         if(morto && nuvemTs(morto)>=nuvemTs(it._mod)) return;
         const i=idx.get(it.id);
         if(i===undefined){ arr.push(it); idx.set(it.id,arr.length-1); resgatados++; }
-        else if(nuvemTs(it._mod) > nuvemTs(arr[i]._mod)){ arr[i]=it; resgatados++; }
+        else if(nuvemTs(it._mod) > nuvemTs(arr[i]._mod)){ arr[i]=(col==='vendas')?vendaMesclarProgresso(it,arr[i]):it; resgatados++; }
       });
     });
   }catch(e){}
@@ -2343,6 +2354,7 @@ function go(id){ window.__inEditor=null;   /* navegacao explicita: encerra qualq
   if(CURRENT_USER && !canAccess(id)){ toast('Você não tem permissão para acessar isto','err'); id=firstAllowed(); }
   // Trocou de tela: aí sim as caixinhas marcadas são descartadas.
   try{ if(STATE.route!==id) selLimparTudo(); }catch(e){}
+  if(id==='nfavulsa'){ window._nfaEntrada=!window._nfaManter; window._nfaManter=false; }   // Nota Avulsa: abrir pelo menu = tela em branco
   STATE.route=id; STATE.report=null; STATE.menuId=id; const n=NAV_ITEMS[id]||{title:'',sub:''};
   const grp=navGroupOf(id); if(grp) STATE.navClosed=new Set(NAV.map(x=>x.g).filter(n=>n!==grp));
   document.getElementById('page-title').textContent=n.title;
@@ -3426,6 +3438,77 @@ function dashDebTodosCliente(key){
 function dashDebTipoTag(f){ if(crEhBoleto(f)) return 'Boleto'; if(crEhFicha(f)) return 'Pag. futuro'; return 'Outro'; }
 
 /* ---- Cartão do painel ---- */
+/* PAINEL — CONTAS DOS PRÓXIMOS 7 DIAS (a receber e a pagar).
+   Mostra o que vence de hoje até daqui a 7 dias, em ordem de vencimento, com o que já
+   está vencido destacado em cima. "Ver todos" abre a tela completa. */
+/* ===== DIAS ÚTEIS BANCÁRIOS =====
+   Sábado, domingo e feriado não têm expediente bancário. As contas que vencem nesses dias são pagas
+   no PRÓXIMO dia útil. Por isso o painel de Contas a Pagar mostra, na segunda-feira, as contas de
+   sábado, domingo e segunda; depois de um feriado, as do feriado e as do dia útil seguinte.
+   Feriados considerados: os nacionais (fixos e móveis: Carnaval, Sexta-feira Santa, Corpus Christi)
+   e os cadastrados em Vendas › Configurações › Calendário da loja. */
+function pascoa(y){ const a=y%19,b=Math.floor(y/100),c=y%100,d=Math.floor(b/4),e=b%4,f=Math.floor((b+8)/25),g=Math.floor((b-f+1)/3),h=(19*a+b-d-g+15)%30,i=Math.floor(c/4),k=c%4,l=(32+2*e+2*i-h-k)%7,m=Math.floor((a+11*h+22*l)/451),mo=Math.floor((h+l-7*m+114)/31),da=((h+l-7*m+114)%31)+1; return new Date(y,mo-1,da,12); }
+function feriadosBancarios(y){ const S=new Set(['01-01','04-21','05-01','09-07','10-12','11-02','11-15','11-20','12-25'].map(x=>y+'-'+x));
+  const P=pascoa(y); const add=(n)=>{ const d=new Date(P); d.setDate(d.getDate()+n); S.add(ymd(d)); };
+  add(-48); add(-47); add(-2); add(60);   // segunda e terça de Carnaval, Sexta-feira Santa, Corpus Christi
+  return S; }
+function ehDiaUtilBancario(iso){ try{ const d=pDate(iso); const dow=d.getDay(); if(dow===0||dow===6) return false;
+    if(feriadosBancarios(d.getFullYear()).has(iso)) return false; if(feriadoLoja(iso)) return false; return true; }catch(e){ return true; } }
+function diaUtilSeguinte(iso){ let d=pDate(iso); for(let i=0;i<30;i++){ d=new Date(d); d.setDate(d.getDate()+1); const k=ymd(d); if(ehDiaUtilBancario(k)) return k; } return iso; }
+function diaUtilAnterior(iso){ let d=pDate(iso); for(let i=0;i<30;i++){ d=new Date(d); d.setDate(d.getDate()-1); const k=ymd(d); if(ehDiaUtilBancario(k)) return k; } return iso; }
+/* Janela de pagamento de hoje: do dia seguinte ao último dia útil até o próximo dia útil (hoje, se hoje for útil). */
+function dashJanelaPagamento(hoje){ hoje=hoje||today();
+  const util=ehDiaUtilBancario(hoje); const pagaEm=util?hoje:diaUtilSeguinte(hoje);
+  const ant=diaUtilAnterior(hoje); const d=pDate(ant); d.setDate(d.getDate()+1); const de=ymd(d);
+  return { de, ate:pagaEm, pagaEm, hojeUtil:util }; }
+function dashJanelaTexto(j){ if(j.de===j.ate) return ''; const dias=[]; let d=pDate(j.de);
+  const nomes=['dom','seg','ter','qua','qui','sex','sáb'];
+  for(let i=0;i<10 && ymd(d)<=j.ate;i++){ const k=ymd(d); dias.push(nomes[d.getDay()]+' '+k.slice(8,10)+'/'+k.slice(5,7)); d=new Date(d); d.setDate(d.getDate()+1); }
+  return dias.join(' + '); }
+/* Contas a receber: próximos 7 dias. Contas a pagar: as da janela de pagamento (ver acima). */
+function dashVence7Dias(tipo){ return tipo==='pagar'?0:7; }
+function dashVence7(tipo){
+  const hoje=today(); let lim=daysAgo(-dashVence7Dias(tipo)); let ini=hoje; let jan=null;
+  // A receber: os 7 dias começam no dia seguinte ao último dia útil (o boleto de sábado/domingo/feriado é
+  // compensado no próximo dia útil — não é "vencido", é "recebe hoje"). A pagar: só a janela de pagamento.
+  jan=dashJanelaPagamento(hoje); ini=jan.de; if(tipo==='pagar') lim=jan.ate;
+  const aberto=f=>['aberto','pendente'].includes(f.status);
+  const L=DB.all('financeiro').filter(f=>f && f.tipo===tipo && aberto(f));
+  const nome=f=>{ if(tipo==='pagar'){ const fo=f.fornecedorId?DB.get('fornecedores',f.fornecedorId):null; return (fo&&fo.nome)||f.fornecedorNome||f.descricao||'Sem fornecedor'; }
+    const c=f.clienteId?DB.get('clientes',f.clienteId):null; return (c&&c.nome)||f.clienteNome||f.descricao||'Cliente'; };
+  const prox=L.filter(f=>f.vencimento && f.vencimento>=ini && f.vencimento<=lim)
+    .sort((a,b)=>String(a.vencimento).localeCompare(String(b.vencimento)))
+    .map(f=>({ id:f.id, venc:f.vencimento, nome:nome(f), desc:f.descricao||'', valor:+f.valor||0, dias:Math.round((pDate(f.vencimento)-pDate(hoje))/86400000) }));
+  const vencidos=L.filter(f=>f.vencimento && f.vencimento<ini);
+  return { prox, jan, total:Math.round(prox.reduce((a,x)=>a+x.valor,0)*100)/100,
+           vencidosQtd:vencidos.length, vencidosValor:Math.round(vencidos.reduce((a,f)=>a+(+f.valor||0),0)*100)/100 }; }
+function dashVence7Card(tipo){
+  const rec=(tipo==='receber'); const d=dashVence7(tipo); const doDia=dashVence7Dias(tipo)===0; const LIM=doDia?60:7;
+  const cor=rec?'var(--pos)':'var(--neg)'; const rota=rec?'contasrec':'contaspag';
+  const nomesDia=['domingo','segunda','terça','quarta','quinta','sexta','sábado'];
+  const quando=n=>{ if(n===0) return 'hoje'; if(n===1) return 'amanhã'; if(n===-1) return 'ontem'; if(n<0){ try{ const dt=new Date(); dt.setHours(12,0,0,0); dt.setDate(dt.getDate()+n); return nomesDia[dt.getDay()]+' (sem banco)'; }catch(e){ return 'há '+(-n)+' dias'; } } return 'em '+n+' dias'; };
+  const jan=d.jan; const janTxt=jan?dashJanelaTexto(jan):'';
+  const tituloPag = jan ? (jan.hojeUtil ? (janTxt?('— pagar hoje ('+janTxt+')'):'do dia') : ('— pagar '+nomesDia[pDate(jan.pagaEm).getDay()]+' '+fDate(jan.pagaEm).slice(0,5)+' ('+janTxt+')')) : 'do dia';
+  return `<div class="card">
+    <div class="card-head"><div><h3>${ico(rec?'up':'down')} Contas a ${rec?'Receber':'Pagar'} ${doDia?tituloPag:'— Próximos 7 dias'}</h3>
+      <div class="ch-sub">${d.prox.length?(NUM(d.prox.length)+' conta(s) · '+BRL(d.total)):(doDia?'Nada a pagar':'Nada vencendo nos próximos 7 dias')}${(jan&&!jan.hojeUtil)?' · <span style="color:var(--amber-d)">hoje não há expediente bancário</span>':''}${(jan&&jan.hojeUtil&&janTxt)?' · inclui o que venceu no fim de semana/feriado ('+esc(janTxt)+')':''}</div></div>
+      <button class="btn btn-ghost btn-sm" onclick="go('${rota}')">Ver todos ${ico('send')}</button></div>
+    <div class="card-pad" style="padding-top:0">
+      ${d.vencidosQtd?`<div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;background:var(--amber-soft);border:1px solid var(--amber);border-radius:8px;padding:7px 10px;margin:10px 0;font-size:12.5px;color:var(--amber-d)">
+        <span>${ico('alert')} <b>${NUM(d.vencidosQtd)} já vencida(s)</b> — ${BRL(d.vencidosValor)}</span>
+        <button class="btn btn-ghost btn-sm" onclick="go('${rota}')">Ver</button></div>`:''}
+      ${d.prox.length?`<div style="display:flex;flex-direction:column">
+        ${d.prox.slice(0,LIM).map(x=>`<div style="display:flex;justify-content:space-between;align-items:center;gap:10px;padding:9px 0;border-bottom:1px solid var(--line-2)">
+          <div style="min-width:0;flex:1">
+            <div class="t-strong" style="font-size:13px;overflow-wrap:anywhere">${esc(x.nome)}</div>
+            <div class="t-mut" style="font-size:11.5px;overflow-wrap:anywhere;line-height:1.45">${fDate(x.venc)} · ${esc(quando(x.dias))}${x.desc?(' · '+esc(x.desc)):''}</div>
+          </div>
+          <b class="tnum" style="color:${cor};white-space:nowrap">${BRL(x.valor)}</b></div>`).join('')}
+        ${d.prox.length>LIM?`<div class="t-mut" style="font-size:12px;padding-top:8px">…e mais ${NUM(d.prox.length-LIM)} conta(s)</div>`:''}
+        <div style="display:flex;justify-content:space-between;align-items:center;padding-top:10px;margin-top:4px;border-top:2px solid var(--line)">
+          <span style="font-weight:600">${doDia?(janTxt?'Total a pagar':'Total do dia'):'Total dos 7 dias'}</span><b class="tnum" style="font-size:16px;color:${cor}">${BRL(d.total)}</b></div>
+      </div>`:`<p class="t-mut" style="font-size:12.5px;margin:12px 0 4px">${doDia?(janTxt?'Nenhuma conta a pagar nestes dias.':'Nenhuma conta a pagar vencendo hoje.'):`Nenhuma conta a ${rec?'receber':'pagar'} vencendo nos próximos 7 dias.`}</p>`}
+    </div></div>`; }
 function dashDebCard(tipo){
   const boleto=(tipo==='boletos');
   const grupos=dashDebGrupos(tipo);
@@ -3817,8 +3900,8 @@ function viewDash(){
           ${lowStock.length?lowStock.slice(0,8).map(p=>`<div style="display:flex;align-items:center;gap:11px;padding:11px 20px;border-bottom:1px solid var(--line-2)">
             <div class="dot" style="background:${p.estoque===0?'var(--neg)':'var(--amber)'}"></div>
             <div style="flex:1;min-width:0"><div class="t-strong" style="font-size:13px">${esc(p.nome)}</div>
-              <div class="t-mut" style="font-size:11.5px">mín. ${NUM(p.estoqueMinimo)} ${p.unidade}</div></div>
-            <b class="tnum" style="color:${p.estoque===0?'var(--neg)':'var(--amber-d)'}">${NUM(p.estoque)} ${p.unidade}</b>
+              <div class="t-mut" style="font-size:11.5px">mín. ${fmtQ(p.estoqueMinimo)} ${p.unidade}</div></div>
+            <b class="tnum" style="color:${p.estoque===0?'var(--neg)':'var(--amber-d)'}">${fmtQ(p.estoque)} ${p.unidade}</b>
           </div>`).join(''):`<div class="empty" style="padding:30px">${ico('check')}<div>Tudo abastecido</div></div>`}
           </div>
         </div>
@@ -4648,6 +4731,19 @@ function pdvImportDoc(){
      </div>
      <div id="imp-orc-list" style="display:flex;flex-direction:column;gap:7px">${impOrcList(lista)}</div>
    </div>`, true);
+}
+/* Ao abrir "Importar pedido/orçamento": traz da nuvem o que mudou e redesenha a lista. */
+async function impOrcConferirNuvem(){
+  const el=()=>document.getElementById('imp-orc-sync'); if(!el()) return;
+  if(MODO_TESTE || !nuvemConfigurada() || !nuvemClient()){ return; }
+  el().textContent='Conferindo com a nuvem…';
+  let r=null; try{ r=await nuvemPullMerge(); }catch(e){ r={ok:false, erro:(e&&e.message)||String(e)}; }
+  if(!el()) return;
+  const falhou=!!(r && r.ok===false && !r.ocupado);
+  const ok=!falhou && !nuvemDesatualizado();
+  if(ok){ el().textContent='Lista conferida com a nuvem às '+new Date().toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'})+'.'; }
+  else { el().innerHTML='<span style="color:#991b1b"><b>Não consegui conferir com a nuvem</b> — esta lista pode estar desatualizada.</span> <a href="javascript:void(0)" onclick="impOrcConferirNuvem()">Tentar de novo</a>'; }
+  try{ const av=document.getElementById('imp-orc-aviso'); if(av) av.innerHTML=nuvemDesatualizadoHTML()+(_impEhPed()?pedidosAbertosComNotaHTML():''); renderImpOrc(); }catch(e){}
 }
 function impOrcList(lista){
   if(!lista.length){ const doc=_impEhPed()?'pedido':'orçamento'; return `<div class="empty" style="padding:30px">${ico('quote')}<h4>Nenhum ${doc} disponível</h4><p class="t-mut">${_impEhPed()?'Crie pedidos em Pedidos Vendedores.':'Crie orçamentos na aba Orçamentos.'}</p></div>`; }
@@ -8288,11 +8384,105 @@ function prodProbBarraHTML(){ if(!PROD_PROB.aberto) return '';
   const btn=t=>`<button class="btn btn-sm ${PROD_PROB.k===t.k?'btn-amber':'btn-ghost'}" style="${PROD_PROB.k===t.k?'':('border:1px solid '+t.cor+';color:'+t.cor)}" title="${esc(t.desc||t.rotulo)}" onclick="prodProbFiltrar('${t.k}')">${t.rotulo} <b>(${NUM(c[t.k]||0)})</b></button>`;
   return `<div class="card card-pad" style="margin-bottom:12px;display:flex;flex-direction:column;gap:8px">
     <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap"><b style="font-size:13px">${ico('alert')} Problemas de cadastro</b><span class="t-mut" style="font-size:12px">${qualquer?NUM(qualquer)+' produto(s) ativo(s) com algum dado faltando ou errado. Clique num botão para ver só esses produtos.':'Nenhum problema encontrado nos produtos ativos.'}</span>
-      <div style="flex:1"></div>${PROD_PROB.k?`<button class="btn btn-ghost btn-sm" onclick="prodProbFiltrar('')">${ico('x')} Mostrar todos</button>`:''}<button class="btn btn-ghost btn-sm" onclick="exportCSV('produtos-problemas')" title="Exporta a lista de produtos com problema e o que falta em cada um">${ico('dl')} CSV dos problemas</button></div>
+      <div style="flex:1"></div>${PROD_PROB.k?`<button class="btn btn-ghost btn-sm" onclick="prodProbFiltrar('')">${ico('x')} Mostrar todos</button>`:''}<button class="btn btn-ghost btn-sm" onclick="prodEansDasNotasModal()" title="Procura, nas NF-e de entrada já lançadas, o código de barras dos produtos que estão sem">${ico('search')} Códigos de barras das notas</button><button class="btn btn-ghost btn-sm" onclick="exportCSV('produtos-problemas')" title="Exporta a lista de produtos com problema e o que falta em cada um">${ico('dl')} CSV dos problemas</button></div>
     <div style="display:flex;gap:6px;flex-wrap:wrap">${PROD_PROBLEMAS.filter(t=>c[t.k]).map(btn).join('')}</div>
   </div>`; }
 function prodProbToggle(){ PROD_PROB.aberto=!PROD_PROB.aberto; if(!PROD_PROB.aberto) PROD_PROB.k=''; viewProd(); }
-function prodProbFiltrar(k){ PROD_PROB.k=(PROD_PROB.k===k)?'':k; const el=document.getElementById('prod-prob-barra'); if(el) el.innerHTML=prodProbBarraHTML(); renderProdTable(); }
+function prodProbFiltrar(k){ PROD_PROB.k=(PROD_PROB.k===k)?'':k; const el=document.getElementById('prod-prob-barra'); if(el) el.innerHTML=prodProbBarraHTML(); renderProdTable();
+  if(PROD_PROB.k) prodProbModal(PROD_PROB.k); }
+/* ===== CORRIGIR O PROBLEMA EM LISTA =====
+   Ao clicar num botão da barra abre a lista dos produtos com aquele problema, cada um com o campo
+   que falta (ou que está errado) à frente, para digitar e salvar de uma vez. Nos problemas de
+   preço (sem preço, sem custo, preço abaixo do custo) aparecem três campos: custo, markup e venda —
+   mexer no custo ou no markup recalcula a venda; mexer na venda recalcula o markup. */
+let PROD_PP={k:'',q:''};
+const PROD_PP_PRECO=['preco','custo','abaixo'];
+function prodProbCampo(k){ return ({ean:'codigoBarras',ean_ruim:'codigoBarras',eandup:'codigoBarras',ncm:'ncm',cat:'categoria',grupo:'grupo',sub:'subgrupo',marca:'marca',un:'unidade',sku:'sku',nomedup:'nome'})[k]||''; }
+function prodProbLista(){ const t=PROD_PROBLEMAS.find(x=>x.k===PROD_PP.k); if(!t) return []; const ctx=prodProbContexto(); const q=normTxt(PROD_PP.q||'');
+  const L=ctx.ativos.filter(p=>{ try{ return t.teste(p,ctx); }catch(e){ return false; } }).filter(p=>!q || normTxt((p.nome||'')+' '+(p.sku||'')+' '+(p.codigoBarras||'')).includes(q));
+  return L.sort((a,b)=>(a.nome||'').localeCompare(b.nome||'','pt-BR')); }
+function prodProbModal(k){ PROD_PP={k:k||'',q:''}; const t=PROD_PROBLEMAS.find(x=>x.k===PROD_PP.k); if(!t) return; const L=prodProbLista();
+  const dica = PROD_PP_PRECO.includes(k) ? 'Preencha o custo, o markup (%) ou o preço de venda — os outros campos se ajustam sozinhos. Só são salvos os produtos que você alterar.'
+    : k==='ncm' ? 'NCM com 8 números (está na nota de compra do produto). Produtos do mesmo tipo costumam ter o mesmo NCM.'
+    : /^ean/.test(k) ? 'Código de barras com 8, 12, 13 ou 14 números. Use o leitor: bipe no campo e vá para o próximo com Enter.'
+    : k==='nomedup' ? 'Produtos com o mesmo nome ficam lado a lado — corrija o nome de um deles (ou deixe em branco para não mexer).'
+    : 'Digite o que falta e salve. Linhas em branco não são alteradas.';
+  openModal(`<div class="modal-head"><h3>${ico('edit')} ${esc(t.rotulo)} — ${NUM(L.length)} produto(s)</h3><button class="btn-icon btn-ghost" onclick="prodProbModalFechar()">${ico('x')}</button></div>
+   <div class="modal-body" style="max-height:70vh;overflow:auto">
+     <p class="t-mut" style="font-size:12.5px;margin:0 0 10px">${dica}</p>
+     ${(k==='ean')?`<div style="margin-bottom:8px"><button class="btn btn-ghost btn-sm" onclick="prodEansDasNotasModal()" title="Procura, nas NF-e de entrada já lançadas, o código de barras dos produtos que estão sem">${ico('dl')} Buscar nas notas de entrada (XML)</button></div>`:''}
+     <input class="pill-filter" placeholder="Buscar por nome, SKU ou código de barras…" oninput="PROD_PP.q=this.value;prodProbRender()" style="width:100%;margin-bottom:8px">
+     <datalist id="pp-marcalist"></datalist>
+     <div id="pp-list">${prodProbRowsHTML(L)}</div>
+   </div>
+   <div class="modal-foot"><button class="btn btn-ghost" onclick="prodProbModalFechar()">Fechar</button><div style="flex:1"></div><button class="btn btn-amber" onclick="prodProbSalvar()">${ico('check')} Salvar os preenchidos</button></div>`, true);
+  setTimeout(()=>{ try{ const i=document.querySelector('#pp-list input,#pp-list select'); if(i) i.focus(); }catch(e){} },80); }
+function prodProbModalFechar(){ closeModal(); try{ viewProd(); }catch(e){} }
+function prodProbRender(){ const el=document.getElementById('pp-list'); if(el) el.innerHTML=prodProbRowsHTML(prodProbLista()); }
+function prodProbMoeda(v){ v=+v||0; return v?v.toFixed(2).replace('.',','):''; }
+function prodProbMarkup(c,p){ c=+c||0; p=+p||0; return (c>0&&p>0)?(((p-c)/c)*100).toFixed(1).replace('.',','):''; }
+function prodProbRowsHTML(L){ const k=PROD_PP.k, max=300;
+  if(!L.length) return `<div class="empty" style="padding:30px">${ico('check')}<h4>Nenhum produto com este problema</h4></div>`;
+  const preco=PROD_PP_PRECO.includes(k); const campo=prodProbCampo(k);
+  const rotulo={codigoBarras:'Código de barras',ncm:'NCM',categoria:'Categoria',grupo:'Grupo',subgrupo:'Sub-grupo',marca:'Marca',unidade:'Unidade',sku:'SKU',nome:'Nome'}[campo]||'';
+  const uns=unidadesList(); const cats=categoriasProduto().map(c=>c.nome);
+  const head = preco ? `<th class="t-right" style="width:120px">Custo (R$)</th><th class="t-right" style="width:110px">Markup (%)</th><th class="t-right" style="width:120px">Venda (R$)</th>`
+    : `<th style="width:${campo==='nome'?'320px':'220px'}">${rotulo}</th>`;
+  const ent=`onkeydown="if(event.key==='Enter'){event.preventDefault();prodProbProximo(this);}"`;
+  const campoHTML=p=>{
+    if(preco){ const c=+p.custo||0, pr=+p.preco||0;
+      return `<td class="t-right"><input data-pp-f="custo" inputmode="decimal" value="${prodProbMoeda(c)}" placeholder="0,00" style="width:105px;text-align:right" oninput="prodProbRecalc(this,'custo')" ${ent}></td>
+        <td class="t-right"><input data-pp-f="markup" inputmode="decimal" value="${prodProbMarkup(c,pr)}" placeholder="%" style="width:90px;text-align:right" oninput="prodProbRecalc(this,'markup')" ${ent}></td>
+        <td class="t-right"><input data-pp-f="preco" inputmode="decimal" value="${prodProbMoeda(pr)}" placeholder="0,00" style="width:105px;text-align:right;font-weight:700" oninput="prodProbRecalc(this,'preco')" ${ent}></td>`; }
+    const atual=(p[campo]==null?'':''+p[campo]);
+    if(campo==='unidade') return `<td><select data-pp-f="unidade" style="width:120px"><option value="">— escolha —</option>${uns.map(u=>`<option ${u.toUpperCase()===atual.toUpperCase()?'selected':''}>${esc(u)}</option>`).join('')}</select></td>`;
+    if(campo==='categoria') return `<td><input data-pp-f="categoria" list="pp-cats-${p.id}" value="${esc(/^outros$/i.test(atual)?'':atual)}" placeholder="Categoria" style="width:210px" autocomplete="off" ${ent}><datalist id="pp-cats-${p.id}">${cats.map(c=>`<option>${esc(c)}</option>`).join('')}</datalist></td>`;
+    if(campo==='grupo'){ const gs=gruposDaCategoria(p.categoria||'').map(g=>g.nome).filter(g=>normTxt(g)!==normTxt(p.categoria||''));
+      return `<td><input data-pp-f="grupo" list="pp-gr-${p.id}" value="${esc(normTxt(atual)===normTxt(p.categoria||'')?'':atual)}" placeholder="Grupo dentro de ${esc(p.categoria||'…')}" style="width:210px" autocomplete="off" ${ent}><datalist id="pp-gr-${p.id}">${gs.map(g=>`<option>${esc(g)}</option>`).join('')}</datalist></td>`; }
+    if(campo==='subgrupo'){ const ss=subgruposDoGrupo(p.categoria||'',p.grupo||'').map(x=>x.nome);
+      return `<td><input data-pp-f="subgrupo" list="pp-sg-${p.id}" value="${esc(atual)}" placeholder="Sub-grupo de ${esc(p.grupo||p.categoria||'…')}" style="width:210px" autocomplete="off" ${ent}><datalist id="pp-sg-${p.id}">${ss.map(x=>`<option>${esc(x)}</option>`).join('')}</datalist></td>`; }
+    if(campo==='marca') return `<td><input data-pp-f="marca" list="pp-marcalist" value="${esc(atual)}" placeholder="Marca" style="width:210px;text-transform:uppercase" autocomplete="off" oninput="this.value=this.value.toUpperCase();marcaDatalistFill('pp-marcalist',this.value)" ${ent}></td>`;
+    if(campo==='ncm') return `<td><input data-pp-f="ncm" inputmode="numeric" maxlength="10" value="${esc(atual.replace(/\D/g,'').length===8?atual:'')}" placeholder="0000.00.00" style="width:150px" ${ent}></td>`;
+    if(campo==='codigoBarras') return `<td><input data-pp-f="codigoBarras" inputmode="numeric" value="${esc(atual)}" placeholder="Código de barras" style="width:200px${(k==='ean_ruim'||k==='eandup')?';border-color:var(--neg)':''}" ${ent}></td>`;
+    if(campo==='nome') return `<td><input data-pp-f="nome" value="${esc(atual)}" placeholder="Nome" style="width:310px;text-transform:uppercase" ${ent}></td>`;
+    return `<td><input data-pp-f="${campo}" value="${esc(atual)}" placeholder="${esc(rotulo)}" style="width:200px" ${ent}></td>`; };
+  const info=p=>{ const bits=[]; if(p.sku) bits.push(esc(p.sku)); if(p.categoria && campo!=='categoria') bits.push(esc(p.categoria)+(p.grupo&&normTxt(p.grupo)!==normTxt(p.categoria)?' › '+esc(p.grupo):'')); if(campo==='codigoBarras' && p.codigoBarras && k!=='ean_ruim') bits.push('atual: '+esc(p.codigoBarras)); if(preco) bits.push('estoque '+fmtQ(p.estoque||0)+' '+esc(p.unidade||'')); return bits.join(' · '); };
+  return `<table><thead><tr><th>Produto</th>${head}</tr></thead><tbody>
+    ${L.slice(0,max).map(p=>`<tr data-pp-pid="${p.id}"><td><b>${esc(p.nome)}</b><div class="t-mut" style="font-size:11px">${info(p)}</div></td>${campoHTML(p)}</tr>`).join('')}
+  </tbody></table>${L.length>max?`<div class="t-mut" style="font-size:12px;padding:8px">Mostrando ${max} de ${NUM(L.length)} — use a busca para achar os demais.</div>`:''}`; }
+function prodProbRecalc(inp,qual){ const tr=inp.closest('tr'); if(!tr) return; const g=f=>tr.querySelector('[data-pp-f="'+f+'"]');
+  const c=numBR(g('custo').value), mk=numBR(g('markup').value), pr=numBR(g('preco').value);
+  if(qual==='preco'){ g('markup').value=prodProbMarkup(c,pr); return; }
+  if(qual==='custo'){ // corrigir o custo mantém a venda e refaz o markup; sem venda, usa o markup digitado
+    if(pr>0){ g('markup').value=prodProbMarkup(c,pr); return; }
+    if(c>0 && g('markup').value.trim()!==''){ g('preco').value=prodProbMoeda(Math.round(c*(1+mk/100)*100)/100); } return; }
+  if(c>0){ g('preco').value=prodProbMoeda(Math.round(c*(1+mk/100)*100)/100); } }
+function prodProbProximo(inp){ const all=[...document.querySelectorAll('#pp-list input,#pp-list select')]; const i=all.indexOf(inp); if(i>=0 && all[i+1]) all[i+1].focus(); }
+function prodProbSalvar(){ const k=PROD_PP.k; const preco=PROD_PP_PRECO.includes(k); const campo=prodProbCampo(k); let n=0, ruins=0;
+  document.querySelectorAll('#pp-list tr[data-pp-pid]').forEach(tr=>{ const p=DB.get('produtos',tr.getAttribute('data-pp-pid')); if(!p) return; const g=f=>tr.querySelector('[data-pp-f="'+f+'"]'); const upd={};
+    if(preco){ const c=numBR(g('custo').value), pr=numBR(g('preco').value);
+      if(Math.abs(c-(+p.custo||0))>0.001) upd.custo=c; if(Math.abs(pr-(+p.preco||0))>0.001) upd.preco=pr;
+      if(!Object.keys(upd).length) return;
+      const cF=('custo' in upd)?c:(+p.custo||0), pF=('preco' in upd)?pr:(+p.preco||0);
+      if(k==='preco' && !(pF>0)){ ruins++; g('preco').style.borderColor='var(--neg)'; return; }
+      if(k==='custo' && !(cF>0)){ ruins++; g('custo').style.borderColor='var(--neg)'; return; }
+      if(k==='abaixo' && cF>0 && pF>0 && pF<cF){ ruins++; g('preco').style.borderColor='var(--neg)'; return; }
+    } else { const el=g(campo); if(!el) return; let v=(el.value||'').trim(); const atual=(p[campo]==null?'':''+p[campo]).trim();
+      if(!v || v===atual) return;
+      if(campo==='ncm'){ v=v.replace(/\D/g,''); if(v.length!==8){ ruins++; el.style.borderColor='var(--neg)'; return; } }
+      if(campo==='codigoBarras'){ v=v.replace(/\D/g,''); if(![8,12,13,14].includes(v.length)){ ruins++; el.style.borderColor='var(--neg)'; return; } }
+      if(campo==='marca'){ try{ v=marcaCanon(v.toUpperCase())||v.toUpperCase(); }catch(e){ v=v.toUpperCase(); } }
+      if(campo==='nome') v=v.toUpperCase();
+      if(campo==='grupo'){ try{ v=prodGrupoRegistrar(p.categoria||'', v)||v; }catch(e){} }
+      if(campo==='subgrupo'){ try{ v=prodSubgrupoRegistrar(p.categoria||'', p.grupo||'', v)||v; }catch(e){} }
+      if(campo==='categoria'){ try{ const d=DB._load(); d.categorias=d.categorias||[]; if(!d.categorias.some(c=>normTxt(c.nome||'')===normTxt(v))){ d.categorias.push({id:uid(),nome:v,cor:colorFor(v)}); DB._persist(); } }catch(e){} }
+      upd[campo]=v; }
+    DB.update('produtos',p.id,upd); n++; });
+  if(ruins) toast(ruins+' linha(s) inválida(s) ficaram em vermelho — '+(preco?'preço de venda e custo precisam ser maiores que zero (e a venda não pode ficar abaixo do custo)':campo==='ncm'?'NCM tem 8 números':campo==='codigoBarras'?'código de barras tem 8, 12, 13 ou 14 números':'confira os valores'),'err');
+  if(!n){ if(!ruins) toast('Nada alterado','err'); return; }
+  try{ logAcao('Cadastro de produtos corrigido em lista ('+(PROD_PROBLEMAS.find(x=>x.k===k)||{}).rotulo+')', n+' produto(s)'); }catch(e){} try{ nuvemPushJa(); }catch(e){}
+  toast(n+' produto(s) salvos','ok'); prodProbRender();
+  try{ const el=document.getElementById('prod-prob-barra'); if(el) el.innerHTML=prodProbBarraHTML(); renderProdTable(); }catch(e){} }
 function prodProbAplicar(lista){ if(!PROD_PROB.aberto || !PROD_PROB.k) return lista; const t=PROD_PROBLEMAS.find(x=>x.k===PROD_PROB.k); if(!t) return lista; const ctx=prodProbContexto();
   return lista.filter(p=>(p.situacao||'ativo')!=='inativo' && (function(){ try{ return t.teste(p,ctx); }catch(e){ return false; } })()); }
 function prodInativarRapido(id){ const p=DB.get('produtos',id); if(!p) return;
@@ -8306,7 +8496,7 @@ function prodReativarRapido(id){ const p=DB.get('produtos',id); if(!p) return;
 }
 
 /* ===== ORDENAÇÃO DA LISTA DE PRODUTOS =====
-   Clicar no título da coluna ordena; clicar de novo inverte (crescente ↔ decrescente).
+   Clicar no título da coluna ordena; clicar de novo inverte; o terceiro clique volta ao normal.
    A ordenação acontece ANTES do corte de linhas da tela, senão ordenaria só o pedaço
    que já estava à vista. Sem coluna escolhida, vale a ordem de relevância da busca. */
 let PROD_ORD={col:'',dir:1};
@@ -8320,7 +8510,11 @@ const PROD_ORD_VAL={
   margem:    p=>{ const v=+p.preco||0; return v?((v-(+p.custo||0))/v*100):-1; },
   embalagem: p=>(p.embalagemVenda&&+p.qtdPorEmbalagem>0)?(+p.qtdPorEmbalagem):-1,
   estoque:   p=>+p.estoque||0 };
-function prodOrdenar(col){ if(PROD_ORD.col===col){ PROD_ORD.dir=-PROD_ORD.dir; } else { PROD_ORD={col:col,dir:1}; }
+/* Números (custo, venda, margem, estoque, embalagem) começam do MAIOR para o menor; texto, de A a Z.
+   1º clique ordena, 2º inverte, 3º volta à ordem normal da lista. */
+const PROD_ORD_NUM=['custo','preco','margem','embalagem','estoque'];
+function prodOrdenar(col){ const ini=PROD_ORD_NUM.includes(col)?-1:1;
+  if(PROD_ORD.col===col){ PROD_ORD = (PROD_ORD.dir===ini) ? {col:col,dir:-ini} : {col:'',dir:1}; } else { PROD_ORD={col:col,dir:ini}; }
   try{ renderProdTable(); }catch(e){} }
 function prodOrdSeta(col){ if(PROD_ORD.col!==col) return '<span class="ord-seta" style="opacity:.28">↕</span>';
   return '<span class="ord-seta" style="color:var(--brand,#2563eb)">'+(PROD_ORD.dir>0?'▲':'▼')+'</span>'; }
@@ -8344,7 +8538,7 @@ function prodTable(prods){ prods=prodOrdAplicar((prods||[]).slice());
     <td class="t-right tnum t-strong">${BRL(p.preco)}</td>
     <td class="t-right"><span class="tag ${margem>=35?'pos':margem>=20?'warn':'neg'}">${PCT(margem)}</span></td>
     <td class="t-right tnum t-mut">${(p.embalagemVenda&&+p.qtdPorEmbalagem>0)?(fmtQ(p.qtdPorEmbalagem)+' '+esc(p.unidade||'UN')+(p.embalagemTipo?' /'+esc(p.embalagemTipo):'')):'—'}</td>
-    <td class="t-right"><b class="tnum" style="color:${crit?(p.estoque===0?'var(--neg)':'var(--amber-d)'):'var(--ink)'}">${NUM(p.estoque)}</b> <span class="t-mut" style="font-size:11px">${p.unidade}</span>${crit?`<div style="font-size:10.5px;color:var(--amber-d)">mín ${NUM(p.estoqueMinimo)}</div>`:''}</td>
+    <td class="t-right"><b class="tnum" style="color:${crit?(p.estoque===0?'var(--neg)':'var(--amber-d)'):'var(--ink)'}">${fmtQ(p.estoque)}</b> <span class="t-mut" style="font-size:11px">${p.unidade}</span>${crit?`<div style="font-size:10.5px;color:var(--amber-d)">mín ${fmtQ(p.estoqueMinimo)}</div>`:''}</td>
     <td class="t-right" style="white-space:nowrap"><button class="btn-icon btn-ghost" onclick="estoqueForm('${p.id}')" title="Movimentar estoque">${ico('box')}</button>
       <button class="btn-icon btn-ghost" onclick="prodForm('${p.id}')" title="Editar">${ico('edit')}</button>
       ${p.estoque<=0 && (p.situacao||'ativo')!=='inativo' ? `<button class="btn btn-ghost btn-sm" onclick="prodInativarRapido('${p.id}')" title="Inativar produto (sem precisar editar)" style="color:var(--amber-d);padding:2px 8px">Inativar</button>` : ''}
@@ -8644,10 +8838,10 @@ function prodForm(id, prefill){ const p=id?DB.get('produtos',id):(prefill||{});
        <div class="field-row"><div class="field"><label>Consumo por m² (rendimento na obra)</label><input id="f-consumom2" type="number" step="0.001" min="0" value="${p.consumoM2||''}" placeholder="Ex.: argamassa 4 (kg/m²), rejunte 0,5"><div class="t-mut" style="font-size:11.5px;margin-top:4px">Quantidade do produto consumida por m². Usado na <b>Calculadora por área</b> do orçamento.</div></div>
          <div class="field"></div></div>
        <div class="field-row">
-         <div class="field"><label>Quantidade em Estoque (Inicial)</label><input id="f-est" type="number" value="${p.estoque!=null?p.estoque:0}"></div>
-         <div class="field"><label>Estoque Mínimo</label><input id="f-min" type="number" value="${p.estoqueMinimo!=null?p.estoqueMinimo:5}"></div>
+         <div class="field"><label>Quantidade em Estoque (Inicial)</label><input id="f-est" type="text" inputmode="decimal" value="${qtdInp(p.estoque!=null?p.estoque:0)}" placeholder="Ex.: 23,5"></div>
+         <div class="field"><label>Estoque Mínimo</label><input id="f-min" type="text" inputmode="decimal" value="${qtdInp(p.estoqueMinimo!=null?p.estoqueMinimo:5)}"></div>
        </div>
-       <div class="field"><label>Estoque Máximo</label><input id="f-max" type="number" value="${p.estoqueMaximo||''}" placeholder="Opcional"></div>
+       <div class="field"><label>Estoque Máximo</label><input id="f-max" type="text" inputmode="decimal" value="${p.estoqueMaximo?qtdInp(p.estoqueMaximo):''}" placeholder="Opcional"></div>
        <div class="field"><label>Observações</label><textarea id="f-obs" rows="2">${esc(p.observacoes||'')}</textarea></div>
        <div class="switch-row" onclick="prodToggle('ativo')"><div><b>Status do Produto</b><p class="t-mut">Produtos ativos aparecem em buscas, vendas e orçamentos.</p></div><span class="switch ${PF.ativo?'on':''}" id="sw-ativo"></span></div>
 
@@ -8690,7 +8884,7 @@ function prodForm(id, prefill){ const p=id?DB.get('produtos',id):(prefill||{});
          <div class="switch-row sub" onclick="prodToggle('embalagem')"><span>Produto vendido por embalagem</span><span class="switch ${PF.embalagem?'on':''}" id="sw-embalagem"></span></div>
          <div id="emb-panel" style="display:${PF.embalagem?'':'none'};margin-top:10px">
            <div class="field-row">
-             <div class="field"><label>Quantidade por Embalagem *</label><input id="f-emb-qtd" type="number" step="0.001" value="${p.qtdPorEmbalagem||''}" placeholder="Ex.: 2.41"><div class="t-mut" style="font-size:11.5px;margin-top:4px">Quantidade na unidade de medida (<span id="emb-un">${esc((p.unidade||'UN').toUpperCase())}</span>)</div></div>
+             <div class="field"><label>Quantidade por Embalagem *</label><input id="f-emb-qtd" type="text" inputmode="decimal" value="${p.qtdPorEmbalagem?qtdInp(p.qtdPorEmbalagem):''}" placeholder="Ex.: 2,41"><div class="t-mut" style="font-size:11.5px;margin-top:4px">Quantidade na unidade de medida (<span id="emb-un">${esc((p.unidade||'UN').toUpperCase())}</span>)</div></div>
              <div class="field"><label>Tipo de embalagem</label><select id="f-emb-tipo">${['Caixa','Fardo','Pacote','Rolo','Peça','Saco','Conjunto'].map(t=>`<option ${p.embalagemTipo===t?'selected':''}>${t}</option>`).join('')}</select></div>
            </div>
          </div>
@@ -8912,18 +9106,18 @@ function prodApplyMargin(){ const c=+document.getElementById('f-custo').value||0
 function saveProd(id){
   const g=x=>document.getElementById(x); const v=x=>g(x)?g(x).value:'';
   const nome=v('f-nome').trim(); if(!nome){toast('Informe o nome','err');prodTab('geral');return;}
-  if(PF.embalagem && !(+v('f-emb-qtd')>0)){ toast('Informe a quantidade por embalagem','err');prodTab('geral');return; }
+  if(PF.embalagem && !(numBR(v('f-emb-qtd'))>0)){ toast('Informe a quantidade por embalagem','err');prodTab('geral');return; }
   const cat=v('f-cat').trim();
   if(!cat){ toast('Selecione a categoria do produto','err'); prodTab('geral'); const sc=document.getElementById('f-cat'); if(sc){try{sc.focus();}catch(e){}} return; }
   const data={ nome, descricao:v('f-desc').trim(), imagem:v('f-imagem').trim(), sku:v('f-sku').trim(), referencia:v('f-ref').trim(),
     codigoBarras:v('f-cb').trim(), codigosBarrasAdic:PF.barcodes.slice(),
     categoria:cat, grupo:prodGrupoRegistrar(cat, v('f-grupo').trim()), subgrupo:prodSubgrupoRegistrar(cat, v('f-grupo').trim(), v('f-subgrupo').trim()), marca:marcaCanon(v('f-marca').trim().toUpperCase()), unidade:(v('f-un').trim()||'UN'),
     custo:+v('f-custo')||0, preco:+v('f-preco')||0,
-    estoque:+v('f-est')||0, estoqueMinimo:+v('f-min')||0, estoqueMaximo:+v('f-max')||0,
+    estoque:Math.round(numBR(v('f-est'))*1000)/1000, estoqueMinimo:Math.round(numBR(v('f-min'))*1000)/1000, estoqueMaximo:Math.round(numBR(v('f-max'))*1000)/1000,
     observacoes:v('f-obs').trim(), situacao:PF.ativo?'ativo':'inativo',
     controleLote:PF.lote, controleValidade:PF.validade, lotes:PF.lote?(PF.lotes||[]).filter(l=>l.lote):[], lote:PF.lote&&PF.lotes&&PF.lotes[0]?PF.lotes[0].lote:'', validade:PF.validade?(v('f-validade')||''):'',
     usoConsumo:PF.usoConsumo, produtosRelacionados:PF.relacionados.slice(),
-    embalagemVenda:PF.embalagem, qtdPorEmbalagem:PF.embalagem?(+v('f-emb-qtd')||0):0, embalagemTipo:PF.embalagem?(v('f-emb-tipo')||'Caixa'):'',
+    embalagemVenda:PF.embalagem, qtdPorEmbalagem:PF.embalagem?(Math.round(numBR(v('f-emb-qtd'))*1000)/1000):0, embalagemTipo:PF.embalagem?(v('f-emb-tipo')||'Caixa'):'',
     peso:+v('f-peso')||0, localizacao:v('f-loc').trim(), altura:+v('f-alt')||0, largura:+v('f-larg')||0, profundidade:+v('f-prof')||0, fornecedorId:v('f-forn')||null,
     ncm:v('f-ncm').trim(), cest:v('f-cest').trim(), cfop:v('f-cfop').trim(), cfopInter:v('f-cfop-inter').trim(), origem:v('f-orig'), cst:v('f-cst').trim(), rtCst:(g('f-rtcst')?v('f-rtcst').trim():''), rtCclass:(g('f-rtclass')?v('f-rtclass').trim():''),
     precoAtacado:+v('f-atacado')||0, atacadoQtdMin:+v('f-atacadoqtd')||0, precoPromo:+v('f-promo')||0, promoInicio:v('f-promo-ini')||'', promoFim:v('f-promo-fim')||'', comissaoPct:+v('f-comissao')||0, consumoM2:+v('f-consumom2')||0,
@@ -8943,16 +9137,16 @@ function saveProd(id){
 function estoqueForm(id){ const p=DB.get('produtos',id);
   openModal(`<div class="modal-head"><h3>Movimentar estoque</h3><button class="btn-icon btn-ghost" onclick="closeModal()">${ico('x')}</button></div>
   <div class="modal-body">
-    <p style="margin-bottom:14px"><b>${esc(p.nome)}</b> — estoque atual: <b class="tnum">${NUM(p.estoque)} ${p.unidade}</b></p>
+    <p style="margin-bottom:14px"><b>${esc(p.nome)}</b> — estoque atual: <b class="tnum">${fmtQ(p.estoque)} ${p.unidade}</b></p>
     <div class="field"><label>Tipo de movimentação</label><select id="m-tipo"><option value="entrada">Entrada (compra/reposição)</option><option value="saida">Saída (perda/uso)</option><option value="ajuste">Ajuste de inventário</option></select></div>
-    <div class="field"><label>Quantidade</label><input id="m-qtd" type="number" min="0" value="0"></div>
+    <div class="field"><label>Quantidade</label><input id="m-qtd" type="text" inputmode="decimal" value="0" placeholder="Ex.: 12,75"></div>
     <div class="field"><label>Motivo</label><input id="m-motivo" placeholder="Ex.: Compra fornecedor, inventário..."></div>
   </div>
   <div class="modal-foot"><button class="btn btn-ghost" onclick="closeModal()">Cancelar</button><button class="btn btn-amber" onclick="saveEstoque('${id}')">Confirmar</button></div>`);
 }
 function saveEstoque(id){ const p=DB.get('produtos',id); const tipo=document.getElementById('m-tipo').value;
-  const qtd=+document.getElementById('m-qtd').value||0; const motivo=document.getElementById('m-motivo').value||'Movimentação manual';
-  let novo=p.estoque; if(tipo==='entrada')novo+=qtd; else if(tipo==='saida')novo=Math.max(0,novo-qtd); else novo=qtd;
+  const qtd=Math.round(Math.max(0,numBR(document.getElementById('m-qtd').value))*1000)/1000; const motivo=document.getElementById('m-motivo').value||'Movimentação manual';
+  let novo=+p.estoque||0; if(tipo==='entrada')novo+=qtd; else if(tipo==='saida')novo=Math.max(0,novo-qtd); else novo=qtd; novo=Math.round(novo*1000)/1000;
   DB.update('produtos',id,{estoque:novo}); DB.insert('movEstoque',{produtoId:id,tipo,qtd,data:today(),motivo});
   toast('Estoque atualizado','ok'); closeModal(); go('prod');
 }
@@ -10652,6 +10846,7 @@ function catRegistrar(nome, tipo){ nome=(''+(nome||'')).replace(/\s+/g,' ').trim
   const ex=DB.all('categorias').find(c=>catKey(c.nome||'')===catKey(nome));
   if(ex){ if(!ex.tipo && tipo) DB.update('categorias',ex.id,{tipo}); return ex; }
   return DB.insert('categorias',{nome, tipo:tipo||'produto'}); }
+/* Grupos/sub-grupos: os cadastrados + os que existem só nos produtos (digitados ou importados por versão antiga). */
 function gruposDaCategoria(cat){ const L=DB.all('gruposProd').filter(g=>g.categoria===cat); const vis=new Set(L.map(g=>normTxt(g.nome)));
   DB.all('produtos').forEach(p=>{ if(p && p.categoria===cat && p.grupo && normTxt(p.grupo)!==normTxt(cat) && !vis.has(normTxt(p.grupo))){ vis.add(normTxt(p.grupo)); L.push({nome:p.grupo,categoria:cat}); } });
   return L.sort((a,b)=>a.nome.localeCompare(b.nome)); }
@@ -10725,7 +10920,7 @@ function catTrocaSelRowsHTML(){
   const linhas=itens.map(p=>`<label style="display:flex;align-items:flex-start;gap:10px;padding:8px 10px;border-bottom:1px solid var(--line-2);font-size:12.5px;cursor:pointer;text-align:left;line-height:1.35">
       <input type="checkbox" style="width:16px;height:16px;min-width:16px;padding:0;margin:1px 0 0;flex:none;accent-color:var(--amber)" ${CAT_TROCA_SEL.has(p.id)?'checked':''} onchange="catTrocaSelToggle('${p.id}')">
       <span style="flex:1;min-width:0">${esc(p.nome||'')}</span>
-      <span class="t-mut tnum" style="flex:none;white-space:nowrap;padding-top:1px">SKU ${esc(p.sku||'—')} · est ${NUM(p.estoque)}</span>
+      <span class="t-mut tnum" style="flex:none;white-space:nowrap;padding-top:1px">SKU ${esc(p.sku||'—')} · est ${fmtQ(p.estoque)}</span>
     </label>`).join('');
   return linhas||'<p class="t-mut" style="padding:10px;font-size:12.5px">Nenhum produto encontrado.</p>';
 }
@@ -10813,22 +11008,42 @@ function categoriasImportarDeProdutos(){
   novas.forEach(nome=>DB.insert('categorias',{nome,tipo:'produto'}));
   toast(novas.length+' categoria(s) importada(s) de '+NUM(prods.length)+' produtos','ok');
   const sec=document.getElementById('cat-sec'); if(sec) sec.innerHTML=catSecCategorias(); }
-function catSecGrupos(){ const grupos=DB.all('gruposProd').slice().sort((a,b)=>(a.categoria+a.nome).localeCompare(b.categoria+b.nome)); const prods=DB.all('produtos');
-  return `<div class="toolbar" style="margin:0 0 12px"><div class="spacer"></div><button class="btn btn-amber btn-sm" onclick="grupoForm()">${ico('plus')} Novo grupo</button></div>
-   <div class="card"><div class="tbl-wrap">${grupos.length?`<table><thead><tr><th>Grupo</th><th>Categoria</th><th class="t-right">Sub-grupos</th><th class="t-right">Produtos</th><th></th></tr></thead><tbody>
-   ${grupos.map(g=>{ const nsub=subgruposDoGrupo(g.categoria,g.nome).length; const np=prods.filter(p=>p.grupo===g.nome&&p.categoria===g.categoria).length;
-     return `<tr><td class="t-strong">${esc(g.nome)}</td><td><span class="tag">${esc(g.categoria||'—')}</span></td><td class="t-right tnum">${NUM(nsub)}</td><td class="t-right tnum">${NUM(np)}</td>
-     <td class="t-right" style="white-space:nowrap"><button class="btn-icon btn-ghost" onclick="grupoForm('${g.id}')">${ico('edit')}</button><button class="btn-icon btn-ghost" style="color:var(--neg)" onclick="delGrupo('${g.id}')">${ico('trash')}</button></td></tr>`;}).join('')}
-   </tbody></table>`:`<div class="empty" style="padding:40px">${ico('grid')}<h4>Nenhum grupo</h4><p class="t-mut">Cadastre grupos vinculados a uma categoria.</p></div>`}</div></div>`; }
-function catSecSubgrupos(){ const subs=DB.all('subgruposProd').slice().sort((a,b)=>(a.categoria+a.grupo+a.nome).localeCompare(b.categoria+b.grupo+b.nome)); const prods=DB.all('produtos');
-  return `<div class="toolbar" style="margin:0 0 12px"><div class="spacer"></div><button class="btn btn-amber btn-sm" onclick="subgrupoForm()">${ico('plus')} Novo sub-grupo</button></div>
-   <div class="card"><div class="tbl-wrap">${subs.length?`<table><thead><tr><th>Sub-grupo</th><th>Grupo</th><th>Categoria</th><th class="t-right">Produtos</th><th></th></tr></thead><tbody>
-   ${subs.map(s=>{ const np=prods.filter(p=>p.subgrupo===s.nome&&p.grupo===s.grupo).length;
-     return `<tr><td class="t-strong">${esc(s.nome)}</td><td><span class="tag info">${esc(s.grupo||'—')}</span></td><td><span class="tag">${esc(s.categoria||'—')}</span></td><td class="t-right tnum">${NUM(np)}</td>
-     <td class="t-right" style="white-space:nowrap"><button class="btn-icon btn-ghost" onclick="subgrupoForm('${s.id}')">${ico('edit')}</button><button class="btn-icon btn-ghost" style="color:var(--neg)" onclick="delSubgrupo('${s.id}')">${ico('trash')}</button></td></tr>`;}).join('')}
-   </tbody></table>`:`<div class="empty" style="padding:40px">${ico('list')}<h4>Nenhum sub-grupo</h4><p class="t-mut">Cadastre sub-grupos vinculados a um grupo.</p></div>`}</div></div>`; }
+/* versão TG — Grupos e sub-grupos são mostrados DENTRO da hierarquia: cada grupo embaixo da sua categoria,
+   cada sub-grupo embaixo do seu grupo (que fica embaixo da categoria). Antes era uma lista corrida com a
+   categoria numa coluna ao lado, difícil de enxergar o que pertence a quê. */
+function catSecGrupos(){ const grupos=DB.all('gruposProd').slice(); const prods=DB.all('produtos');
+  const cats=categoriasProduto().map(c=>c.nome); const porCat={}; grupos.forEach(g=>{ const k=g.categoria||'(sem categoria)'; (porCat[k]=porCat[k]||[]).push(g); });
+  const ordem=Object.keys(porCat).sort((a,b)=>a.localeCompare(b,'pt-BR')); const q=normTxt(CAT_Q.grupos||'');
+  const linhas=ordem.map(cat=>{ const gs=porCat[cat].slice().sort((a,b)=>(a.nome||'').localeCompare(b.nome||'','pt-BR')).filter(g=>!q || normTxt(g.nome+' '+cat).includes(q)); if(!gs.length) return '';
+    const npCat=prods.filter(p=>p.categoria===cat).length;
+    return `<tr class="cat-h"><td colspan="4" style="background:var(--surface-2);padding:9px 12px"><div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap"><span style="font-weight:800;font-size:13px;letter-spacing:.3px">${ico('layers')} ${esc(cat)}</span><span class="t-mut" style="font-size:11.5px">${NUM(gs.length)} grupo(s) · ${NUM(npCat)} produto(s) na categoria</span><span style="flex:1"></span>${cats.includes(cat)?`<button class="btn btn-ghost btn-sm" onclick="grupoForm('', ${JSON.stringify(cat).replace(/"/g,'&quot;')})">${ico('plus')} Novo grupo em ${esc(cat)}</button>`:''}</div></td></tr>`
+      + gs.map(g=>{ const nsub=subgruposDoGrupo(g.categoria,g.nome).length; const np=prods.filter(p=>p.grupo===g.nome&&p.categoria===g.categoria).length;
+        return `<tr><td class="t-strong" style="padding-left:34px">${ico('grid')} ${esc(g.nome)}</td><td class="t-right tnum">${NUM(nsub)}</td><td class="t-right tnum">${NUM(np)}</td>
+        <td class="t-right" style="white-space:nowrap"><button class="btn-icon btn-ghost" onclick="subgrupoForm('', ${JSON.stringify(g.categoria||'').replace(/"/g,'&quot;')}, ${JSON.stringify(g.nome||'').replace(/"/g,'&quot;')})" title="Novo sub-grupo neste grupo">${ico('plus')}</button><button class="btn-icon btn-ghost" onclick="grupoForm('${g.id}')">${ico('edit')}</button><button class="btn-icon btn-ghost" style="color:var(--neg)" onclick="delGrupo('${g.id}')">${ico('trash')}</button></td></tr>`; }).join(''); }).join('');
+  return `<div class="toolbar" style="margin:0 0 12px;gap:8px;flex-wrap:wrap"><div class="search" style="flex:1;min-width:220px;max-width:420px">${ico('search','')}<input value="${esc(CAT_Q.grupos||'')}" placeholder="Buscar grupo ou categoria..." oninput="CAT_Q.grupos=this.value;catSecRefresh()"></div><div class="spacer"></div><button class="btn btn-amber btn-sm" onclick="grupoForm()">${ico('plus')} Novo grupo</button></div>
+   <div class="card"><div class="tbl-wrap">${grupos.length?`<table><thead><tr><th>Categoria › Grupo</th><th class="t-right">Sub-grupos</th><th class="t-right">Produtos</th><th></th></tr></thead><tbody>${linhas||`<tr><td colspan="4" class="t-mut" style="padding:20px;text-align:center">Nenhum grupo casa com a busca.</td></tr>`}</tbody></table>`:`<div class="empty" style="padding:40px">${ico('grid')}<h4>Nenhum grupo</h4><p class="t-mut">Cadastre grupos vinculados a uma categoria.</p></div>`}</div></div>`; }
+function catSecSubgrupos(){ const subs=DB.all('subgruposProd').slice(); const prods=DB.all('produtos');
+  const arv={}; subs.forEach(x=>{ const c=x.categoria||'(sem categoria)', g=x.grupo||'(sem grupo)'; arv[c]=arv[c]||{}; (arv[c][g]=arv[c][g]||[]).push(x); });
+  const q=normTxt(CAT_Q.subgrupos||'');
+  const linhas=Object.keys(arv).sort((a,b)=>a.localeCompare(b,'pt-BR')).map(cat=>{
+    const gruposHtml=Object.keys(arv[cat]).sort((a,b)=>a.localeCompare(b,'pt-BR')).map(g=>{
+      const ss=arv[cat][g].slice().sort((a,b)=>(a.nome||'').localeCompare(b.nome||'','pt-BR')).filter(x=>!q || normTxt(x.nome+' '+g+' '+cat).includes(q)); if(!ss.length) return '';
+      const npG=prods.filter(p=>p.grupo===g&&p.categoria===cat).length;
+      return `<tr><td colspan="3" style="padding:7px 12px 7px 34px;background:var(--surface-2);opacity:.95"><div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap"><span style="font-weight:700;font-size:12.5px">${ico('grid')} ${esc(g)}</span><span class="t-mut" style="font-size:11.5px">${NUM(ss.length)} sub-grupo(s) · ${NUM(npG)} produto(s) no grupo</span><span style="flex:1"></span><button class="btn btn-ghost btn-sm" onclick="subgrupoForm('', ${JSON.stringify(cat).replace(/"/g,'&quot;')}, ${JSON.stringify(g).replace(/"/g,'&quot;')})">${ico('plus')} Novo sub-grupo em ${esc(g)}</button></div></td></tr>`
+        + ss.map(x=>{ const np=prods.filter(p=>p.subgrupo===x.nome&&p.grupo===x.grupo&&p.categoria===x.categoria).length;
+          return `<tr><td class="t-strong" style="padding-left:62px">${ico('list')} ${esc(x.nome)}</td><td class="t-right tnum">${NUM(np)}</td>
+          <td class="t-right" style="white-space:nowrap"><button class="btn-icon btn-ghost" onclick="subgrupoForm('${x.id}')">${ico('edit')}</button><button class="btn-icon btn-ghost" style="color:var(--neg)" onclick="delSubgrupo('${x.id}')">${ico('trash')}</button></td></tr>`; }).join(''); }).join('');
+    if(!gruposHtml) return '';
+    const nG=Object.keys(arv[cat]).length, nS=Object.values(arv[cat]).reduce((a,l)=>a+l.length,0);
+    return `<tr class="cat-h"><td colspan="3" style="background:var(--surface-2);padding:9px 12px"><span style="font-weight:800;font-size:13px;letter-spacing:.3px">${ico('layers')} ${esc(cat)}</span> <span class="t-mut" style="font-size:11.5px;margin-left:8px">${NUM(nG)} grupo(s) · ${NUM(nS)} sub-grupo(s)</span></td></tr>`+gruposHtml; }).join('');
+  return `<div class="toolbar" style="margin:0 0 12px;gap:8px;flex-wrap:wrap"><div class="search" style="flex:1;min-width:220px;max-width:420px">${ico('search','')}<input value="${esc(CAT_Q.subgrupos||'')}" placeholder="Buscar sub-grupo, grupo ou categoria..." oninput="CAT_Q.subgrupos=this.value;catSecRefresh()"></div><div class="spacer"></div><button class="btn btn-amber btn-sm" onclick="subgrupoForm()">${ico('plus')} Novo sub-grupo</button></div>
+   <div class="card"><div class="tbl-wrap">${subs.length?`<table><thead><tr><th>Categoria › Grupo › Sub-grupo</th><th class="t-right">Produtos</th><th></th></tr></thead><tbody>${linhas||`<tr><td colspan="3" class="t-mut" style="padding:20px;text-align:center">Nenhum sub-grupo casa com a busca.</td></tr>`}</tbody></table>`:`<div class="empty" style="padding:40px">${ico('list')}<h4>Nenhum sub-grupo</h4><p class="t-mut">Cadastre sub-grupos vinculados a um grupo.</p></div>`}</div></div>`; }
+const CAT_Q={grupos:'',subgrupos:''};
+function catSecRefresh(){ const el=document.getElementById('cat-sec'); if(!el) return; const a=document.activeElement; const pos=(a&&a.tagName==='INPUT')?a.selectionStart:null;
+  el.innerHTML = CAT_TAB==='grupos'?catSecGrupos():CAT_TAB==='subgrupos'?catSecSubgrupos():el.innerHTML;
+  try{ const inp=el.querySelector('.search input'); if(inp){ inp.focus(); if(pos!=null) inp.setSelectionRange(pos,pos); } }catch(e){} }
 /* ---- GRUPO form ---- */
-function grupoForm(id){ const g=id?DB.get('gruposProd',id):{}; const cats=categoriasProduto().slice().sort((a,b)=>a.nome.localeCompare(b.nome));
+function grupoForm(id, catPre){ const g=id?DB.get('gruposProd',id):{categoria:catPre||''}; const cats=categoriasProduto().slice().sort((a,b)=>a.nome.localeCompare(b.nome));
   openModal(`<div class="modal-head"><h3>${ico('grid')} ${id?'Editar grupo':'Novo grupo'}</h3><button class="btn-icon btn-ghost" onclick="closeModal()">${ico('x')}</button></div>
    <div class="modal-body">
      <div class="field"><label>Categoria *</label><select id="gp-cat"><option value="">— selecione —</option>${cats.map(c=>`<option ${g.categoria===c.nome?'selected':''}>${esc(c.nome)}</option>`).join('')}</select></div>
@@ -10849,7 +11064,7 @@ function delGrupo(id){ const g=DB.get('gruposProd',id); const np=DB.all('produto
   if(np>0){ toast('Há '+np+' produto(s) neste grupo — altere-os antes','err'); return; }
   if(confirm('Excluir grupo e seus sub-grupos?')){ DB.all('subgruposProd').filter(s=>s.grupo===g.nome&&s.categoria===g.categoria).forEach(s=>DB.remove('subgruposProd',s.id)); DB.remove('gruposProd',id); viewCat(); } }
 /* ---- SUB-GRUPO form ---- */
-function subgrupoForm(id){ const s=id?DB.get('subgruposProd',id):{}; const cats=categoriasProduto().slice().sort((a,b)=>a.nome.localeCompare(b.nome));
+function subgrupoForm(id, catPre, grupoPre){ const s=id?DB.get('subgruposProd',id):{categoria:catPre||'', grupo:grupoPre||''}; const cats=categoriasProduto().slice().sort((a,b)=>a.nome.localeCompare(b.nome));
   openModal(`<div class="modal-head"><h3>${ico('list')} ${id?'Editar sub-grupo':'Novo sub-grupo'}</h3><button class="btn-icon btn-ghost" onclick="closeModal()">${ico('x')}</button></div>
    <div class="modal-body">
      <div class="field"><label>Categoria *</label><select id="sg-cat" onchange="subgrupoCatChange()"><option value="">— selecione —</option>${cats.map(c=>`<option ${s.categoria===c.nome?'selected':''}>${esc(c.nome)}</option>`).join('')}</select></div>
@@ -12665,7 +12880,7 @@ function viewProdutosFalta(){
      ${lista.map(f=>{ const p=DB.get('produtos',f.produtoId); if(!p) return ''; return `<tr>
        <td><b>${esc(p.nome)}</b></td><td class="t-mut">${esc(p.sku||'—')}</td>
        <td class="t-mut" style="font-size:12px">${esc(f.porNome||'—')}${f.criadoEm?`<div style="font-size:11px">${fDate((f.criadoEm||'').slice(0,10))}</div>`:''}</td>
-       <td class="t-right tnum" style="color:${(p.estoque||0)<=(p.estoqueMinimo||0)?'var(--neg)':'var(--ink)'}">${NUM(p.estoque||0)} ${esc(p.unidade||'')}</td>
+       <td class="t-right tnum" style="color:${(p.estoque||0)<=(p.estoqueMinimo||0)?'var(--neg)':'var(--ink)'}">${fmtQ(p.estoque||0)} ${esc(p.unidade||'')}</td>
        <td class="t-right"><input type="number" step="any" min="0" class="mini-input" style="width:96px;text-align:right" value="${f.qtd||1}" onchange="faltaSetQtd('${f.id}',this.value)"></td>
        <td class="t-right"><button class="btn-icon btn-ghost" style="color:var(--neg)" onclick="faltaDel('${f.id}')">${ico('trash')}</button></td>
      </tr>`;}).join('')}
@@ -12676,7 +12891,7 @@ function faltaSearch(q){ q=(q||'').trim().toLowerCase(); const dd=document.getEl
   if(q.length<1){ dd.innerHTML=''; return; }
   const naLista=new Set(DB.all('produtosFalta').map(f=>f.produtoId));
   const res=prodSearchSort(DB.all('produtos').filter(p=>p.situacao!=='inativo' && matchTokens((p.nome||'')+' '+(p.sku||'')+' '+(p.codigoBarras||''), q)), q).slice(0,10);
-  dd.innerHTML=`<div class="wiz-assoc-dd" style="position:absolute;left:0;right:0;z-index:20">${res.length?res.map(p=>`<div class="wiz-opt" onclick="faltaAdd('${p.id}')"><b>${esc(p.nome)}</b><div class="t-mut" style="font-size:11px">SKU ${esc(p.sku||'—')} · est. ${NUM(p.estoque||0)} ${esc(p.unidade||'')}${naLista.has(p.id)?' · <span style=\"color:var(--pos)\">já na lista</span>':''}</div></div>`).join(''):`<div class="t-mut" style="padding:8px 10px;font-size:12px">Nenhum produto encontrado</div>`}</div>`;
+  dd.innerHTML=`<div class="wiz-assoc-dd" style="position:absolute;left:0;right:0;z-index:20">${res.length?res.map(p=>`<div class="wiz-opt" onclick="faltaAdd('${p.id}')"><b>${esc(p.nome)}</b><div class="t-mut" style="font-size:11px">SKU ${esc(p.sku||'—')} · est. ${fmtQ(p.estoque||0)} ${esc(p.unidade||'')}${naLista.has(p.id)?' · <span style=\"color:var(--pos)\">já na lista</span>':''}</div></div>`).join(''):`<div class="t-mut" style="padding:8px 10px;font-size:12px">Nenhum produto encontrado</div>`}</div>`;
 }
 /* Navegação por teclado (setas ↑/↓, Enter, Esc) em dropdowns de autocomplete "wiz-opt"
    (ex.: Produtos em Falta, Lista de Pedidos). Uso: onkeydown="ddKeyNav(event,'id-do-dropdown')". */
@@ -12899,7 +13114,7 @@ function listaPedFromFalta(){ let n=0; DB.all('produtosFalta').forEach(f=>{ if(l
 function listaPedSearch(q){ q=(q||'').trim().toLowerCase(); const dd=document.getElementById('lp-dd'); if(!dd)return; if(q.length<1){ dd.style.display='none'; dd.innerHTML=''; return; }
   const naLista=new Set(DB.all('listaPedidos').map(f=>f.produtoId));
   const res=prodSearchSort(DB.all('produtos').filter(p=>p.situacao!=='inativo'&&!naLista.has(p.id)&&matchTokens((p.nome||'')+' '+(p.sku||'')+' '+(p.codigoBarras||''),q)),q).slice(0,8);
-  dd.style.display='block'; dd.innerHTML=`<div class="wiz-assoc-dd" style="position:absolute;left:0;right:0;z-index:20">${res.length?res.map(p=>`<div class="wiz-opt" onclick="listaPedAddUI('${p.id}')"><b>${esc(p.nome)}</b> <span class="t-mut">${esc(p.sku||'')} · est. ${NUM(p.estoque||0)}</span></div>`).join(''):'<div class="wiz-opt t-mut">Nenhum produto</div>'}</div>`; }
+  dd.style.display='block'; dd.innerHTML=`<div class="wiz-assoc-dd" style="position:absolute;left:0;right:0;z-index:20">${res.length?res.map(p=>`<div class="wiz-opt" onclick="listaPedAddUI('${p.id}')"><b>${esc(p.nome)}</b> <span class="t-mut">${esc(p.sku||'')} · est. ${fmtQ(p.estoque||0)}</span></div>`).join(''):'<div class="wiz-opt t-mut">Nenhum produto</div>'}</div>`; }
 function listaPedAddUI(pid){ listaPedAdd(pid); const i=document.getElementById('lp-q'); if(i)i.value=''; const dd=document.getElementById('lp-dd'); if(dd){dd.style.display='none';dd.innerHTML='';} listaPedRefresh(); try{ const i2=document.getElementById('lp-q'); if(i2) i2.focus(); }catch(e){} }
 function listaPedCotacao(){ const lista=DB.all('listaPedidos'); if(!lista.length){ toast('A lista está vazia','err'); return; }
   const itens=lista.map(f=>{ const p=DB.get('produtos',f.produtoId); if(!p)return null; return {produtoId:p.id,nome:p.nome,sku:p.sku||'',qtd:+f.qtd||0}; }).filter(Boolean);
@@ -12944,7 +13159,7 @@ function listaPedProdBody(){ const lista=DB.all('listaPedidos');
    ${lista.length?`<div class="tbl-wrap"><table style="width:100%"><thead><tr><th>Produto</th><th>SKU</th><th class="t-right">Estoque</th><th class="t-right">Qtd a comprar</th><th class="t-right">Custo</th><th class="t-right">Subtotal</th><th></th></tr></thead><tbody>
      ${lista.map(f=>{ const p=DB.get('produtos',f.produtoId)||{}; const sub=(+f.qtd||0)*(+p.custo||0); const baixo=(+p.estoque||0)<=(+p.estoqueMinimo||0)&&(+p.estoqueMinimo||0)>0; return `<tr>
        <td class="t-strong">${esc(p.nome||f.nome||'—')}</td><td class="t-mut">${esc(p.sku||'')}</td>
-       <td class="t-right"><span class="${baixo?'tag warn':''}">${NUM(p.estoque||0)}</span></td>
+       <td class="t-right"><span class="${baixo?'tag warn':''}">${fmtQ(p.estoque||0)}</span></td>
        <td class="t-right"><input type="number" min="0" value="${f.qtd||0}" onchange="listaPedSetQtd('${f.id}',this.value)" style="width:82px;text-align:right"></td>
        <td class="t-right">${BRL(p.custo||0)}</td><td class="t-right t-strong">${BRL(sub)}</td>
        <td class="t-right" style="white-space:nowrap"><button class="btn-icon btn-ghost" onclick="prodForm('${f.produtoId}')" title="Ver produto">${ico('rep')}</button><button class="btn-icon btn-ghost" style="color:var(--neg)" onclick="listaPedDel('${f.id}')" title="Remover da lista">${ico('trash')}</button></td>
@@ -14074,8 +14289,9 @@ ${P} .bz-nome{font-weight:900;color:${C.navy};font-size:${s(24)};line-height:1;l
 ${P} .bz-nome.md{font-size:${s(19)}} ${P} .bz-nome.sm{font-size:${s(15)}}
 ${P} .bz-nomebar{width:${s(40)};height:${s(2.2)};background:${C.amarelo};border-radius:${s(2)};margin:${s(1)} auto ${s(2)}}
 ${P} .bz-desc{color:${C.navy2};font-size:${s(7)};font-weight:700;max-width:92%}
-${P} .bz-de{color:${C.navy2};font-size:${s(12.5)};font-weight:900;margin-top:${s(3)}}
-${P} .bz-de s{color:${C.cinza};text-decoration:line-through;text-decoration-thickness:${s(1.6)};text-decoration-color:${C.navy};font-size:${s(15)}}
+${P} .bz-de{color:${C.navy2};font-size:${s(12.5)};font-weight:900;margin-top:${s(3)};display:flex;flex-direction:column;align-items:center;gap:${s(0.8)}}
+${P} .bz-de .bz-delbl{font-size:${s(6.5)};letter-spacing:${s(0.6)};color:${C.navy2}}
+${P} .bz-de .bz-deval{color:${C.navy};font-size:${s(15)};font-weight:900;text-decoration:none}
 ${P} .bz-por{display:inline-block;background:${C.navy};color:${C.amarelo};font-size:${s(7.5)};font-weight:900;letter-spacing:${s(0.8)};padding:${s(1.6)} ${s(6)};border-radius:${s(6)};margin-top:${s(1.5)}}
 ${P} .bz-star{position:relative;margin-top:${s(3)};display:inline-flex;align-items:center;justify-content:center;background:${C.amarelo};border:${s(1.6)} solid ${C.navy};border-radius:${s(6)};padding:${s(5)} ${s(12)} ${s(6)};box-shadow:${s(2)} ${s(2)} 0 ${C.magenta}}
 ${P} .bz-preco{position:relative;color:${C.navy};display:inline-flex;align-items:flex-start;gap:${s(1.5)};z-index:1}
@@ -14100,7 +14316,7 @@ function banCartazHTML(d){ d=d||BAN; const emp=DB._load().empresa||{}; const nom
     <div class="bz-body">
       <div class="bz-nome ${cls}">${esc(nome)}</div><div class="bz-nomebar"></div>
       ${(d.desc||'').trim()?`<div class="bz-desc">${esc(d.desc.trim())}</div>`:''}
-      ${de>por&&por>0?`<div class="bz-de">DE <s>${BRL(de)}</s></div><div class="bz-por">POR APENAS</div>`:''}
+      ${de>por&&por>0?`<div class="bz-de"><span class="bz-delbl">PREÇO CARTÃO DE CRÉDITO</span><span class="bz-deval">${BRL(de)}</span></div>`:''}
       <div class="bz-star">${off>0?`<div class="bz-off">-${off}%<small>DE DESCONTO</small></div>`:''}
         <div class="bz-preco"><span class="rs">R$</span><span class="int">${pp.int}</span><span class="cent">,${pp.cent}</span>${(d.unidade||'').trim()?`<span class="unid">/${esc(d.unidade.trim())}</span>`:''}</div></div>
       ${(d.condicao||'').trim()?`<div class="bz-cond">${esc(d.condicao.trim())}</div>`:''}
@@ -14162,7 +14378,7 @@ function viewBanner(){ banCfgRestaurar(); if(!BAN.rodape) BAN.rodape='';
       <div class="field"><label>Nome do produto no cartaz *</label><input id="ban-nome" class="no-upper" value="${esc(BAN.nome||'')}" placeholder="ex.: Cimento CP II 50kg" oninput="banSet('nome',this.value)"></div>
       <div class="field"><label>Complemento (opcional)</label><input id="ban-desc" class="no-upper" value="${esc(BAN.desc||'')}" placeholder="ex.: Marca X · Saco de 50 kg" oninput="banSet('desc',this.value)"></div>
       <div class="field-row">
-        <div class="field"><label>De (preço antigo)</label><div class="pay-val" style="margin:0"><span>R$</span><input id="ban-de" type="text" inputmode="decimal" value="${esc(BAN.de||'')}" placeholder="0,00" oninput="banSet('de',this.value)"></div></div>
+        <div class="field"><label>Preço no cartão de crédito</label><div class="pay-val" style="margin:0"><span>R$</span><input id="ban-de" type="text" inputmode="decimal" value="${esc(BAN.de||'')}" placeholder="0,00" oninput="banSet('de',this.value)"></div></div>
         <div class="field"><label>Por (preço da oferta) *</label><div class="pay-val" style="margin:0;border-color:var(--amber)"><span>R$</span><input id="ban-por" type="text" inputmode="decimal" value="${esc(BAN.por||'')}" placeholder="0,00" oninput="banSet('por',this.value)" onchange="banAplicarPromo()"></div>
           <div id="ban-por-aviso" class="t-mut" style="font-size:11px;margin-top:4px;${BAN.produtoId?'':'display:none'}">Este valor vai para o campo <b>Preço promocional</b> do produto no cadastro.</div></div>
         <div class="field" style="flex:0 0 110px"><label>Unidade</label><input id="ban-unid" class="no-upper" list="ban-unid-list" value="${esc(BAN.unidade||'')}" placeholder="un" oninput="banSet('unidade',this.value)"><datalist id="ban-unid-list">${BAN_UNID.map(u=>`<option value="${u}">`).join('')}</datalist></div>
@@ -14604,7 +14820,7 @@ function relEstoqueItensRender(){
     ${lista.length?lista.map(p=>`<tr style="cursor:pointer" onclick="closeModal();go('prod');setTimeout(()=>{try{prodForm('${p.id}')}catch(e){}},80)" title="Abrir o cadastro do produto">
         <td><div class="t-strong" style="font-size:13px">${esc(p.nome||'—')}</div>
             <div class="t-mut" style="font-size:11px">${esc(p.sku||'')}${p.marca?' · '+esc(p.marca):''}</div></td>
-        <td class="t-right tnum ${((p.estoque||0)<=(p.estoqueMinimo||0))?'':''}" ${((p.estoque||0)<=(p.estoqueMinimo||0))?'style="color:var(--neg)"':''}>${NUM(p.estoque||0)}</td>
+        <td class="t-right tnum ${((p.estoque||0)<=(p.estoqueMinimo||0))?'':''}" ${((p.estoque||0)<=(p.estoqueMinimo||0))?'style="color:var(--neg)"':''}>${fmtQ(p.estoque||0)}</td>
         <td class="t-right tnum t-mut">${BRL(p.custo||0)}</td>
         <td class="t-right tnum">${BRL(p.preco||0)}</td>
         <td class="t-right tnum t-strong">${BRL((p.estoque||0)*(p.custo||0))}</td></tr>`).join('')
@@ -15006,6 +15222,51 @@ function matchProdutoMotivo(it, p, fornId){ if(!p) return '';
 /* Ao ligar um item da nota a um produto, o cadastro APRENDE: o código de barras da nota
    (como principal se estava vazio, senão como adicional) e o código que o fornecedor usa.
    Na próxima nota — deste ou de outro fornecedor — o item já vem associado. */
+/* Guarda o XML de uma nota de entrada em Notas Recebidas (se ainda não estiver lá), para que
+   os códigos de barras possam ser reaplicados mais tarde pelo botão "Buscar nas notas de entrada". */
+function nfeXmlGuardar(nf){ if(!nf||!nf.chave) return null; const k=chaveNorm(nf.chave); if(!k) return null;
+  const ex=DB.all('notasRecebidas').find(r=>chaveNorm(r.chave)===k);
+  if(ex){ if(!ex.xml && nf._xmlRaw) DB.update('notasRecebidas',ex.id,{xml:nf._xmlRaw}); return ex; }
+  return DB.insert('notasRecebidas',{ chave:nf.chave, xml:nf._xmlRaw||'', numero:nf.nNF||'', serie:nf.serie||nf.serieNF||'', fornecedorNome:nf.emitNome||'', cnpj:(nf.emitCNPJ||'').replace(/\D/g,''), valor:+nf.vNF||0, data:nf.data||today(), itensQtd:(nf.itens||[]).length, status:'lancada', recebidaEm:new Date().toISOString() }); }
+/* CÓDIGOS DE BARRAS QUE VIERAM NAS NOTAS DE ENTRADA E NÃO ESTÃO NO CADASTRO.
+   Varre as compras lançadas por XML: usa o código guardado no item da compra (entradas novas) ou
+   relê o XML em Notas Recebidas (entradas antigas) e casa cada item com o produto que recebeu a
+   entrada (pelo nome do item na compra, pela referência ou pelo código deste fornecedor — nunca só
+   por parecer o nome). Devolve a lista do que seria preenchido; aplicar=true grava. */
+function prodEansDasNotas(aplicar){
+  const prods=DB.all('produtos'); const porId={}; prods.forEach(p=>{ porId[p.id]=p; });
+  const dono={}; prods.forEach(p=>prodEans(p).forEach(e=>{ dono[e]=dono[e]||p.id; }));
+  const recebidas=DB.all('notasRecebidas'); const achados=[]; const vistos={};
+  DB.all('compras').forEach(c=>{ if(!c || !c.chaveNFe || /^MANUAL/i.test(c.chaveNFe)) return; const itens=Array.isArray(c.itens)?c.itens:[];
+    let xmlItens=null;
+    const precisaXml=itens.some(it=>it && it.produtoId && !('ean' in it));
+    if(precisaXml){ const rec=recebidas.find(r=>chaveNorm(r.chave)===chaveNorm(c.chaveNFe) && r.xml); if(rec){ try{ xmlItens=(parseNFe(rec.xml)||{}).itens||[]; }catch(e){ xmlItens=null; } } }
+    itens.forEach(it=>{ if(!it || !it.produtoId) return; const p=porId[it.produtoId]; if(!p) return;
+      let ean=('ean' in it)?(it.ean||''):''; let cProd=it.cProd||'';
+      if(!('ean' in it) && xmlItens){ const nm=normTxt(it.nome||''); const x=xmlItens.find(xi=>normTxt(xi.xProd||'')===nm && Math.abs((+xi.qCom||0)-(+it.qtd||0))<0.0005) || xmlItens.find(xi=>normTxt(xi.xProd||'')===nm); if(x){ ean=x.cEAN||x.cEANTrib||''; cProd=x.cProd||''; } }
+      const n=eanNorm(ean); if(!n) return;
+      if(prodEans(p).includes(n)) return;                       // já tem este código
+      if(dono[n] && dono[n]!==p.id) return;                      // é de outro produto: não rouba
+      const k=p.id+'|'+n; if(vistos[k]) return; vistos[k]=true;
+      achados.push({p, ean:(''+ean).trim(), cProd, nf:c.numeroNF||'', forn:c.fornecedorNome||'', fornId:c.fornecedorId||null, principal:!eanNorm(p.codigoBarras)}); }); });
+  if(aplicar){ let n=0; achados.forEach(a=>{ const p=DB.get('produtos',a.p.id); if(!p) return;
+      const upd=prodAprenderDaNota(p,{cEAN:a.ean,cEANTrib:'',cProd:a.cProd},a.fornId); if(Object.keys(upd).length){ DB.update('produtos',p.id,upd); n++; } });
+    if(n){ try{ logAcao('Códigos de barras reaplicados das notas de entrada', n+' produto(s)'); }catch(e){} try{ nuvemPushJa(); }catch(e){} }
+    return n; }
+  return achados; }
+function prodEansDasNotasModal(){ const L=prodEansDasNotas(false);
+  if(!L.length){ toast('Nenhum código de barras pendente nas notas de entrada — os produtos sem código vieram de notas com "SEM GTIN" ou de entradas sem XML','ok'); return; }
+  const max=400;
+  openModal(`<div class="modal-head"><h3>${ico('dl')} Códigos de barras das notas de entrada — ${NUM(L.length)} produto(s)</h3><button class="btn-icon btn-ghost" onclick="closeModal()">${ico('x')}</button></div>
+   <div class="modal-body" style="max-height:66vh;overflow:auto">
+     <p class="t-mut" style="font-size:12.5px;margin:0 0 10px">Estes produtos receberam entrada por NF-e cujo XML trazia o código de barras, mas o cadastro ainda está sem ele. Ao aplicar, o código vai para o cadastro (como principal quando o produto não tem nenhum; senão como adicional).</p>
+     <table><thead><tr><th>Produto</th><th>Código de barras</th><th>Nota</th></tr></thead><tbody>
+       ${L.slice(0,max).map(a=>`<tr><td><b>${esc(a.p.nome)}</b><div class="t-mut" style="font-size:11px">${esc(a.p.sku||'')}${a.p.codigoBarras?(' · já tem '+esc(a.p.codigoBarras)+' (entra como adicional)'):''}</div></td><td class="tnum">${esc(a.ean)}</td><td class="t-mut" style="font-size:12px">NF ${esc(a.nf||'—')}${a.forn?(' · '+esc(a.forn)):''}</td></tr>`).join('')}
+     </tbody></table>${L.length>max?`<div class="t-mut" style="font-size:12px;padding:8px">Mostrando ${max} de ${NUM(L.length)}.</div>`:''}
+   </div>
+   <div class="modal-foot"><button class="btn btn-ghost" onclick="closeModal()">Fechar</button><div style="flex:1"></div><button class="btn btn-amber" onclick="prodEansDasNotasAplicar()">${ico('check')} Aplicar nos ${NUM(L.length)} produto(s)</button></div>`, true); }
+function prodEansDasNotasAplicar(){ const n=prodEansDasNotas(true); closeModal(); toast(n?(n+' produto(s) receberam o código de barras das notas de entrada'):'Nada a aplicar', n?'ok':'err');
+  try{ if(typeof PROD_PP!=='undefined' && PROD_PP.k) prodProbRender(); const el=document.getElementById('prod-prob-barra'); if(el) el.innerHTML=prodProbBarraHTML(); if(document.getElementById('prod-table')) renderProdTable(); }catch(e){} }
 function prodAprenderDaNota(p, it, fornId){ if(!p||!it) return {};
   const upd={}; const atuais=prodEans(p); const adic=(Array.isArray(p.codigosBarrasAdic)?p.codigosBarrasAdic:[]).slice(); let mudouAdic=false;
   [it.cEAN, it.cEANTrib].forEach(raw=>{ const n=eanNorm(raw); if(!n || atuais.includes(n)) return;
@@ -19495,7 +19756,7 @@ function repNotaAvulsa(id){ const v=DB.get('vendas',id); if(!v){ toast('Venda n�
   NFA={ clienteId:v.clienteId||null, clienteNome:v.clienteNome||'', natureza:'Venda de mercadoria',
     itens:(v.itens||[]).map(i=>{ const pid=i.produtoId||i.id; const p=pid?DB.get('produtos',pid):null; const custo=(+i.custo||0)||((p&&+p.custo)||0); return {produtoId:pid,nome:i.nome,qtd:+i.qtd||0,preco:+i.preco||0,precoVenda:+i.preco||0,custo:Math.round(custo*100)/100}; }),
     baixaEstoque:false, formaPagamento:v.formaPagamento||'Não se aplica (remessa)', parcelas:[], desconto:0, _vendaId:id };  // estoque já saiu na venda → não baixa de novo
-  go('nfavulsa'); setTimeout(()=>toast('Pedido'+(v.numero?(' #'+v.numero):'')+' carregado na Nota Fiscal Avulsa — confira e emita','ok'),120); }
+  window._nfaManter=true; go('nfavulsa'); setTimeout(()=>toast('Pedido'+(v.numero?(' #'+v.numero):'')+' carregado na Nota Fiscal Avulsa — confira e emita','ok'),120); }
 /* PF/PJ da venda para a coluna do Relatório de vendas (mesma regra do filtro "Pessoa": documento manda).
    Venda sem cadastro = 'SC' (consumidor). */
 function vendaTipoPessoa(v){ try{ const p=pessoaDoDoc(v&&(v.clienteDoc||v.cpfNota)); if(p) return p;
@@ -21008,6 +21269,9 @@ function orcDiscToPrice(){ const base=orcListPrice(); const dp=Math.max(0,Math.m
 function itemUn(it){ const u=it.unidade || (DB.get('produtos',it.produtoId)||{}).unidade || 'UN'; return (u||'UN').toUpperCase(); }
 /* Quantidade como foi lançada: inteiro sai inteiro (13), fracionado sai com as casas
    que existem (12,54 · 2,09 · 0,5), sem arredondar para o número cheio. */
+/* valor para dentro de um campo de quantidade: vírgula decimal, SEM ponto de milhar (1250,5 — não "1.250,5"),
+   para o que foi digitado voltar igual ao ser lido com numBR. */
+function qtdInp(n){ const v=+n||0; return v.toLocaleString('pt-BR',{useGrouping:false,maximumFractionDigits:3}); }
 function fmtQ(n){ const v=+n||0; if(Number.isInteger(v)) return NUM(v);
   return NUM(v,3).replace(/(,\d*?)0+$/,'$1').replace(/,$/,''); }
 function embDesc(it){ const info=itemEmbInfo(it); if(!info) return '';
@@ -21660,6 +21924,8 @@ function pixTemMaquininha(){ return maquinasCartao().some(m=>(+m.pix||0)>0); }
 function pixMaquinaSelectHTML(atual, onchange){ if(!pixTemMaquininha()) return ''; const ms=maquinasCartao(); if(atual==null) atual=maquinaPadraoDe('PIX');
   return `<span class="t-mut" style="font-size:12px">PIX por</span><select onchange="${onchange}" style="padding:7px 9px;border:1px solid var(--line);border-radius:9px;background:var(--surface);color:var(--ink)"><option value="" ${!atual?'selected':''}>Conta direta (sem taxa)</option>${ms.map(m=>`<option value="${esc(m.id)}" ${atual===m.id?'selected':''}>${esc(m.nome)} (${(+m.pix||0).toLocaleString('pt-BR')}%)</option>`).join('')}</select>`; }
 /* Seletor de maquininha para a linha de pagamento (só aparece quando há mais de uma). */
+/* Seletor de maquininha da linha de cartão no PDV: começa VAZIO e é obrigatório — o operador diz
+   em qual máquina passou, e a taxa descontada no caixa é a dela. */
 function maquinaSelectHTML(atual, onchange, forma){ const ms=maquinasCartao(); if(ms.length<2) return ''; const sel=atual||maquinaPadraoDe(forma||'Cartão Crédito');
   return `<span class="t-mut" style="font-size:12px">Maquininha</span><select onchange="${onchange}" style="padding:7px 9px;border:1px solid var(--line);border-radius:9px;background:var(--surface);color:var(--ink)">${ms.map(m=>`<option value="${esc(m.id)}" ${sel===m.id?'selected':''}>${esc(m.nome)}</option>`).join('')}</select>`; }
 function taxaCartaoVenda(v){ if(v&&v.taxaCartao!=null) return +v.taxaCartao||0; return ((v&&v.pagamentos)||[]).reduce((s,p)=>s+taxaCartaoForma(p.forma,p.valor,p.parcelas,p.maquina),0); }
@@ -22510,6 +22776,7 @@ function viewEntregas(){ const cfg=freteConfig();
   const origem=cfg.cepOrigem||'';
   const distMax=sel.filter(l=>l.km!=null).map(l=>l.km);
   document.getElementById('view').innerHTML=`
+   ${nuvemDesatualizadoHTML()}
    <div class="bi-banner" style="margin-bottom:16px"><div>${ico('truck')}</div>
      <div><b>Rota de Entregas</b><p>Selecione as entregas que entrarão na rota e o <b>veículo</b> que será utilizado (obrigatório). O km de cada entrega é calculado pela distância entre o <b>CEP da loja</b> e o <b>CEP do cliente</b>. Clique em <b>Abrir rota no Google Maps</b> para o trajeto otimizado.</p></div></div>
    <div class="kpis">
@@ -23728,12 +23995,12 @@ function cnpjNormWS(j){ const e=(j&&j.estabelecimento)||{}; return {
 /* Busca as inscrições estaduais na consulta pública do CNPJ.ws (sem chave, ~3 consultas/min).
    Usada só no cadastro manual — a atualização em lote NÃO chama isto, para não estourar o limite. */
 async function cnpjIEFetch(cnpj){
-  const tenta=async(url)=>{ try{ const r=await fetch(url); if(!r.ok) return null; return await r.json(); }catch(e){ return null; } };
+  const tenta=async(url)=>{ try{ const r=await fetch(url); if(!r.ok){ if(!window.__cnpjErroUlt) window.__cnpjErroUlt='HTTP '+r.status+(r.status===429?' (limite de consultas por minuto)':''); return null; } return await r.json(); }catch(e){ if(!window.__cnpjErroUlt) window.__cnpjErroUlt='sem conexão com o serviço'; return null; } };
   let j=await tenta('https://publica.cnpj.ws/cnpj/'+cnpj);
   if(!j) j=await tenta('https://api.allorigins.win/raw?url='+encodeURIComponent('https://publica.cnpj.ws/cnpj/'+cnpj));
   const l=cnpjIEsDe(j); return l.length?l:(j?[]:null); }
 async function cnpjFetch(cnpj, opts){ opts=opts||{};
-  const tenta=async(url,norm)=>{ try{ const r=await fetch(url); if(!r.ok) return null; const j=await r.json(); return norm?norm(j):j; }catch(e){ return null; } };
+  const tenta=async(url,norm)=>{ try{ const r=await fetch(url); if(!r.ok){ if(!window.__cnpjErroUlt) window.__cnpjErroUlt='HTTP '+r.status+(r.status===429?' (limite de consultas por minuto)':''); return null; } const j=await r.json(); return norm?norm(j):j; }catch(e){ if(!window.__cnpjErroUlt) window.__cnpjErroUlt='sem conexão com o serviço'; return null; } };
   const comIE=async(d)=>{ if(!d||!opts.comIE||Array.isArray(d.inscricoes)) return d;
     try{ const l=await cnpjIEFetch(cnpj); if(l) d.inscricoes=l; }catch(e){} return d; };
   // 1) BrasilAPI direto
@@ -23766,12 +24033,13 @@ async function cnpjFill(raw, map){ const cnpj=(''+(raw||'')).replace(/\D/g,''); 
    um aviso flutuante no canto. Nada trava, e dá para pausar ou parar.
    =================================================================== */
 let CNPJL={ativo:false, pausado:false, fila:[], i:0, escopo:'', ok:0, semMudanca:0, naoAchou:0, invalidos:0, problemas:[], mudancas:[], timer:null, iniciado:null};
-const CNPJL_INTERVALO=1500;   // ~40 consultas/min: fica abaixo do limite das APIs públicas
+let CNPJL_INTERVALO=1500;   // ~40 consultas/min: fica abaixo do limite das APIs públicas
 /* A INSCRIÇÃO ESTADUAL vem de outra consulta (a pública do CNPJ.ws), que aceita só
    ~3 consultas por minuto. Por isso, quando a busca da IE está ligada, o sistema
    anda mais devagar — 1 cliente a cada 21 segundos — e só pergunta a IE de quem
    ainda não tem uma preenchida. */
-const CNPJL_INTERVALO_IE=21000;
+let CNPJL_INTERVALO_IE=21000;
+let CNPJL_REPETE=[4000,12000];   // se a consulta falhar, espera e tenta de novo (2 vezes) antes de desistir
 /* Clientes PJ (documento com 14 dígitos ou tipo PJ). */
 function cnpjlPJ(){ try{ return DB.all('clientes').filter(c=>c && c.situacao!=='inativo' && cliEhPJ(c)); }catch(e){ return []; } }
 function cnpjlDoc(c){ return (((c&&(c.doc||c.cnpj||c.cpf_cnpj||c.documento))||'')+'').replace(/\D/g,''); }
@@ -23780,17 +24048,27 @@ function cnpjlFalta(c){ const f=[]; const t=v=>((v==null?'':v)+'').trim();
   if(!t(c.logradouro||c.endereco)) f.push('rua');
   if(!t(c.numero)) f.push('número');
   if(!t(c.bairro)) f.push('bairro');
-  if(!t(c.cidade)) f.push('cidade');
-  if(!t(c.estado||c.uf)) f.push('UF');
-  if(!t(c.cep)) f.push('CEP');
+  if(!t(c.cidade||c.municipio)) f.push('cidade');
+  if(!/^[A-Za-z]{2}$/.test(t(c.estado||c.uf))) f.push('UF');
+  if(t(c.cep).replace(/\D/g,'').length!==8) f.push('CEP');          // CEP incompleto (menos de 8 dígitos) também conta
   if(!t(c.telefone)&&!t(c.celular)) f.push('telefone');
   return f; }
-function cnpjlIncompletos(){ return cnpjlPJ().filter(c=>cnpjlFalta(c).length); }
+/* Incompleto = falta algo da lista acima OU falta algo que a NOTA FISCAL exige (inclui a Inscrição Estadual).
+   Antes a regra do botão era mais estreita que a da nota: o cliente barrado na hora de faturar
+   por falta de IE/CEP não entrava na consulta. */
+function cnpjlPendenciaNota(c){ try{ return pdvFiscalFalta(c).filter(x=>!/CPF ou CNPJ|Nome \/ Razão/i.test(x)); }catch(e){ return []; } }
+function cnpjlIncompletos(){ return cnpjlPJ().filter(c=>cnpjlFalta(c).length || cnpjlPendenciaNota(c).length || nfePjSemIE(c)); }
 /* Grava no cadastro SÓ o que está vazio. Devolve a lista de campos preenchidos. */
 function cnpjlAplicar(c, d){
   const t=v=>((v==null?'':v)+'').trim();
   const up={}; const feitos=[];
-  const por=(campo,valor,rotulo)=>{ const v=t(valor); if(!v) return; if(t(c[campo])) return; up[campo]=v; feitos.push(rotulo||campo); };
+  const invalido=(campo)=>{ const a=t(c[campo]);
+    if(campo==='cep') return a.replace(/\D/g,'').length!==8;                // CEP pela metade
+    if(campo==='estado') return !/^[A-Za-z]{2}$/.test(a);                  // UF que não é sigla
+    return false; };
+  const por=(campo,valor,rotulo)=>{ const v=t(valor); if(!v) return; if(t(c[campo]) && !invalido(campo)) return; up[campo]=v; feitos.push(rotulo||campo); };
+  if(!t(c.estado) && t(c.uf)) c=Object.assign({}, c, {estado:c.uf});
+  if(!t(c.cidade) && t(c.municipio)) c=Object.assign({}, c, {cidade:c.municipio});
   // Inscrição Estadual: só preenche se o cadastro estiver sem nenhuma
   if(Array.isArray(d.inscricoes) && !t(c.inscricaoEstadual)){
     const esc0=cnpjIEEscolher(d.inscricoes, d.uf||c.estado||'');
@@ -23811,11 +24089,15 @@ function cnpjlAplicar(c, d){
   return feitos; }
 function cnpjlIniciar(escopo){
   if(CNPJL.ativo){ toast('A consulta já está em andamento','err'); return; }
-  const comIE = escopo==='ie' ? true : !!((document.getElementById('cnpjl-ie')||{}).checked);
-  const base = escopo==='todos' ? cnpjlPJ() : escopo==='ie' ? cnpjlPJ().filter(pjSemIE) : cnpjlIncompletos();
+  const base = escopo==='todos' ? cnpjlPJ() : escopo==='ie' ? cnpjlPJ().filter(nfePjSemIE)
+    : escopo==='falhas' ? (CNPJL._falhasIds||[]).map(id=>DB.get('clientes',id)).filter(Boolean) : cnpjlIncompletos();
+  // Inscrição Estadual: nos "incompletos", "sem IE" e nas "falhas" ela é buscada SEMPRE (era preciso marcar uma
+  // caixinha, e sem marcar a consulta só completava o endereço — a IE ficava de fora). Só em "Todos" a caixinha decide.
+  const comIE = escopo==='todos' ? !!((document.getElementById('cnpjl-ie')||{}).checked) : base.some(nfePjSemIE);
   if(!base.length){ toast(escopo==='todos'?'Nenhum cliente PJ cadastrado':escopo==='ie'?'Nenhum cliente PJ sem Inscrição Estadual':'Nenhum cliente PJ com cadastro incompleto','ok'); return; }
   CNPJL={ativo:true, pausado:false, fila:base.map(c=>c.id), i:0, escopo:escopo, comIE:comIE,
     ok:0, semMudanca:0, naoAchou:0, invalidos:0, problemas:[], mudancas:[], timer:null, iniciado:new Date().toISOString()};
+  CNPJL._falhasIds=[];
   try{ logAcao('Consulta de CNPJ em lote', base.length+' cliente(s) PJ · '+(escopo==='todos'?'todos':escopo==='ie'?'sem inscrição estadual':'só os incompletos')+(comIE?' · com inscrição estadual':'')); }catch(e){}
   cnpjlRender(); cnpjlPasso();
 }
@@ -23836,16 +24118,29 @@ async function cnpjlPasso(){
       CNPJL.invalidos++;
       CNPJL.problemas.push({id:c.id, nome:c.nome||'', doc:doc, tipo:'invalido', txt: doc?('CNPJ inválido: '+docFmtBR(doc)):'sem CNPJ cadastrado'});
     } else {
-      const _querIE = !!CNPJL.comIE && !((c.inscricaoEstadual||'')+'').trim();
+      const _querIE = !!CNPJL.comIE && nfePjSemIE(c);
       CNPJL._usouIE=_querIE;
-      let d=null; try{ d=await cnpjFetch(doc, _querIE?{comIE:true}:undefined); }catch(e){ d=null; }
+      let d=null;
+      // Se a consulta falhar (limite por minuto, internet oscilando), espera e tenta de novo antes de desistir.
+      for(let t=0; t<=CNPJL_REPETE.length; t++){
+        window.__cnpjErroUlt='';
+        try{ d=await cnpjFetch(doc, _querIE?{comIE:true}:undefined); }catch(e){ d=null; }
+        if(d && d.razao_social && (!_querIE || Array.isArray(d.inscricoes))) break;   // com IE pedida, só vale se a IE também veio
+        if(t<CNPJL_REPETE.length){ await new Promise(r=>setTimeout(r, CNPJL_REPETE[t])); if(!CNPJL.ativo) return; while(CNPJL.pausado && CNPJL.ativo) await new Promise(r=>setTimeout(r,500)); } }
+      const motivo=(window.__cnpjErroUlt||'').trim();
       if(!d || !d.razao_social){
-        CNPJL.naoAchou++;
-        CNPJL.problemas.push({id:c.id, nome:c.nome||'', doc:doc, tipo:'naoachou', txt:'a Receita não devolveu dados para este CNPJ'});
+        CNPJL.naoAchou++; CNPJL._falhasIds.push(c.id);
+        CNPJL.problemas.push({id:c.id, nome:c.nome||'', doc:doc, tipo:'naoachou', txt:'a consulta não devolveu dados para este CNPJ'+(motivo?(' — '+motivo):'')});
       } else {
         const feitos=cnpjlAplicar(c,d);
         const sit=(d.descricao_situacao_cadastral||'').toUpperCase();
         if(sit && sit!=='ATIVA') CNPJL.problemas.push({id:c.id, nome:c.nome||'', doc:doc, tipo:'situacao', txt:'situação na Receita: '+sit});
+        if(_querIE && !Array.isArray(d.inscricoes)){ CNPJL._falhasIds.push(c.id);
+          CNPJL.problemas.push({id:c.id, nome:c.nome||'', doc:doc, tipo:'ie', txt:'endereço consultado, mas a Inscrição Estadual NÃO veio'+(motivo?(' — '+motivo):' (serviço público limita ~3 consultas por minuto)')+'. Use "Tentar de novo os que falharam".'}); }
+        // o que ainda impede a nota depois da consulta
+        const c2=DB.get('clientes',c.id); const resta=c2?cnpjlPendenciaNota(c2):[];
+        if(c2 && nfePjSemIE(c2) && !(_querIE && !Array.isArray(d.inscricoes))) { /* IE ainda vazia e a consulta respondeu: já entra em 'resta' abaixo */ }
+        if(resta.length) CNPJL.problemas.push({id:c.id, nome:c.nome||'', doc:doc, tipo:'resta', txt:'ainda falta para a nota: '+resta.map(x=>x.replace(/ — .*$/,'')).join(' · ')});
         if(feitos.length){ CNPJL.ok++; CNPJL.mudancas.push({id:c.id, nome:c.nome||'', campos:feitos}); }
         else CNPJL.semMudanca++;
       }
@@ -23860,6 +24155,7 @@ function cnpjlFim(){ CNPJL.ativo=false; CNPJL.pausado=false; try{ clearTimeout(C
   try{ logAcao('Consulta de CNPJ concluída', CNPJL.ok+' completado(s), '+CNPJL.naoAchou+' sem retorno, '+CNPJL.invalidos+' com CNPJ inválido'); }catch(e){}
   cnpjlRender();
   toast('Consulta concluída — '+CNPJL.ok+' cadastro(s) completados'+(CNPJL.problemas.length?(' · '+CNPJL.problemas.length+' para conferir'):''),'ok');
+  try{ nuvemPushJa(); }catch(e){} try{ buildNav(); }catch(e){}
   try{ if(STATE.route==='cli' && !document.getElementById('cnpjl-prog') && !uiOcupado()) renderCliTable(); }catch(e){}
 }
 /* Desenha o andamento: dentro da janela, se estiver aberta; senão, na plaquinha do canto. */
@@ -23895,6 +24191,7 @@ function cnpjlProgHTML(){
   ${(!CNPJL.ativo && CNPJL.problemas.length)?`<div style="margin-top:12px">
     <b style="font-size:13px">${NUM(CNPJL.problemas.length)} cadastro(s) para você conferir</b>
     <div class="t-mut" style="font-size:11.5px;margin:3px 0 8px">O sistema não mexe nesses: ou o CNPJ está errado, ou a Receita não devolveu dados, ou a empresa não está mais ativa.</div>
+    ${(CNPJL._falhasIds&&CNPJL._falhasIds.length)?`<button class="btn btn-amber btn-sm" style="margin-bottom:8px" onclick="cnpjlIniciar('falhas')">${ico('search')||ico('dl')} Tentar de novo os que falharam (${NUM(CNPJL._falhasIds.length)})</button>`:''}
     <div class="tbl-wrap" style="max-height:260px"><table style="font-size:12.5px"><tbody>
       ${CNPJL.problemas.slice(0,200).map(p=>`<tr><td><b>${esc(p.nome)}</b><div class="t-mut" style="font-size:11px">${esc(docFmtBR(p.doc)||'—')} · ${esc(p.txt)}</div></td>
         <td class="t-right" style="width:110px"><button class="btn btn-ghost btn-sm" onclick="closeModal();go('cli');setTimeout(()=>cliForm('${p.id}'),140)">${ico('edit')} Abrir</button></td></tr>`).join('')}
@@ -23940,14 +24237,14 @@ function cnpjlModal(){
        <div style="border:1px solid var(--line);border-radius:10px;padding:14px">
          <b style="font-size:13px">O que você quer consultar?</b>
          <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:10px">
-           <button class="btn btn-amber btn-sm" onclick="cnpjlIniciar('incompletos')" ${inc.length?'':'disabled'}>${ico('search')||ico('dl')} Só os incompletos (${NUM(inc.length)})</button>
+           <button class="btn btn-amber btn-sm" onclick="cnpjlIniciar('incompletos')" ${inc.length?'':'disabled'}>${ico('search')||ico('dl')} Só os incompletos — endereço, CEP e Inscrição Estadual (${NUM(inc.length)})</button>
            <button class="btn btn-ghost btn-sm" onclick="cnpjlIniciar('todos')" ${pj.length?'':'disabled'} title="Reconfere TODOS os clientes PJ. Demora mais; use quando quiser revisar a base inteira.">${ico('cli')} Todos os PJ (${NUM(pj.length)})</button>
-           ${(function(){ const semIE=pj.filter(pjSemIE).length; return `<button class="btn btn-ghost btn-sm" onclick="cnpjlIniciar('ie')" ${semIE?'':'disabled'} title="Busca a Inscrição Estadual de quem está sem ela. Mais devagar: o serviço aceita ~3 consultas por minuto.">${ico('doc')} Sem Inscrição Estadual (${NUM(semIE)})</button>`; })()}
+           ${(function(){ const semIE=pj.filter(nfePjSemIE).length; return `<button class="btn btn-ghost btn-sm" onclick="cnpjlIniciar('ie')" ${semIE?'':'disabled'} title="Busca a Inscrição Estadual de quem está sem ela. Mais devagar: o serviço aceita ~3 consultas por minuto.">${ico('doc')} Sem Inscrição Estadual (${NUM(semIE)})</button>`; })()}
          </div>
          <label style="display:flex;align-items:center;gap:8px;margin-top:10px;cursor:pointer;font-size:12.5px">
            <input type="checkbox" id="cnpjl-ie" style="width:16px;height:16px">
-           <span>Buscar também a <b>Inscrição Estadual</b> de quem está sem ela <span class="t-mut">(fica bem mais devagar: ~3 clientes por minuto)</span></span></label>
-         <div class="t-mut" style="font-size:11.5px;margin-top:9px">Tempo estimado: cerca de ${NUM(Math.ceil((inc.length*1.5)/60))} min para os incompletos e ${NUM(Math.ceil((pj.length*1.5)/60))} min para todos. Com a Inscrição Estadual ligada, conte ~${NUM(Math.ceil((pj.filter(pjSemIE).length*21)/60))} min para os ${NUM(pj.filter(pjSemIE).length)} sem IE.</div>
+           <span>Em <b>"Todos os PJ"</b>: buscar também a <b>Inscrição Estadual</b> de quem está sem ela <span class="t-mut">(mais devagar: ~3 clientes por minuto). Nas outras opções a IE é sempre buscada.</span></span></label>
+         <div class="t-mut" style="font-size:11.5px;margin-top:9px">Tempo estimado: cerca de ${NUM(Math.ceil((inc.length*1.5)/60))} min para os incompletos e ${NUM(Math.ceil((pj.length*1.5)/60))} min para todos. A Inscrição Estadual é buscada junto (mais devagar, ~3 clientes por minuto): conte ~${NUM(Math.ceil((pj.filter(nfePjSemIE).length*21)/60))} min para os ${NUM(pj.filter(nfePjSemIE).length)} sem IE.</div>
        </div>`}</div>
    </div>
    <div class="modal-foot"><div style="flex:1"></div><button class="btn btn-ghost" onclick="closeModal();cnpjlRender()">Fechar</button></div>`, true);
@@ -24356,7 +24653,7 @@ function exportCSV(col){
   } else if(col==='produtos'){
     rows=[['SKU','Produto','Categoria','Marca','Custo','Preço','Margem %','Estoque','Estoque mín.','Unidade','Valor em estoque (custo)']];
     DB.all('produtos').forEach(p=>{ const margem=p.preco?(p.preco-p.custo)/p.preco*100:0;
-      rows.push([p.sku,p.nome,p.categoria,p.marca,csvNum(p.custo),csvNum(p.preco),csvNum(margem),NUM(p.estoque),NUM(p.estoqueMinimo),p.unidade,csvNum(p.estoque*p.custo)]);
+      rows.push([p.sku,p.nome,p.categoria,p.marca,csvNum(p.custo),csvNum(p.preco),csvNum(margem),fmtQ(p.estoque),fmtQ(p.estoqueMinimo),p.unidade,csvNum(p.estoque*p.custo)]);
     });
   } else if(col==='clientes'){
     rows=[['Nome','Tipo','Documento','Telefone','Cidade','Pedidos','Total comprado','Última compra']];
@@ -24682,7 +24979,36 @@ async function nuvemTestar(){ const sb=nuvemClient();
     toast('Falha: '+m+dica,'err'); } }
 function nuvemTs(s){ const t=Date.parse(s||''); return isFinite(t)?t:0; }
 /* mescla dois acervos registro-a-registro (união por id; em empate, _mod mais novo vence; lápides aplicam exclusões) */
-function nuvemMergeCol(localArr, remoteArr, del, wipeCut){
+/* correção SU — A VENDA SÓ AVANÇA (faturada / entregue).
+   A mesclagem por registro escolhe a cópia de _mod mais novo e joga a outra fora INTEIRA. Se um
+   computador que ainda via o pedido "em aberto" (ou a entrega "pendente") mexesse nele DEPOIS de
+   outro computador tê-lo faturado/entregue — qualquer toque, até automático — a cópia atrasada
+   ganhava e o pedido voltava a aparecer em "Importar pedido" e a entrega voltava a "não entregue".
+   Agora, ao mesclar duas cópias da MESMA venda, o que já foi faturado ou entregue NÃO regride:
+   só volta atrás se houver marca de que alguém desfez de propósito (estorno do pedido, nota
+   recusada). Quando a proteção age, a cópia protegida ganha _mod novo e sobe, corrigindo a nuvem. */
+function vendaFaturadaReg(v){ return !!v && (v.faturadoPDV===true || v.status==='faturado' || v.status==='pago'); }
+let _vmpMudou=false;
+function vendaMesclarProgresso(w, l){
+  _vmpMudou=false;
+  try{
+    if(!w || !l || w===l) return w;
+    if(w.status==='cancelada' || l.status==='cancelada') return w;
+    let base=w, mudou=false;
+    if(vendaFaturadaReg(l) && !vendaFaturadaReg(w)){
+      const tl=nuvemTs(l._mod);
+      const desfeito = (w.faturamentoDesfeitoEm && nuvemTs(w.faturamentoDesfeitoEm)+5000>=tl)
+                    || (w.notaErroEm && nuvemTs(w.notaErroEm)+5000>=tl)
+                    || w.estoqueBaixado===false;
+      if(!desfeito){ base=JSON.parse(JSON.stringify(l)); Object.keys(w).forEach(k=>{ if(!(k in base)) base[k]=w[k]; }); mudou=true; } }
+    [w,l].forEach(src=>{
+      if(src && src.entrega && src.entregaStatus==='entregue' && base.entrega && base.entregaStatus!=='entregue'){
+        base.entregaStatus='entregue'; if(src.entregaData) base.entregaData=src.entregaData;
+        if(src.veiculoId) base.veiculoId=src.veiculoId; mudou=true; } });
+    if(mudou){ base._mod=new Date().toISOString(); base._protegidoEm=base._mod; _vmpMudou=true; try{ window._vendaProtegida=(window._vendaProtegida||0)+1; }catch(e){} }
+    return base;
+  }catch(e){ return w; } }
+function nuvemMergeCol(localArr, remoteArr, del, wipeCut, colNome){
   localArr=Array.isArray(localArr)?localArr:[]; remoteArr=Array.isArray(remoteArr)?remoteArr:[];
   // Registro salvo neste aparelho que esteja sem _mod (semeado por versão antiga do
   // sistema) recebe a marca AGORA. Sem isso ele era tratado como o mais antigo de
@@ -24694,7 +25020,8 @@ function nuvemMergeCol(localArr, remoteArr, del, wipeCut){
   remoteArr.forEach(r=>{ if(r&&r.id!=null) byId[r.id]=r; });
   localArr.forEach(l=>{ if(!l||l.id==null) return; const r=byId[l.id];
     if(!r){ byId[l.id]=l; localExtra=true; }                              // só este aparelho tem -> mantém
-    else { if(nuvemTs(l._mod) > nuvemTs(r._mod)){ byId[l.id]=l; localExtra=true; } } // editado mais recente vence
+    else { if(nuvemTs(l._mod) > nuvemTs(r._mod)){ byId[l.id]=(colNome==='vendas')?vendaMesclarProgresso(l,r):l; localExtra=true; } // editado mais recente vence
+      else if(colNome==='vendas'){ const m=vendaMesclarProgresso(r,l); if(_vmpMudou){ byId[l.id]=m; localExtra=true; } } }
   });
   let arr=Object.keys(byId).map(k=>byId[k]);
   if(del){ arr=arr.filter(x=>{ const dts=del[x.id]; if(!dts) return true; return nuvemTs(x._mod) > nuvemTs(dts); }); } // excluído, salvo se recriado depois
@@ -24711,7 +25038,7 @@ function nuvemMerge(local, remote){
     for(const id in src[col]){ const t=src[col][id]; if(nuvemTs(t)>=corte && (!del[col][id]||nuvemTs(t)>nuvemTs(del[col][id]))) del[col][id]=t; } } });
   let anyExtra=false;
   const wipeCut = Math.max(nuvemTs((local._meta||{}).wipedAt), nuvemTs((remote._meta||{}).wipedAt));  // "apagar tudo" mais recente entre os dois lados
-  NUVEM_COLS.forEach(col=>{ const {arr,localExtra}=nuvemMergeCol(local[col], remote[col], del[col], wipeCut); out[col]=arr; if(localExtra)anyExtra=true; });
+  NUVEM_COLS.forEach(col=>{ const {arr,localExtra}=nuvemMergeCol(local[col], remote[col], del[col], wipeCut, col); out[col]=arr; if(localExtra)anyExtra=true; });
   // resgata o que foi salvo aqui e ainda não tinha chegado à nuvem (ex.: F5 logo após lançar a venda)
   const resgatados=outboxAplicar(out);
   if(resgatados){ anyExtra=true;
@@ -24853,7 +25180,7 @@ function nuvemMergeComissao(localC, remoteC){
 // Chaves de config que são SÓ DESTE APARELHO (rascunho/erro da Nota Avulsa): não sobem para a
 // nuvem nem descem dela. Antes, o rascunho ia no blob __config e, como apagar uma chave nunca era
 // enviado, a nota já emitida VOLTAVA para a tela na próxima sincronização (e vazava entre computadores).
-const NUVEM_CONF_LOCAL={ nfaRascunho:1, nfaErro:1 };
+const NUVEM_CONF_LOCAL={ nfaRascunho:1, nfaErro:1, nfeEntRascunhos:1 };
 function nuvemConfLocal(k){ return !!NUVEM_CONF_LOCAL[k]; }
 function nuvemAplicaConfObj(dest, src, cloudNewer){
   for(const k in src){ if(k==='_meta' || nuvemConfLocal(k)) continue; const nv=src[k];
@@ -25088,10 +25415,221 @@ function nuvemV3Aplicar(linhas){
       return;
     }
     if(i<0){ arr.push(novo); n++; }
-    else if(nuvemTs(novo._mod)>nuvemTs(arr[i]._mod)){ arr[i]=novo; n++; }
+    else if(nuvemTs(novo._mod)>nuvemTs(arr[i]._mod)){ arr[i]=(col==='vendas')?vendaMesclarProgresso(novo,arr[i]):novo; n++; }
+    else if(col==='vendas'){ const m=vendaMesclarProgresso(arr[i],novo); if(_vmpMudou){ arr[i]=m; n++; } }
   });
+  if(window._vendaProtegida){ window._vendaProtegida=0; try{ setTimeout(function(){ try{ nuvemSalvarAgendado(); }catch(e){} },300); }catch(e){} }
   return n;
 }
+
+/* ============================================================================
+   correção SU — DADOS DESATUALIZADOS NÃO PODEM PASSAR DESPERCEBIDOS
+   Quando este computador não consegue LER (ou ENVIAR) a nuvem, ele continua mostrando o que tinha:
+   pedidos já faturados em outro aparelho aparecem "em aberto" e entregas já feitas aparecem como
+   "não entregues". Antes isso acontecia em silêncio (só um aviso passageiro). Agora:
+   - uma faixa vermelha fica na tela enquanto a leitura/envio estiver falhando, dizendo o motivo;
+   - a janela "Importar pedido" e a Rota de Entregas avisam que a lista pode estar desatualizada;
+   - ao abrir "Importar pedido" o sistema confere a nuvem na hora;
+   - antes de FATURAR um pedido/orçamento importado, o sistema pergunta à nuvem se ele já foi
+     faturado em outro aparelho — e, se foi, NÃO deixa faturar de novo (evita nota e baixa em duplicidade).
+============================================================================ */
+function nuvemFalhaRegistra(tipo, msg){ try{
+    if(!nuvemConfigurada()) return;
+    window._nuvemFalha=window._nuvemFalha||{};
+    const f=window._nuvemFalha[tipo]||(window._nuvemFalha[tipo]={desde:new Date().toISOString(), n:0, msg:''});
+    f.n++; f.msg=(msg||f.msg||'falha')+'';
+    if(f.n>=2) nuvemAvisoDesatualizado();
+  }catch(e){} }
+function nuvemFalhaLimpa(tipo){ try{
+    if(window._nuvemFalha && window._nuvemFalha[tipo]){ delete window._nuvemFalha[tipo]; }
+    if(!nuvemDesatualizado()) nuvemAvisoDesatualizadoLimpar();
+    else nuvemAvisoDesatualizado();
+  }catch(e){} }
+function nuvemDesatualizado(){ try{ const f=window._nuvemFalha||{}; return !!((f.leitura&&f.leitura.n>=2)||(f.envio&&f.envio.n>=2)); }catch(e){ return false; } }
+function nuvemLeituraRegistra(r){ try{
+    if(!r || r.ocupado || r.perigo) return;
+    if(r.ok){ nuvemFalhaLimpa('leitura'); return; }
+    const m=(r.erro||r.motivo||'falha na leitura')+'';
+    if(/^sem nuvem$/i.test(m)) return;
+    nuvemFalhaRegistra('leitura', m);
+  }catch(e){} }
+function nuvemAvisoDesatualizadoTexto(){
+  const f=window._nuvemFalha||{}; const hh=iso=>{ try{ return new Date(iso).toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'}); }catch(e){ return ''; } };
+  const p=[];
+  if(f.leitura&&f.leitura.n>=2) p.push('<b>não está conseguindo LER a nuvem</b> desde '+esc(hh(f.leitura.desde))+' — pedidos, entregas e estoque na tela podem estar DESATUALIZADOS (já faturados/entregues em outro aparelho)');
+  if(f.envio&&f.envio.n>=2) p.push('<b>não está conseguindo ENVIAR para a nuvem</b> desde '+esc(hh(f.envio.desde))+' — o que for lançado aqui NÃO aparece nos outros computadores');
+  const msg=(f.leitura&&f.leitura.msg)||(f.envio&&f.envio.msg)||'';
+  return {html:'Este computador '+p.join('; e ')+'.', motivo:msg}; }
+function nuvemAvisoDesatualizado(){ try{
+    if(window._nuvemAvisoOculto && Date.now()<window._nuvemAvisoOculto) return;
+    if(!nuvemDesatualizado()) return;
+    let el=document.getElementById('nuvem-desatualizado');
+    if(!el){ el=document.createElement('div'); el.id='nuvem-desatualizado';
+      el.style.cssText='position:fixed;left:0;right:0;top:0;z-index:9001;background:#991b1b;color:#fff;font-size:13px;padding:8px 14px;display:flex;gap:10px;align-items:center;justify-content:center;flex-wrap:wrap;box-shadow:0 2px 8px rgba(0,0,0,.3)';
+      document.body.appendChild(el); }
+    const t=nuvemAvisoDesatualizadoTexto();
+    el.innerHTML='<span>'+(typeof ico==='function'?ico('alert'):'⚠')+' '+t.html+(t.motivo?(' <span style="opacity:.85;font-size:11.5px">Motivo: '+esc(String(t.motivo).slice(0,140))+'</span>'):'')+'</span>'
+      +'<button class="btn btn-sm" style="background:#fff;color:#991b1b;border:0" onclick="nuvemTentarAgora()">Tentar agora</button>'
+      +'<button class="btn btn-sm" style="background:transparent;color:#fff;border:1px solid #fff9" onclick="nuvemAvisoDesatualizadoOcultar()">Ocultar 20 min</button>';
+    el.style.display='flex';
+  }catch(e){} }
+function nuvemAvisoDesatualizadoLimpar(){ try{ const el=document.getElementById('nuvem-desatualizado'); if(el) el.style.display='none'; }catch(e){} }
+function nuvemAvisoDesatualizadoOcultar(){ window._nuvemAvisoOculto=Date.now()+20*60000; nuvemAvisoDesatualizadoLimpar(); }
+async function nuvemTentarAgora(){ try{
+    toast('Tentando falar com a nuvem…','info');
+    if(window._nuvemFalha&&window._nuvemFalha.envio) await nuvemSalvar();
+    const r=await nuvemPullMerge();
+    if(!nuvemDesatualizado()) toast('Nuvem respondeu — este computador voltou a sincronizar','ok');
+    else toast('Ainda sem resposta da nuvem: '+(((r&&(r.erro||r.motivo))||'verifique a internet / avise o suporte')+'').slice(0,120),'err');
+  }catch(e){ toast('Ainda sem resposta da nuvem','err'); } }
+/* pequeno aviso para colocar dentro de telas que dependem do estado atual (pedidos, entregas) */
+function nuvemDesatualizadoHTML(){ try{ if(!nuvemDesatualizado()) return '';
+    const t=nuvemAvisoDesatualizadoTexto();
+    return `<div class="nuvem-stale-aviso" style="background:#fee2e2;border:1px solid #fca5a5;color:#991b1b;border-radius:8px;padding:8px 11px;font-size:12.5px;margin:0 0 10px">${ico('alert')} ${t.html} <b>Não fature nem entregue por esta lista até normalizar.</b></div>`;
+  }catch(e){ return ''; } }
+/* Embrulha as rotinas de leitura/envio para registrar sucesso/falha (as rotinas em si não mudam). */
+(function(){ try{
+  const env=function(nome, fn){ if(typeof window[nome]!=='function') return; const o=window[nome]; window[nome]=function(){ const r=o.apply(this,arguments);
+      if(r && typeof r.then==='function') return r.then(function(x){ try{ fn(x); }catch(e){} return x; }); try{ fn(r); }catch(e){} return r; }; };
+  env('nuvemPullV2', nuvemLeituraRegistra);
+  env('nuvemV3Pull', nuvemLeituraRegistra);
+  env('nuvemSalvar', function(x){ if(x===true) nuvemFalhaLimpa('envio'); else if(x===false && _nuvemPendingPush && navigator.onLine!==false && !nuvemPausado()) nuvemFalhaRegistra('envio', window._nuvemUltimoErroEnvio||''); });
+}catch(e){} })();
+
+/* Conferência na nuvem: as vendas ligadas a este pedido/orçamento (v3 por registro, v2 por coleção, v1 base inteira). */
+async function nuvemVendasDoPedido(orcId, vendaId){
+  const sb=nuvemClient(); if(!sb) return {erro:'nuvem não configurada'};
+  const t=nuvemTenant(); const lista=[];
+  const add=v=>{ if(v && v.id!=null && !lista.some(x=>String(x.id)===String(v.id))) lista.push(v); };
+  try{
+    if(nuvemV3On() && nuvemV3Cfg().migrado){
+      if(orcId){ const r=await nuvemComTimeout(sb.from('acervo_reg').select('id,dados,del,mod').eq('tenant',t).eq('col','vendas').eq('dados->>fromOrcId',String(orcId)), 12000); if(r.error) return {erro:r.error.message||'erro'}; (r.data||[]).forEach(x=>{ if(!x.del) add(x.dados); }); }
+      if(vendaId){ const r=await nuvemComTimeout(sb.from('acervo_reg').select('id,dados,del,mod').eq('tenant',t).eq('col','vendas').eq('id',String(vendaId)), 12000); if(r.error) return {erro:r.error.message||'erro'}; (r.data||[]).forEach(x=>{ if(!x.del) add(x.dados); }); }
+    } else if(nuvemCfg().v2){
+      const r=await nuvemComTimeout(sb.from('acervo_col').select('dados').eq('tenant',t).eq('col','vendas').maybeSingle(), 20000); if(r.error) return {erro:r.error.message||'erro'};
+      ((r.data&&r.data.dados&&r.data.dados.itens)||[]).forEach(v=>{ if(v && ((orcId&&v.fromOrcId===orcId)||(vendaId&&String(v.id)===String(vendaId)))) add(v); });
+    } else {
+      const r=await nuvemComTimeout(sb.from('acervo').select('dados').eq('tenant',t).maybeSingle(), 30000); if(r.error) return {erro:r.error.message||'erro'};
+      ((r.data&&r.data.dados&&r.data.dados.vendas)||[]).forEach(v=>{ if(v && ((orcId&&v.fromOrcId===orcId)||(vendaId&&String(v.id)===String(vendaId)))) add(v); });
+    }
+  }catch(e){ return {erro:(e&&e.message)||String(e)}; }
+  return {lista};
+}
+/* 'ok' = pode faturar; 'bloqueado' = já estava faturado (nada feito); 'cancel' = operador desistiu. */
+async function pdvConferirNuvem(){
+  try{ toast('Conferindo na nuvem se este pedido já foi faturado…','info'); }catch(e){}
+  const r=await nuvemVendasDoPedido(CART.fromOrcId||null, CART.faturaPedidoId||null);
+  if(r.erro){
+    return confirm('NÃO CONSEGUI CONFERIR NA NUVEM se este pedido já foi faturado em outro computador.\n\nMotivo: '+String(r.erro).slice(0,160)+'\n\nSe você continuar e ele já tiver sido faturado, a venda sai em DUPLICIDADE (estoque, caixa e nota fiscal).\n\nFaturar mesmo assim?')?'ok':'cancel'; }
+  const fat=r.lista.find(v=>vendaFaturadaReg(v) && v.status!=='cancelada');
+  if(!fat) return 'ok';
+  try{ const linhas=r.lista.map(v=>({col:'vendas', id:v.id, dados:v, del:false, mod:v._mod||new Date().toISOString()})); nuvemV3Aplicar(linhas); DB._persist(); }catch(e){}
+  const num=fat.numero?('nº '+fat.numero):'';
+  try{ logAcao('Faturamento duplicado evitado', 'Pedido '+(fat.numero||'')+' já estava faturado na nuvem'); }catch(e){}
+  alert('ESTE PEDIDO JÁ FOI FATURADO.\n\nOutro computador já faturou o pedido '+num+(fat.clienteNome?(' ('+fat.clienteNome+')'):'')+' em '+fDate(fat.data)+' — '+BRL(fat.total)+'.\n\nPara não duplicar a venda, a nota e a baixa de estoque, NÃO vou faturar de novo. A tela foi atualizada com o que está na nuvem.');
+  return 'bloqueado';
+}
+/* Pedidos que aparecem "em aberto" mas já têm NOTA FISCAL AUTORIZADA: prova de que foram faturados. */
+function pedidosAbertosComNota(){ const out=[]; try{
+    const {aberto}=pdvOrcPedidoMap(); const notas=DB.all('notasFiscais').filter(n=>n && n.vendaId && n.tipo!=='entrada' && (typeof nfeAutorizadaReal==='function'?nfeAutorizadaReal(n):n.status==='autorizada'));
+    Object.keys(aberto).forEach(oid=>{ const v=aberto[oid]; if(!v || v.faturamentoDesfeitoEm || v.notaErroEm) return;
+      const n=notas.find(x=>String(x.vendaId)===String(v.id)); if(n) out.push({v, nota:n}); });
+  }catch(e){} return out; }
+function pedidosAbertosComNotaHTML(){ const L=pedidosAbertosComNota(); if(!L.length) return '';
+  return `<div style="background:#fef3c7;border:1px solid #f59e0b;border-radius:8px;padding:8px 11px;font-size:12.5px;margin:0 0 10px">${ico('alert')} <b>${L.length} pedido(s) desta lista JÁ TÊM nota fiscal autorizada</b> (${L.slice(0,6).map(x=>'#'+esc(x.v.numero||'?')+' NF '+esc(x.nota.numero||'?')).join(', ')}${L.length>6?'…':''}) — ou seja, já foram faturados.
+    <button class="btn btn-amber btn-sm" style="margin-left:6px" onclick="pedidosMarcarFaturadosPorNota()">Marcar como faturados</button></div>`; }
+function pedidosMarcarFaturadosPorNota(){ const L=pedidosAbertosComNota(); if(!L.length){ toast('Nenhum pedido para corrigir','ok'); return; }
+  if(!confirm(L.length+' pedido(s) têm nota fiscal autorizada mas continuam "em aberto".\n\nMarcar como FATURADOS (sai de "Importar pedido")? Estoque e financeiro NÃO são alterados.')) return;
+  L.forEach(x=>DB.update('vendas',x.v.id,{faturadoPDV:true, faturadoPorNota:true, faturadoPorNotaEm:new Date().toISOString()}));
+  try{ logAcao('Pedidos marcados como faturados pela nota', L.map(x=>'#'+(x.v.numero||'?')).join(', ')); }catch(e){}
+  try{ nuvemPushJa(); }catch(e){} try{ buildNav(); }catch(e){}
+  toast(L.length+' pedido(s) corrigidos — saíram da lista','ok'); try{ renderImpOrc(); const b=document.getElementById('imp-orc-aviso'); if(b) b.innerHTML=pedidosAbertosComNotaHTML(); }catch(e){} }
+
+/* ============================================================================
+   CONFERIR PEDIDOS EM ABERTO — acha os que JÁ FORAM FATURADOS mas continuam na lista.
+   Junta as provas que o sistema guarda: (1) o histórico de ações — local e o da NUVEM, que ninguém apaga —
+   ("Venda registrada #1560 · R$ …"), (2) nota fiscal autorizada ligada ao pedido ou com o mesmo cliente/valor,
+   (3) outra venda já faturada do mesmo cliente e valor (o pedido ficou para trás como cópia duplicada).
+   Mostra tudo ao operador e só muda o que ele mandar aplicar.
+============================================================================ */
+function pedAbertoNorm(s){ return (s==null?'':String(s)).toUpperCase().normalize('NFD').replace(/[̀-ͯ]/g,'').replace(/\s+/g,' ').trim(); }
+const PED_LOG_ACOES=['Venda registrada','Faturamento desfeito — problema na nota','Pedido estornado (voltou a Pendente)','Venda estornada','Venda cancelada','Pedido cancelado'];
+async function pedLogNuvem(){
+  const sb=(typeof nuvemClient==='function')?nuvemClient():null; if(!sb) return {rows:[], erro:'nuvem não configurada'};
+  const rows=[];
+  try{ for(let pg=0; pg<6; pg++){
+      const r=await nuvemComTimeout(sb.from('auditoria').select('acao,detalhe,feito_em,usuario').eq('tenant',nuvemTenant()).in('acao',PED_LOG_ACOES).order('feito_em',{ascending:false}).range(pg*1000, pg*1000+999), 20000);
+      if(r.error) return {rows, erro:r.error.message||'erro'};
+      (r.data||[]).forEach(x=>rows.push({em:x.feito_em, acao:x.acao, detalhe:x.detalhe||'', usuario:x.usuario||''}));
+      if((r.data||[]).length<1000) break; }
+  }catch(e){ return {rows, erro:(e&&e.message)||String(e)}; }
+  return {rows}; }
+function pedLogLocal(){ return (DB.all('auditLog')||[]).filter(l=>l && PED_LOG_ACOES.indexOf(l.acao)>=0).map(l=>({em:(l.data||'')+'T'+(l.hora||'00:00:00'), acao:l.acao, detalhe:l.detalhe||'', usuario:l.usuario||''})); }
+function pedEventosDe(v, logs){
+  const num=String(v.numero==null?'':v.numero); if(!num) return [];
+  const re=new RegExp('^\\s*#'+num.replace(/[^0-9A-Za-z]/g,'')+'(\\s|·|$)');
+  const tot=BRL(+v.total||0).replace(/\s+/g,' ');
+  const seen={}; const out=[];
+  logs.forEach(l=>{ const d=(l.detalhe||'').replace(/\s+/g,' '); if(!re.test(d)) return;
+    if(l.acao==='Venda registrada' && d.indexOf(tot)<0) return;                  // mesmo nº, outro valor: é outro documento
+    const k=l.acao+'|'+d+'|'+String(l.em).slice(0,16); if(seen[k]) return; seen[k]=1; out.push(l); });
+  out.sort((a,b)=>String(a.em).localeCompare(String(b.em))); return out; }
+function pedAbertoAnalisar(logs){
+  const abertos=pedidosVendaAbertos().map(v=>({kind:'venda', doc:v}))
+    .concat(pedidosAbertosLista().map(o=>({kind:'orc', doc:Object.assign({}, o, {clienteNome:(typeof orcNomeCli==='function'?orcNomeCli(o):o.clienteNome)||o.clienteNome||''})})));
+  const faturadas=DB.all('vendas').filter(x=>x && x.status!=='cancelada' && vendaFaturadaReg(x));
+  const notas=DB.all('notasFiscais').filter(n=>n && n.tipo!=='entrada' && (typeof nfeAutorizadaReal==='function'?nfeAutorizadaReal(n):n.status==='autorizada'));
+  return abertos.map(it=>{ const v=it.doc, kind=it.kind;
+    const ev=[]; const tot=+v.total||0; const cli=pedAbertoNorm(v.clienteNome); let dupQ=null, acao='nada';
+    const eventos=pedEventosDe(v, logs); const ult=eventos.length?eventos[eventos.length-1]:null;
+    const notaV=(kind==='venda')?notas.find(n=>String(n.vendaId)===String(v.id)):null;
+    if(notaV) ev.push('Nota fiscal nº '+(notaV.numero||'?')+' autorizada ligada a este pedido');
+    dupQ=faturadas.find(x=>x.id!==v.id && x.id!==v.fromOrcId && Math.abs((+x.total||0)-tot)<0.015 && ((v.fromOrcId && x.fromOrcId===v.fromOrcId) || ((x.clienteId && x.clienteId===v.clienteId) || pedAbertoNorm(x.clienteNome)===cli) && (x.data||'')>=(v.data||'')));
+    if(dupQ) ev.push('Já existe a venda faturada nº '+(dupQ.numero||'?')+' ('+fDate(dupQ.data)+') do mesmo cliente e valor — este pedido ficou como cópia');
+    const notaC=!notaV && !dupQ && notas.find(n=>pedAbertoNorm(n.clienteNome)===cli && Math.abs((+n.valor||0)-tot)<0.015 && (n.data||'')>=(v.data||''));
+    if(notaC) ev.push('Nota fiscal nº '+(notaC.numero||'?')+' autorizada do mesmo cliente e valor ('+fDate(notaC.data)+')');
+    if(v.notaEmitida) ev.push('O pedido está marcado como "nota emitida"');
+    const faturouLog=ult && ult.acao==='Venda registrada';
+    if(ult){ ev.push('Histórico: '+eventos.slice(-3).map(e=>fDate(String(e.em).slice(0,10))+' '+String(e.em).slice(11,16)+' — '+e.acao).join(' → ')); }
+    const desfeitoLog=ult && ult.acao!=='Venda registrada';
+    if(v.faturamentoDesfeitoEm || desfeitoLog) { acao='nada'; ev.push('Foi desfeito/estornado de propósito — fica em aberto'); }
+    else if(dupQ) acao='remover';
+    else if(faturouLog || notaV || notaC || v.notaEmitida) acao='faturar';
+    return {v, kind, ev, acao: (kind==='orc' && acao==='faturar')?'remover':acao, dupQ}; }); }
+async function pedidosConferirAbrir(){
+  openModal(`<div class="modal-head"><h3>${ico('check')} Conferir pedidos em aberto</h3><button class="btn-icon btn-ghost" onclick="closeModal()">${ico('x')}</button></div>
+    <div class="modal-body" id="pca-body" style="max-height:70vh;overflow:auto"><div class="t-mut">Buscando o histórico (neste computador e na nuvem)…</div></div>`, 'xwide');
+  const logs=pedLogLocal(); let erro='';
+  if(typeof nuvemConfigurada==='function' && nuvemConfigurada() && typeof nuvemClient==='function' && nuvemClient()){ const r=await pedLogNuvem(); (r.rows||[]).forEach(x=>logs.push(x)); erro=r.erro||''; }
+  window._pcaRes=pedAbertoAnalisar(logs);
+  pedidosConferirRender(erro); }
+function pedidosConferirRender(erro){
+  const b=document.getElementById('pca-body'); if(!b) return; const L=window._pcaRes||[];
+  if(!L.length){ b.innerHTML='<div class="empty" style="padding:26px"><h4>Nenhum pedido em aberto</h4></div>'; return; }
+  const sug=L.filter(x=>x.acao!=='nada').length;
+  b.innerHTML=`${erro?`<div style="background:#fef3c7;border:1px solid #f59e0b;border-radius:8px;padding:7px 10px;font-size:12.5px;margin-bottom:8px">${ico('alert')} Não consegui ler o histórico da nuvem (${esc(String(erro).slice(0,120))}). A conferência usou só o que existe neste computador.</div>`:''}
+    <p class="t-mut" style="font-size:12.5px;margin:0 0 8px">${NUM(L.length)} pedido(s) em aberto; <b>${NUM(sug)}</b> com sinal de que já foi(ram) faturado(s). Confira cada linha e escolha o que fazer. <b>Nada é alterado até clicar em Aplicar.</b></p>
+    <div class="tbl-wrap"><table><thead><tr><th>Pedido</th><th>Cliente</th><th class="t-right">Valor</th><th>O que o sistema encontrou</th><th>Fazer</th></tr></thead><tbody>
+    ${L.map((x,i)=>`<tr><td class="tnum"><b>#${esc(x.v.numero||'—')}</b><div class="t-mut" style="font-size:11px">${fDate(x.v.data)}</div></td><td>${esc(x.v.clienteNome||'Consumidor')}</td><td class="t-right tnum">${BRL(x.v.total)}</td>
+      <td style="font-size:12px">${x.ev.length?x.ev.map(t=>'• '+esc(t)).join('<br>'):'<span class="t-mut">Nenhuma prova de faturamento encontrada — parece estar mesmo em aberto.</span>'}</td>
+      <td><select id="pca-a-${i}" style="min-width:190px"><option value="nada"${x.acao==='nada'?' selected':''}>Deixar como está</option>${x.kind==='orc'?'':`<option value="faturar"${x.acao==='faturar'?' selected':''}>Já foi faturado — marcar como faturado</option>`}<option value="remover"${x.acao==='remover'?' selected':''}>${x.kind==='orc'?'Já foi faturado — tirar da lista':'Duplicado — tirar da lista (cancelar sem estorno)'}</option></select></td></tr>`).join('')}
+    </tbody></table></div>
+    <div style="margin-top:12px;display:flex;gap:8px;flex-wrap:wrap"><button class="btn btn-amber" onclick="pedidosConferirAplicar()">${ico('check')} Aplicar</button><button class="btn btn-ghost" onclick="closeModal()">Fechar</button></div>
+    <p class="t-mut" style="font-size:11.5px;margin-top:8px">"Marcar como faturado" não mexe em estoque nem financeiro. "Tirar da lista" cancela só o pedido duplicado, sem estornar nada (a venda faturada continua valendo).</p>`; }
+function pedidosConferirAplicar(){
+  const L=window._pcaRes||[]; let f=0, r=0;
+  L.forEach((x,i)=>{ const sel=document.getElementById('pca-a-'+i); const a=sel?sel.value:'nada';
+    if(x.kind==='orc'){ if(a==='nada') return; const o=DB.get('orcamentos',x.v.id); if(!o) return;
+      DB.update('orcamentos',o.id,{ jaFaturado:true, jaFaturadoEm:new Date().toISOString(), jaFaturadoMotivo:'Conferência de pedidos em aberto' });
+      try{ logAcao('Pedido conferido: já estava faturado','#'+(o.numero||'?')+' · '+BRL(o.total)+(x.v.clienteNome?(' · '+x.v.clienteNome):'')); }catch(e){} f++; return; }
+    const v=DB.get('vendas',x.v.id); if(!v) return;
+    if(a==='faturar'){ DB.update('vendas',v.id,{ faturadoPDV:true, status:(v.status==='receber_local'?'pago':v.status), faturadoPorConferencia:true, faturadoPorConferenciaEm:new Date().toISOString() });
+      try{ logAcao('Pedido conferido: já estava faturado','#'+(v.numero||'?')+' · '+BRL(v.total)+(v.clienteNome?(' · '+v.clienteNome):'')); }catch(e){} f++; }
+    else if(a==='remover'){ DB.update('vendas',v.id,{ status:'cancelada', canceladoEm:today(), canceladoMotivo:'Duplicado — já faturado'+(x.dupQ?(' como nº '+x.dupQ.numero):''), entrega:false, entregaStatus:'', veiculoRotaId:null });
+      try{ logAcao('Pedido duplicado retirado da lista','#'+(v.numero||'?')+' · '+BRL(v.total)+(x.dupQ?(' · faturado como nº '+x.dupQ.numero):'')); }catch(e){} r++; } });
+  try{ nuvemPushJa(); }catch(e){} try{ buildNav(); }catch(e){}
+  closeModal(); toast((f+r)?(f+' marcado(s) como faturado(s), '+r+' duplicado(s) retirado(s) da lista'):'Nada foi alterado', (f+r)?'ok':'info');
+  try{ if(typeof renderSalesTable==='function' && document.getElementById('sales-q')) renderSalesTable((document.getElementById('sales-q')||{}).value||''); else if(STATE.route && typeof go==='function') go(STATE.route); }catch(e){} }
 
 /* MIGRAÇÃO — sobe a base atual uma única vez, em lotes e retomável.
    É a única gravação grande; depois disso o tráfego vira uma fração. */
@@ -25292,7 +25830,7 @@ async function nuvemSalvar(){
     }
     if(error) throw error; window._nuvemRemoteTs=atualizado; window._nuvemLastPushHash=_h; _nuvemPendingPush=false; nuvemCfgSalvar({ ultimoEnvio:atualizado, ultimoSync:atualizado }); nuvemServidorOk(); nuvemStatus('on');
     nuvemRefreshUI(); if(STATE.route==='nuvem') viewNuvem(); return true; }
-  catch(e){ const m=(e&&e.message)||e; const ml=(''+m).toLowerCase();
+  catch(e){ const m=(e&&e.message)||e; const ml=(''+m).toLowerCase(); window._nuvemUltimoErroEnvio=''+m;
     if(nuvemSecureOn() && nuvemEhErroAuth(m)){ nuvemReautenticar('Sua sessão da nuvem expirou ou este aparelho não fez login na nuvem. Entre novamente em Sistema → Nuvem.'); return false; }
     _nuvemPendingPush=true;
     const rede=/failed to fetch|networkerror|network error|load failed|timeout|connection/.test(ml);
@@ -25733,7 +26271,16 @@ async function nuvemSalvarV2(){ const sb=nuvemClient(); if(!sb){ nuvemStatus('id
   nuvemStatus('sync');
   try{ const tenant=nuvemTenant();
     for(let w=0; w<40 && _nuvemPulling; w++){ await new Promise(r=>setTimeout(r,100)); }   // espera pull em andamento
-    try{ await nuvemPullV2(true); }catch(e){}
+    let _rp=null; try{ _rp=await nuvemPullV2(true); }catch(e){ _rp={ok:false, erro:(e&&e.message)||String(e)}; }
+    // correção SU: o envio do modelo v2 grava a COLEÇÃO INTEIRA. Se a leitura que vem antes falhou, esta cópia pode
+    // estar atrasada — gravar por cima apagaria na nuvem o que outro aparelho acabou de fazer (pedido faturado,
+    // entrega marcada). Então não envia agora: fica pendente e tenta de novo.
+    if(_rp && _rp.ok===false && !_rp.ocupado && !_rp.perigo && !/^sem nuvem$/i.test(_rp.erro||'')){
+      _nuvemPendingPush=true; window._nuvemUltimoErroEnvio='não consegui ler a nuvem antes de enviar ('+((_rp.erro||'')+'').slice(0,100)+')';
+      nuvemStatus('off','Não consegui conferir a nuvem antes de enviar — tentarei de novo');
+      try{ clearTimeout(window._nuvemRetryTimer); }catch(_){}
+      window._nuvemRetryTimer=setTimeout(function(){ if(_nuvemPendingPush){ try{ nuvemSalvar(); }catch(_){} } }, 15000);
+      return false; }
     const d=DB._load(); const ts=new Date().toISOString(); const ups=[]; const sigNova={};
     // aparelho essencialmente VAZIO nunca sobrescreve uma nuvem que já tem dados
     const _tot=['clientes','produtos','vendas','financeiro','compras','fornecedores'].reduce((s,c)=>s+((d[c]||[]).length),0);
@@ -25779,7 +26326,7 @@ async function nuvemSalvarV2(){ const sb=nuvemClient(); if(!sb){ nuvemStatus('id
     try{ nuvemSnapSalvar(); }catch(e){}
     if(STATE.route==='nuvem') viewNuvem();
     return true;
-  }catch(e){ const m=(e&&e.message)||e; const ml=(''+m).toLowerCase();
+  }catch(e){ const m=(e&&e.message)||e; const ml=(''+m).toLowerCase(); window._nuvemUltimoErroEnvio=''+m;
     if(nuvemSecureOn() && nuvemEhErroAuth(m)){ nuvemReautenticar('Sua sessão da nuvem expirou. Entre novamente em Sistema → Nuvem.'); return false; }
     _nuvemPendingPush=true;
     const rede=/failed to fetch|networkerror|network error|load failed|timeout|connection/.test(ml);
@@ -26177,13 +26724,14 @@ function pendColetar(){ const d=DB._load(); const hoje=today(); const G=[];
       detalhe:s?((s.caixaNome||'Caixa')+' aberto em '+fDate(caixaDiaSessao(s))+(s.operador?(' por '+s.operador):'')+'.'):'',
       acoes:[{rotulo:'Ir para o caixa', fn:"go('caixa')"}] }); }
   { const fin=(d.financeiro||[]).filter(f=>f && ['aberto','pendente'].includes(f.status) && f.vencimento);
-    const rv=fin.filter(f=>f.tipo==='receber' && f.vencimento<hoje), rh=fin.filter(f=>f.tipo==='receber' && f.vencimento===hoje);
-    const pv=fin.filter(f=>f.tipo==='pagar' && f.vencimento<hoje), ph=fin.filter(f=>f.tipo==='pagar' && f.vencimento===hoje);
+    const _jp=(typeof dashJanelaPagamento==='function')?dashJanelaPagamento(hoje):{de:hoje,ate:hoje};
+    const rv=fin.filter(f=>f.tipo==='receber' && f.vencimento<_jp.de), rh=fin.filter(f=>f.tipo==='receber' && f.vencimento>=_jp.de && f.vencimento<=_jp.ate);
+    const pv=fin.filter(f=>f.tipo==='pagar' && f.vencimento<_jp.de), ph=fin.filter(f=>f.tipo==='pagar' && f.vencimento>=_jp.de && f.vencimento<=_jp.ate);
     const soma=a=>a.reduce((s,f)=>s+(+f.valor||0),0);
     add({ id:'pag_venc', grupo:'Financeiro', nivel:'erro', n:pv.length, valor:soma(pv), titulo:'Contas a pagar vencidas', acoes:[{rotulo:'Contas a pagar', fn:"go('contaspag')"}] });
-    add({ id:'pag_hoje', grupo:'Financeiro', nivel:'aviso', n:ph.length, valor:soma(ph), titulo:'Contas a pagar que vencem hoje', acoes:[{rotulo:'Contas a pagar', fn:"go('contaspag')"}] });
+    add({ id:'pag_hoje', grupo:'Financeiro', nivel:'aviso', n:ph.length, valor:soma(ph), titulo:(_jp.de===_jp.ate?'Contas a pagar que vencem hoje':'Contas a pagar para o próximo dia útil (inclui fim de semana/feriado)'), acoes:[{rotulo:'Contas a pagar', fn:"go('contaspag')"}] });
     add({ id:'rec_venc', grupo:'Financeiro', nivel:'aviso', n:rv.length, valor:soma(rv), titulo:'Contas a receber vencidas', acoes:[{rotulo:'Contas a receber', fn:"go('contasrec')"}] });
-    add({ id:'rec_hoje', grupo:'Financeiro', nivel:'aviso', n:rh.length, valor:soma(rh), titulo:'Contas a receber que vencem hoje', acoes:[{rotulo:'Contas a receber', fn:"go('contasrec')"}] });
+    add({ id:'rec_hoje', grupo:'Financeiro', nivel:'aviso', n:rh.length, valor:soma(rh), titulo:(_jp.de===_jp.ate?'Contas a receber que vencem hoje':'Contas a receber para o próximo dia útil (inclui fim de semana/feriado)'), acoes:[{rotulo:'Contas a receber', fn:"go('contasrec')"}] });
     const ch=(d.cheques||[]).filter(c=>c && c.status==='pendente' && c.vencimento && c.vencimento<=hoje);
     add({ id:'cheques', grupo:'Financeiro', nivel:'aviso', n:ch.length, valor:soma(ch), titulo:'Cheques com data para hoje ou vencida',
       detalhe:'Recebidos: depositar. Emitidos: conferir saldo.',
@@ -26248,6 +26796,7 @@ function nuvemJanelaEnvio(){
   return Math.min(max0, base);
 }
 function nuvemServidorReclamou(msg){
+  window._nuvemUltimoErroEnvio=(msg||'')+'';
   _nuvemFalhasSeguidas=Math.min(5,_nuvemFalhasSeguidas+1);
   const seg=Math.round(nuvemJanelaEnvio()/1000);
   nuvemStatus('sync','Servidor sobrecarregado — enviando a cada '+seg+'s');
@@ -30016,7 +30565,9 @@ async function focusStatusServidor(silencioso){
   if(data && data.ok && data.versao){
     const amb=f.ambiente==='producao'; const temAmb=amb?!!data.token_prod:!!data.token_homolog;
     d.fiscalConfig.focusTokenServidor=temAmb; d.fiscalConfig.focusSrvVersao=data.versao; DB._persist(); try{ nuvemConfMarcar(); }catch(e){}
+    const atual=String(data.versao)===FN_VERSAO_ESPERADA;
     html=`<div style="font-size:12.5px;line-height:1.6"><b style="color:var(--pos)">${ico('check')} Função segura publicada</b> (${esc(data.versao)}) · logado como <b>${esc(data.usuario||'')}</b><br>
+      ${atual?`<span style="color:var(--pos)">${ico('check')} É a versão que este sistema espera (${esc(FN_VERSAO_ESPERADA)}).</span><br>`:`<span style="color:var(--amber-d)">${ico('alert')} A função publicada <b>não é a versão esperada</b> (${esc(FN_VERSAO_ESPERADA)}): publique o arquivo <b>focus-nfe/index.ts</b> novo no Supabase — até lá, ações novas (ex.: carta de correção) respondem "ação desconhecida".</span><br>`}
       Token de produção no servidor: ${data.token_prod?'<b style="color:var(--pos)">sim</b>':'<b style="color:var(--neg)">não</b>'} · homologação: ${data.token_homolog?'<b style="color:var(--pos)">sim</b>':'<span class="t-mut">não</span>'}
       ${temAmb?'':`<br><span style="color:var(--amber-d)">${ico('alert')} Falta o segredo do ambiente <b>${amb?'FOCUS_TOKEN_PROD':'FOCUS_TOKEN_HOMOLOG'}</b> — enquanto isso, o token deste aparelho continua sendo usado.</span>`}
       ${(temAmb && (fiscalCfg().focusTokenProd||fiscalCfg().focusTokenHomolog))?`<br><button class="btn btn-amber btn-sm" style="margin-top:6px" onclick="focusApagarTokensLocais()">${ico('trash')} Apagar os tokens guardados neste sistema</button> <span class="t-mut">(recomendado: o servidor já tem o dele)</span>`:''}
@@ -30815,11 +31366,56 @@ function wizStepsBar(){ return `<div class="card card-pad" style="margin-bottom:
     </div>${i<WIZ_STEPS.length-1?`<div style="height:2px;flex:1;background:${WIZ.step>n?'var(--pos)':'var(--line-2)'};margin:0 2px;align-self:flex-start;margin-top:15px"></div>`:''}`; }).join('')}
   </div></div>`; }
 function wizRender(){ const body=document.getElementById('nfent-body'); if(!body)return;
-  body.innerHTML=`<div style="display:flex;align-items:center;gap:10px;margin-bottom:8px;flex-wrap:wrap"><button class="btn btn-ghost btn-sm" style="white-space:nowrap" onclick="NFENT.tab='recebidas';viewNfeEntrada()" title="Voltar para as Notas Recebidas">${ico('back')} Notas Recebidas</button><h2 style="font-family:var(--disp);font-size:18px;margin:0">${ico('doc')} Entrada de Nota Fiscal</h2><button class="btn btn-ghost btn-sm" style="margin-left:auto;white-space:nowrap" onclick="devolFiscalAbrir()">${ico('ret')} Devolução ao fornecedor</button><span class="t-mut" style="font-size:12.5px">Passo ${WIZ.step} de 6</span></div>
+  body.innerHTML=`<div style="display:flex;align-items:center;gap:10px;margin-bottom:8px;flex-wrap:wrap"><button class="btn btn-ghost btn-sm" style="white-space:nowrap" onclick="NFENT.tab='recebidas';viewNfeEntrada()" title="Voltar para as Notas Recebidas">${ico('back')} Notas Recebidas</button><h2 style="font-family:var(--disp);font-size:18px;margin:0">${ico('doc')} Entrada de Nota Fiscal</h2>${WIZ.nf?`<button class="btn btn-amber btn-sm" style="margin-left:auto;white-space:nowrap" onclick="wizSalvarRascunho(true)" title="Guarda tudo o que já foi conferido e volta para Notas Recebidas — depois é só clicar em Retornar ao lançamento">${ico('check')} Salvar nota e sair</button>`:''}<button class="btn btn-ghost btn-sm" style="${WIZ.nf?'':'margin-left:auto;'}white-space:nowrap" onclick="devolFiscalAbrir()">${ico('ret')} Devolução ao fornecedor</button><span class="t-mut" style="font-size:12.5px">Passo ${WIZ.step} de 6</span></div>
    ${wizStepsBar()}
    <div id="wiz-step">${[wizStep1,wizStep2,wizStep3,wizStep4,wizStep5,wizStep6][WIZ.step-1]()}</div>`;
 }
 function wizGo(n){ WIZ.step=Math.max(1,Math.min(6,n)); wizRender(); }
+/* ===== SALVAR O LANÇAMENTO NO MEIO E VOLTAR DEPOIS =====
+   O operador pode estar no passo 3 com 80 itens conferidos e precisar fazer uma venda. "Salvar nota"
+   guarda tudo o que já foi feito (fornecedor, itens, vínculos, preços, fiscal, parcelas) neste
+   computador; em Notas Recebidas aparece o quadro "Lançamentos salvos" com o botão para continuar
+   exatamente do ponto em que parou. O XML não é duplicado: fica na nota recebida e é religado ao retomar. */
+function nfentRascLer(){ try{ const d=DB._load(); const r=d.nfeEntRascunhos; return (r&&typeof r==='object'&&!Array.isArray(r))?r:{}; }catch(e){ return {}; } }
+function nfentRascGravar(map){ try{ const d=DB._load(); d.nfeEntRascunhos=map; DB._persist(); }catch(e){} }
+function nfentRascChave(w){ w=w||WIZ; const nf=w&&w.nf; if(!nf) return ''; const k=chaveNorm(nf.chave||''); return k||('nf-'+(nf.emitCNPJ||'').replace(/\D/g,'')+'-'+(nf.nNF||'')+'-'+(nf.serie||nf.serieNF||'')); }
+function nfentRascLista(){ const m=nfentRascLer(); return Object.keys(m).map(k=>Object.assign({_k:k},m[k])).filter(x=>x&&x.wiz&&x.wiz.nf).sort((a,b)=>String(b.salvoEm||'').localeCompare(String(a.salvoEm||''))); }
+function wizSalvarRascunho(sair){
+  if(!WIZ||!WIZ.nf){ toast('Nenhuma nota em lançamento para salvar','err'); return false; }
+  const k=nfentRascChave(WIZ); if(!k){ toast('Não foi possível identificar a nota','err'); return false; }
+  let w; try{ w=JSON.parse(JSON.stringify(WIZ)); }catch(e){ toast('Não foi possível guardar o lançamento','err'); return false; }
+  if(w.nf && w.nf._xmlRaw){ try{ const ch=chaveNorm(WIZ.nf.chave||''); if(ch){ const ex=DB.all('notasRecebidas').find(r=>chaveNorm(r.chave)===ch);
+        if(ex){ if(!ex.xml) DB.update('notasRecebidas',ex.id,{xml:WIZ.nf._xmlRaw}); if(!w._recebidaId) w._recebidaId=ex.id; }
+        else { const nv=DB.insert('notasRecebidas',{ chave:WIZ.nf.chave, xml:WIZ.nf._xmlRaw, numero:WIZ.nf.nNF||'', serie:WIZ.nf.serie||WIZ.nf.serieNF||'', fornecedorNome:WIZ.nf.emitNome||'', cnpj:(WIZ.nf.emitCNPJ||'').replace(/\D/g,''), valor:+WIZ.nf.vNF||0, data:WIZ.nf.data||today(), itensQtd:(WIZ.nf.itens||[]).length, status:'pendente', recebidaEm:new Date().toISOString(), origem:'xml' }); w._recebidaId=nv.id; } } }catch(e){}
+    delete w.nf._xmlRaw; }   // XML fica na nota recebida (não se duplica no rascunho)
+  const m=nfentRascLer();
+  m[k]={ wiz:w, salvoEm:new Date().toISOString(), usuario:(typeof CURRENT_USER!=='undefined'&&CURRENT_USER&&CURRENT_USER.nome)||'', numero:WIZ.nf.nNF||'', serie:WIZ.nf.serie||WIZ.nf.serieNF||'', fornecedor:WIZ.fornNome||WIZ.nf.emitNome||'', valor:+WIZ.nf.vNF||0, itens:(WIZ.itens||[]).length, step:WIZ.step };
+  nfentRascGravar(m);
+  try{ logAcao('Lançamento de nota salvo', 'NF '+(WIZ.nf.nNF||'')+' · '+(WIZ.fornNome||WIZ.nf.emitNome||'')+' · passo '+WIZ.step); }catch(e){}
+  toast('Lançamento salvo — continue depois em Notas Recebidas › Lançamentos salvos','ok');
+  if(sair){ wizReset(); NFENT.tab='recebidas'; viewNfeEntrada(); }
+  return true; }
+function nfentRascRemover(k){ const m=nfentRascLer(); if(m[k]){ delete m[k]; nfentRascGravar(m); } }
+function nfentRascDescartar(k){ const m=nfentRascLer(); const r=m[k]; if(!r) return;
+  if(!confirm('Descartar o lançamento salvo da NF '+(r.numero||'')+' ('+(r.fornecedor||'')+')?\n\nA nota continua em Notas Recebidas para ser lançada do zero; só o que já tinha sido conferido se perde.')) return;
+  nfentRascRemover(k); toast('Lançamento descartado','ok'); viewNfeEntrada(); }
+function nfentRascContinuar(k){ const m=nfentRascLer(); const r=m[k]; if(!r||!r.wiz||!r.wiz.nf){ toast('Lançamento não encontrado','err'); return; }
+  let w; try{ w=JSON.parse(JSON.stringify(r.wiz)); }catch(e){ toast('Não foi possível abrir o lançamento','err'); return; }
+  // religa o XML (fica guardado na nota recebida)
+  try{ const ch=chaveNorm(w.nf.chave||''); if(ch){ const rec=DB.all('notasRecebidas').find(x=>chaveNorm(x.chave)===ch && x.xml); if(rec){ w.nf._xmlRaw=rec.xml; _wizXmlStr=rec.xml; if(!w._recebidaId) w._recebidaId=rec.id; } } }catch(e){}
+  // nota já lançada enquanto isso? avisa e não deixa lançar em dobro
+  try{ const ch=chaveNorm(w.nf.chave||''); if(ch && DB.all('compras').some(c=>chaveNorm(c.chaveNFe)===ch && c.situacao!=='cancelada')){
+      if(!confirm('Esta nota JÁ CONSTA como lançada no histórico de entradas. Abrir o lançamento salvo mesmo assim?')) return; } }catch(e){}
+  WIZ=w; WIZ._rascK=k; NFENT.tab='entrada'; WIZ.step=Math.max(1,Math.min(6,+w.step||2)); if(WIZ.step<2) WIZ.step=2;
+  viewNfeEntrada(); toast('Lançamento retomado no passo '+WIZ.step,'ok'); }
+function nfentRascCardHTML(){ const L=nfentRascLista(); if(!L.length) return '';
+  const q=iso=>{ try{ const d=new Date(iso); return d.toLocaleDateString('pt-BR')+' '+d.toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'}); }catch(e){ return ''; } };
+  return `<div class="card" id="nfent-rasc-card" style="margin-bottom:16px;border-left:4px solid var(--amber)">
+    <div class="card-head"><div><h3>${ico('clock')} Lançamentos salvos (${NUM(L.length)})</h3><div class="ch-sub">Notas que você começou a lançar e salvou para continuar depois — neste computador.</div></div></div>
+    <div class="tbl-wrap"><table><thead><tr><th>NF</th><th>Fornecedor</th><th class="t-right">Itens</th><th class="t-right">Valor</th><th>Parou em</th><th>Salvo em</th><th></th></tr></thead><tbody>
+    ${L.map(r=>`<tr><td class="tnum t-strong">${esc(r.numero||'—')}${r.serie?('/'+esc(r.serie)):''}</td><td>${esc(r.fornecedor||'—')}</td><td class="t-right tnum">${NUM(r.itens||0)}</td><td class="t-right tnum">${BRL(r.valor||0)}</td><td>Passo ${esc(String(r.step||2))} — ${esc(WIZ_STEPS[(+r.step||2)-1]||'')}</td><td class="t-mut" style="font-size:12px">${esc(q(r.salvoEm))}${r.usuario?(' · '+esc(r.usuario)):''}</td>
+      <td class="t-right" style="white-space:nowrap"><button class="btn btn-amber btn-sm" onclick="nfentRascContinuar('${esc(r._k)}')">${ico('check')} Retornar ao lançamento</button> <button class="btn btn-ghost btn-sm" style="color:var(--neg)" onclick="nfentRascDescartar('${esc(r._k)}')" title="Descartar o que foi salvo">${ico('x')}</button></td></tr>`).join('')}
+    </tbody></table></div></div>`; }
 /* passo 1 — upload + histórico */
 function wizHistFiltradas(){
   const q=normTxt((NFENT.histQ||'').trim()); const de=NFENT.histDe||''; const ate=NFENT.histAte||'';
@@ -30959,7 +31555,7 @@ function wizStep3(){ const nf=WIZ.nf; const cats=catProdNomes();
      <div class="tbl-wrap"><table class="wiz-items"><colgroup><col style="width:26px"><col style="width:15%"><col style="width:50px"><col style="width:8%"><col style="width:6.5%"><col style="width:78px"><col style="width:44px"><col style="width:8.5%"><col style="width:7.5%"><col style="width:8.5%"><col style="width:9.5%"><col style="width:8%"><col style="width:14%"></colgroup><thead><tr><th><input type="checkbox" ${WIZ.itens.every(i=>i._incluir!==false)?'checked':''} onchange="wizToggleAll(this.checked)"></th><th>Produto</th><th>Qtd</th><th>Finalidade</th><th>CFOP</th><th>Un</th><th>Fator</th><th>Custo Calc</th><th>Margem %</th><th>Preço Venda</th><th>Classificação</th><th>Marca</th><th>Associar a</th></tr></thead><tbody>
      ${WIZ.itens.map((it,i)=>`<tr style="${it._incluir===false?'opacity:.45':''}">
        <td><input type="checkbox" ${it._incluir!==false?'checked':''} onchange="WIZ.itens[${i}]._incluir=this.checked;document.getElementById('wiz-step').innerHTML=wizStep3()"></td>
-       <td><div class="t-strong" style="font-size:12.5px">${esc(it.xProd)}${it.custoExtra>0?` <span style="background:#7c3aed;color:#fff;font-size:9.5px;font-weight:700;padding:1px 6px;border-radius:10px;white-space:nowrap" title="ST + IPI + Outras despesas do XML somados ao custo por unidade">ST/IPI/Out.desp. no custo +${BRL(it.custoExtra)}</span>`:''}</div><div class="t-mut" style="font-size:11px">Cód: ${esc(it.cProd||'—')}</div></td>
+       <td><div class="t-strong" style="font-size:12.5px">${esc(it.xProd)}${it.custoExtra>0?` <span style="background:#7c3aed;color:#fff;font-size:9.5px;font-weight:700;padding:1px 6px;border-radius:10px;white-space:nowrap" title="ST + IPI + Outras despesas do XML somados ao custo por unidade">ST/IPI/Out.desp. no custo +${BRL(it.custoExtra)}</span>`:''}</div><div class="t-mut" style="font-size:11px">Cód: ${esc(it.cProd||'—')} · ${(it.cEAN||it.cEANTrib)?('barras: '+esc(it.cEAN||it.cEANTrib)):'<span style="color:var(--amber-d)" title="O XML veio com SEM GTIN: o fornecedor não informou o código de barras deste item">nota sem código de barras</span>'}</div></td>
        <td><input type="number" step="any" class="mini-input" style="width:68px;text-align:center;font-weight:700;font-size:13px" value="${(it.qCom!=null&&!isNaN(it.qCom))?it.qCom:0}" onchange="wizSetQtd(${i},this.value)"></td>
        <td><select class="cc-sel" onchange="wizSetFinalidade(${i},this.value)"><option ${it.finalidade==='Revenda'?'selected':''}>Revenda</option><option ${it.finalidade==='Uso e consumo'?'selected':''}>Uso e consumo</option><option ${it.finalidade==='Imobilizado'?'selected':''}>Imobilizado</option></select></td>
        <td class="t-mut tnum" style="font-size:11px">${esc(it.cfop||'')}<div style="color:var(--brand)">${esc(it.f_cfop)}${it.f_csosn?' · '+esc(it.f_csosn):''}</div></td>
@@ -30975,7 +31571,7 @@ function wizStep3(){ const nf=WIZ.nf; const cats=catProdNomes();
                    if(!mostra.subgrupo&&pp.subgrupo) mostra.subgrupo=pp.subgrupo; } }
          return wizClassBotao(i, mostra); })()}</td>
        <td><input class="mini-input" style="width:120px;text-transform:uppercase" list="wiz-marcas" value="${esc(it.marca||'')}" placeholder="Marca (opc.)" oninput="this.value=this.value.toUpperCase();marcaDatalistFill('wiz-marcas',this.value)" onchange="WIZ.itens[${i}].marca=this.value.trim().toUpperCase()"></td>
-       <td>${ (function(){ if(it.associarId){ const pp=DB.get('produtos',it.associarId); return `<div style="display:flex;align-items:flex-start;gap:4px"><span style="flex:1 1 0;min-width:0;display:inline-block;background:var(--pos-soft);color:var(--pos);font-weight:600;font-size:11px;padding:3px 8px;border-radius:12px;white-space:normal;overflow-wrap:anywhere;word-break:break-word;line-height:1.3;text-align:left;text-transform:uppercase" title="${esc(pp?pp.nome:'Produto')}${it._assocMotivo?(' — reconhecido pelo '+esc(it._assocMotivo)):''}">${esc(pp?pp.nome:'Produto')}</span><button class="btn-icon btn-ghost" onclick="wizAssocClear(${i})" title="Trocar / cadastrar novo" style="flex:0 0 auto">${ico('x')}</button></div>${it._assocMotivo?`<div class="t-mut" style="font-size:10.5px;margin-top:2px">reconhecido pelo ${esc(it._assocMotivo)}</div>`:''}`; }
+       <td>${ (function(){ if(it.associarId){ const pp=DB.get('produtos',it.associarId); return `<div style="display:flex;align-items:flex-start;gap:4px"><span style="flex:1 1 0;min-width:0;display:inline-block;background:var(--pos-soft);color:var(--pos);font-weight:600;font-size:11px;padding:3px 8px;border-radius:12px;white-space:normal;overflow-wrap:anywhere;word-break:break-word;line-height:1.3;text-align:left;text-transform:uppercase" title="${esc(pp?pp.nome:'Produto')}${it._assocMotivo?(' — reconhecido pelo '+esc(it._assocMotivo)):''}">${esc(pp?pp.nome:'Produto')}</span>${(pp&&pp.situacao==='inativo')?`<span style="flex:0 0 auto;background:var(--neg);color:#fff;font-size:10px;font-weight:800;padding:3px 7px;border-radius:9px;align-self:center" title="Produto inativo no cadastro — ao finalizar a nota ele volta a ficar ATIVO">INATIVO</span>`:''}<button class="btn-icon btn-ghost" onclick="wizAssocClear(${i})" title="Trocar / cadastrar novo" style="flex:0 0 auto">${ico('x')}</button></div>${it._assocMotivo?`<div class="t-mut" style="font-size:10.5px;margin-top:2px">reconhecido pelo ${esc(it._assocMotivo)}</div>`:''}`; }
          if(it.finalidade && it.finalidade!=='Revenda') return `<span class="tag gray" style="font-size:10.5px;white-space:normal" title="Uso e consumo e imobilizado não entram no cadastro de produtos nem no estoque — só no valor da compra e no financeiro">não cadastra · ${esc(it.finalidade.toLowerCase())}</span>`;
          return `<div class="wiz-assoc-trigger" id="wiz-assoc-trg-${i}" tabindex="0" onclick="wizAssocOpen(${i})" onkeydown="if(event.key==='Enter'||event.key==='ArrowDown'){event.preventDefault();wizAssocOpen(${i});}">${ico('search')}<span>Associar…</span></div><div id="wiz-assoc-res-${i}" class="wiz-assoc-pop-host"></div>`; })() }</td>
      </tr>`).join('')}
@@ -30990,7 +31586,15 @@ function wizRecalc(i){ const it=WIZ.itens[i]; const f=+it.fator||1; if(it.qBase=
   it.qCom = Math.round((it.qBase*f)*1000)/1000; // QTD mostra a quantidade já convertida pelo fator
   const _base = (f>1)? ((it.vUnCom+(it.custoExtra||0))/f) : ((it.vUnCom||0)+(it.custoExtra||0));
   it.custoCalc = Math.round((_base + (+it.freteUnit||0))*100)/100;   // + frete pago por fora, rateado por unidade
-  it.precoVenda=Math.round(it.custoCalc*(1+(+it.margem||0)/100)*100)/100; wizRefreshRow(); }
+  wizAjustarPrecoOuMargem(it); wizRefreshRow(); }
+/* versão TH — Mudou o FATOR (ou o frete por fora): só o CUSTO muda. Se o item está ligado a um produto do
+   cadastro, o PREÇO DE VENDA é o que a loja já pratica e fica como está — recalcula-se a MARGEM a partir do
+   novo custo. Antes, o preço de venda era refeito pela margem antiga e "pulava" (ex.: fator 12 numa caixa de
+   R$ 78,48 levava a venda de R$ 7,90 para R$ 0,66). Item NOVO (sem produto) continua: preço = custo × margem. */
+function wizAjustarPrecoOuMargem(it){
+  const c=+it.custoCalc||0;
+  if(it.associarId && (+it.precoVenda||0)>0){ it.margem = c>0 ? Math.round(((+it.precoVenda/c)-1)*1000)/10 : (+it.margem||0); }
+  else { it.precoVenda=Math.round(c*(1+(+it.margem||0)/100)*100)/100; } }
 // Frete pago por FORA da nota: rateia pela quantidade e soma no custo unitário de cada item
 // (muda o custo no cadastro do produto), SEM alterar o total/lançamento da NF-e.
 function wizSetFreteFora(val){ WIZ.freteFora=Math.max(0, +(''+val).replace(',','.')||0);
@@ -30998,7 +31602,7 @@ function wizSetFreteFora(val){ WIZ.freteFora=Math.max(0, +(''+val).replace(',','
   WIZ.itens.forEach(it=>{ it.freteUnit=Math.round(fpu*100)/100; const f=+it.fator||1;
     const _b=(f>1)?((it.vUnCom+(it.custoExtra||0))/f):((it.vUnCom||0)+(it.custoExtra||0));
     it.custoCalc=Math.round((_b+(+it.freteUnit||0))*100)/100;
-    it.precoVenda=Math.round(it.custoCalc*(1+(+it.margem||0)/100)*100)/100; });
+    wizAjustarPrecoOuMargem(it); });
   wizRefreshRow(); }
 function wizFromMargem(i){ const it=WIZ.itens[i]; it.precoVenda=Math.round(it.custoCalc*(1+(+it.margem||0)/100)*100)/100; wizRefreshRow(); }
 function wizFromPreco(i){ const it=WIZ.itens[i]; it.margem = it.custoCalc>0? Math.round((it.precoVenda/it.custoCalc-1)*1000)/10 : 0; wizRefreshRow(); }
@@ -31058,7 +31662,7 @@ function wizAssocSearch(i,q){ const list=document.getElementById('wiz-assoc-list
   WIZ._assocHi=WIZ._assocHi||{}; WIZ._assocHi[i]=-1;
   if(q.length<2){ html=`<div class="t-mut" style="font-size:12px;padding:10px 12px">Digite ao menos 2 caracteres para buscar (↑ ↓ e Enter).</div>`; }
   else { const matches=wizAssocMatches(q);
-    html = matches.length? matches.map((p,idx)=>`<div class="wiz-opt" id="wiz-opt-${i}-${idx}" onmousedown="event.preventDefault()" onclick="wizAssocPick(${i},'${p.id}')"><b>${esc(p.nome)}</b><div class="t-mut" style="font-size:11.5px">SKU ${esc(p.sku||'—')}${p.codigoBarras?' · '+esc(p.codigoBarras):''} · est. ${NUM(p.estoque)} ${esc(p.unidade||'UN')}${(+p.preco>0)?(' · venda '+BRL(p.preco)):''}</div></div>`).join('') : `<div class="t-mut" style="font-size:12px;padding:10px 12px">Nenhum produto encontrado</div>`; }
+    html = matches.length? matches.map((p,idx)=>`<div class="wiz-opt" id="wiz-opt-${i}-${idx}" onmousedown="event.preventDefault()" onclick="wizAssocPick(${i},'${p.id}')"><b>${esc(p.nome)}</b>${p.situacao==='inativo'?` <span style="display:inline-block;background:var(--neg);color:#fff;font-size:10px;font-weight:800;padding:1px 7px;border-radius:9px;margin-left:6px;vertical-align:middle" title="Produto inativo no cadastro — ao finalizar a nota ele volta a ficar ATIVO">INATIVO</span>`:''}<div class="t-mut" style="font-size:11.5px">SKU ${esc(p.sku||'—')}${p.codigoBarras?' · '+esc(p.codigoBarras):''} · est. ${fmtQ(p.estoque)} ${esc(p.unidade||'UN')}${(+p.preco>0)?(' · venda '+BRL(p.preco)):''}</div></div>`).join('') : `<div class="t-mut" style="font-size:12px;padding:10px 12px">Nenhum produto encontrado</div>`; }
   list.innerHTML=html; }
 function wizAssocKey(i,ev){ const inp=document.getElementById('wiz-assoc-q-'+i); if(!inp) return; const matches=wizAssocMatches(inp.value);
   if(ev.key==='ArrowDown'||ev.key==='ArrowUp'){ if(!matches.length) return; ev.preventDefault(); WIZ._assocHi=WIZ._assocHi||{}; let hi=WIZ._assocHi[i]; if(hi==null)hi=-1;
@@ -31369,11 +31973,13 @@ function wizFinalizarExec(){ const nf=WIZ.nf;
       fill('cst',it.f_csosn,fed.f_csosn); fill('cest',it.f_cest,fed.f_cest);
       fill('cstPis',it.f_cstpis,fed.f_cstpis); fill('cstCofins',it.f_cstcofins,fed.f_cstcofins);
       if(inativo) upd.situacao='inativo';
+      else if(p.situacao==='inativo'){ upd.situacao='ativo'; upd.reativadoEm=new Date().toISOString(); upd.reativadoPor='NF '+(nf.nNF||''); try{ logAcao('Produto reativado pela entrada de nota', (p.nome||'')+' · NF '+(nf.nNF||'')); }catch(e){} }   // entrou mercadoria para revenda: volta a ficar ativo
       if(WIZ.lancarEstoque) upd.estoque=(p.estoque||0)+qtdEstoque;
       DB.update('produtos',pid,upd);
     }
     if(pid && WIZ.lancarEstoque) DB.insert('movEstoque',{produtoId:pid,tipo:'entrada',qtd:qtdEstoque,data:nf.data,motivo:'NF-e entrada (assistente)'+((+it.fator||1)>1?(' · '+(+it.qBase||0)+'x'+(+it.fator||1)):'')});
-    return {produtoId:pid,nome:it.xProd,qtd:qtdEstoque,preco:it.custoCalc,custo:it.custoCalc,valorItem:Math.round((+it.vUnCom||0)*100)/100}; });
+    return {produtoId:pid,nome:it.xProd,qtd:qtdEstoque,preco:it.custoCalc,custo:it.custoCalc,valorItem:Math.round((+it.vUnCom||0)*100)/100,cProd:it.cProd||'',ean:(it.cEAN||it.cEANTrib||'')}; });
+  try{ nfeXmlGuardar(nf); }catch(e){}   // guarda o XML da nota (lida do computador) para reaplicar códigos de barras depois
   // compra — guarda os produtos que foram CADASTRADOS por esta entrada (para poder desfazer numa devolução total)
   const produtosCriados=WIZ.itens.filter(it=>it._incluir!==false && it._novoProduto && it.associarId).map(it=>it.associarId);
   // Snapshot da CONFERÊNCIA DE PREÇOS gerada nesta entrada (para reabrir depois no histórico).
@@ -31392,6 +31998,7 @@ function wizFinalizarExec(){ const nf=WIZ.nf;
   window._posEnt={ itens:WIZ.itens.filter(it=>it._incluir!==false), forn:fornNome, nf:nf, etiq:itensCompra.map(i=>({pid:i.produtoId,qtd:Math.max(1,Math.ceil(+i.qtd||1))})) };
   if(WIZ._recebidaId){ try{ DB.update('notasRecebidas',WIZ._recebidaId,{status:'lancada'}); }catch(_){} }
   try{ nfRecebidaBaixar(compra.chaveNFe); }catch(_){}
+  try{ nfentRascRemover(nfentRascChave(WIZ)); if(WIZ._rascK) nfentRascRemover(WIZ._rascK); }catch(_){}
   // daqui para baixo é só tela: um erro aqui NÃO desfaz a entrada já gravada
   try{ buildNav(); wizReset(); NFENT.tab='recebidas'; viewNfeEntrada(); }catch(e){ console.error('tela pós-entrada',e); }
   setTimeout(()=>{ try{ wizPosEntrada(); }catch(e){ console.error('pós-entrada',e); } },0);
@@ -31668,6 +32275,7 @@ function nfentRecebidasHTML(){
      ${kpiCard('Notas lançadas',NUM(entAtivas.length),'check','#15803d',BRL(valorEnt))}
    </div>
    <div class="toolbar"><div class="spacer"></div><button class="btn btn-ghost btn-sm" onclick="devolFiscalAbrir()">${ico('ret')} Devolução ao fornecedor</button><button class="btn btn-amber btn-sm" onclick="sefazSincronizar()">${ico('dl')} Buscar no SEFAZ</button><button class="btn btn-primary btn-sm" onclick="document.getElementById('nfent-xml-file').click()" title="Selecionar o arquivo XML da NF-e no seu computador">${ico('doc')} Procurar XML no computador</button><input type="file" id="nfent-xml-file" accept=".xml,text/xml" style="display:none" onchange="nfentXmlComputador(this)"><button class="btn btn-ghost btn-sm" onclick="go('fiscalcfg')">${ico('doc')} Configurar integrador</button><button class="btn btn-ghost btn-sm" onclick="IMP.tab='arquivo';go('impxml')">${ico('dl')} Importar vários XML</button></div>
+   ${nfentRascCardHTML()}
    <div class="card" style="margin-bottom:16px">
      <div class="card-head" style="display:flex;align-items:center;gap:8px;flex-wrap:wrap"><div style="flex:1;min-width:180px"><h3>${ico('dl')} Notas Recebidas Automaticamente</h3><div class="ch-sub">${NFENT.verResumos?`${_prontas.length} com XML + ${_trav} só resumo`:`${pend.length} nota(s) com XML`} — clique em "Lançar" para abrir o assistente de entrada (fornecedor, itens, revisão fiscal, financeiro)${_trav?` · <b style="color:var(--amber-d)">${_trav} sem XML</b> <button class="btn btn-ghost btn-sm" style="padding:1px 8px;font-size:11px;vertical-align:middle" onclick="NFENT.verResumos=!NFENT.verResumos;nfentRefresh()" title="Notas que chegaram só como resumo: a SEFAZ ainda não liberou o XML, então não podem ser lançadas. O sistema já tenta destravá-las sozinho a cada busca no SEFAZ.">${NFENT.verResumos?'ocultar':'ver'}</button>`:''}</div></div><input id="nfent-q" class="pill-filter" placeholder="Buscar por NF, fornecedor ou valor..." value="${esc(NFENT.q||'')}" oninput="NFENT.q=this.value; nfentFiltrarPend()" style="min-width:230px"></div>
      ${nfentAvisoResumo()}
@@ -32117,7 +32725,7 @@ function nfentRefresh(){ const b=document.getElementById('nfent-body'); if(b) b.
 function nfentXmlComputador(inp){ const f=inp&&inp.files&&inp.files[0]; if(!f) return;
   const r=new FileReader();
   r.onload=()=>{ try{
-      let nf; try{ nf=parseNFe(r.result); }catch(e){ nf=null; }
+      let nf; try{ nf=parseNFe(r.result); if(nf) nf._xmlRaw=r.result; }catch(e){ nf=null; }
       if(!nf||!nf.chave){ toast('Não foi possível ler este XML. Confirme que é o XML de uma NF-e.','err'); return; }
       const _tr=nfeXmlDaEmpresa(nf,'entrada'); if(!_tr.ok){ toast(_tr.msg,'err'); try{ alert(_tr.msg); }catch(_){} return; }
       if(typeof jaImportada==='function' && jaImportada(nf.chave)){ toast('Esta nota já foi importada (mesma chave de acesso).','err'); return; }
@@ -32313,7 +32921,7 @@ function nemitTableHTML(c){ const lista=c.lista;
    ${lista.length?lista.map(n=>`<tr>
      <td class="tnum">${nfeSemNumero(n)?`<span class="t-mut" title="A numeração vem da SEFAZ pelo Focus assim que a nota é autorizada">— <span style="font-size:10px">aguardando SEFAZ</span></span>`:(n.numero+'/'+n.serie)}</td><td><span class="tag">${n.modelo==='65'?'NFC-e':'NF-e'}</span>${n.estorno?' <span class="tag warn" title="Nota de ENTRADA, finalidade 3 (ajuste)">estorno</span>':''}</td><td class="tnum">${fDate(n.data)}</td>
      <td class="t-strong">${esc(n.clienteNome||'Consumidor')}</td><td class="t-right t-strong tnum">${BRL(n.valor)}</td><td class="t-right tnum t-mut">${BRL(n.icms||0)}</td>
-     <td>${n.status==='cancelada'?(n.canceladaSefaz?`<span class="tag err" title="Cancelamento confirmado na SEFAZ${n.protocoloCancelamento?(' · Protocolo '+esc(n.protocoloCancelamento)):''}${n.canceladaEm?(' · '+fDate(n.canceladaEm)):''}">✓ Cancelada na SEFAZ</span>`:`<span class="tag warn" title="Cancelada apenas no sistema — NÃO confirmada na SEFAZ">Cancelada (interna)</span>`):(nfeAutorizadaReal(n)?(n.estornadaPor?`<span class="tag warn" title="Esta nota foi ESTORNADA por uma NF-e de ajuste (999) — a operação foi anulada fiscalmente">Autorizada · estornada${(function(){ const e=DB.get('notasFiscais',n.estornadaPor); return (e&&e.numero)?(' pela nº '+e.numero):''; })()}</span>`:(n.estorno?'<span class="tag pos" title="NF-e de ajuste (finalidade 3) que estorna a nota referenciada">Autorizada · ESTORNO</span>':'<span class="tag pos" title="Autorizada pela SEFAZ">Autorizada</span>')):(n.status==='processando'?'<span class="tag warn">Processando</span>':`<span class="tag warn" title="${esc(n._focusUltMsg||'Ainda NÃO autorizada na SEFAZ — use Transmitir via Focus NFe')}">Pendente</span>`))}</td>
+     <td>${n.status==='cancelada'?(n.canceladaSefaz?`<span class="tag err" title="Cancelamento confirmado na SEFAZ${n.protocoloCancelamento?(' · Protocolo '+esc(n.protocoloCancelamento)):''}${n.canceladaEm?(' · '+fDate(n.canceladaEm)):''}">✓ Cancelada na SEFAZ</span>`:`<span class="tag warn" title="Cancelada apenas no sistema — NÃO confirmada na SEFAZ">Cancelada (interna)</span>`):(nfeAutorizadaReal(n)?(n.estornadaPor?`<span class="tag warn" title="Esta nota foi ESTORNADA por uma NF-e de ajuste (999) — a operação foi anulada fiscalmente">Autorizada · estornada${(function(){ const e=DB.get('notasFiscais',n.estornadaPor); return (e&&e.numero)?(' pela nº '+e.numero):''; })()}</span>`:(n.estorno?'<span class="tag pos" title="NF-e de ajuste (finalidade 3) que estorna a nota referenciada">Autorizada · ESTORNO</span>':'<span class="tag pos" title="Autorizada pela SEFAZ">Autorizada</span>')):(n.status==='processando'?'<span class="tag warn">Processando</span>':`<span class="tag warn" title="${esc(n._focusUltMsg||'Ainda NÃO autorizada na SEFAZ — use Transmitir via Focus NFe')}">Pendente</span>`))}${notaCceTag(n)}</td>
      <td class="t-right" style="white-space:nowrap">${notaCceBotaoHTML(n)}<button class="btn-icon btn-ghost" onclick="notaView('${n.id}')" title="Ver DANFE">${ico('doc')}</button><button class="btn-icon btn-ghost" onclick="notaBaixarXML('${n.id}')" title="Baixar XML">${ico('dl')}</button>${(!nfeAutorizadaReal(n) && n.status!=='cancelada' && n._focusRef)?`<button class="btn-icon btn-ghost" onclick="focusConsultar('${n._focusRef}','${n.modelo||'55'}','${n.id}')" title="Consultar status no Focus/SEFAZ — se já foi autorizada, atualiza a nota aqui" style="color:#2563eb">${ico('down')}</button>`:''}${(!nfeAutorizadaReal(n) && n.status!=='cancelada' && n.vendaId)?`<button class="btn-icon btn-ghost" onclick="notaReenviar('${n.id}')" title="Reenviar: descarta esta nota pendente e gera uma NOVA nota com os mesmos dados (sem movimentar caixa/estoque do dia — mantém o dia do faturamento)" style="color:#0d9488">${ico('ret')}</button>`:''}${(!nfeAutorizadaReal(n) && n.status!=='cancelada' && n.vendaId)?`<button class="btn-icon btn-ghost" onclick="notaVoltarOrcamento('${n.id}')" title="Retornar para Orçamento (descarta a nota pendente e reverte a venda: estoque, financeiro e caixa)" style="color:#b45309">${ico('back')}</button>`:''}${(nfeAutorizadaReal(n) && (n.modelo||'55')==='55' && !n.estorno && !n.estornadaPor)?`<button class="btn-icon btn-ghost" onclick="notaEstornar('${n.id}')" title="Estorno de nota: emite a NF-e de ajuste (999 - Estorno de NF-e não cancelada no prazo legal) referenciando esta nota — para quando o prazo de cancelamento já passou" style="color:var(--amber-d)">${ico('ret')}</button>`:''}${nfeAutorizadaReal(n)?`<button class="btn-icon btn-ghost" onclick="notaCancelar('${n.id}')" title="Cancelar" style="color:var(--neg)">${ico('x')}</button>`:''}${(!nfeAutorizadaReal(n) && n.status!=='cancelada')?`<button class="btn-icon btn-ghost" onclick="notaDescartar('${n.id}')" title="Excluir nota (pendente/rejeitada — não autorizada na SEFAZ)" style="color:var(--neg)">${ico('trash')}</button>`:''}</td>
    </tr>`).join(''):`<tr><td colspan="8"><div class="empty" style="padding:40px">${ico('check')}<h4>Nenhuma nota emitida no período</h4><p class="t-mut">Emita notas a partir das vendas em "NF-e Saída".</p></div></td></tr>`}
    </tbody></table>`;
@@ -33108,12 +33716,30 @@ function nfaParcelasUI(){ if(NFA.formaPagamento!=='Boleto/Prazo' || NFA._vendaId
     </tbody></table></div>
     <div class="t-mut" style="font-size:11px;margin-top:4px">${ico('alert')} Ajuste as datas e valores conforme combinado. As parcelas viram contas a receber ao emitir.</div></div>`;
 }
+/* A TELA ABRE EM BRANCO. Antes, ao abrir a Nota Avulsa pelo menu, ela vinha preenchida com a última nota que
+   não chegou a ser emitida (o rascunho era devolvido sozinho). Agora: abrir pelo menu = tudo vazio. O rascunho
+   continua guardado (nada se perde) e aparece como um AVISO com "Recuperar" / "Descartar" — o operador decide.
+   Exceção: nota que acabou de FALHAR na emissão (aviso vermelho de hoje) volta preenchida, para ser corrigida. */
+function nfaRascInfo(){ try{ const d=DB._load(); const r=d&&d.nfaRascunho; if(!r||!r.nfa||!nfaTemConteudo(r.nfa)) return null;
+    const n=r.nfa; const cli=n.clienteId?(DB.get('clientes',n.clienteId)||{}).nome:''; return { ts:r.ts||'', itens:(n.itens||[]).length, cliente:cli||n.clienteNome||'', total:(n.itens||[]).reduce((s,i)=>s+(+i.qtd||0)*(+i.preco||0),0)-(+n.desconto||0) }; }catch(e){ return null; } }
+function nfaRascAvisoHTML(){ const r=nfaRascInfo(); if(!r || nfaTemConteudo(NFA)) return '';
+  const q=r.ts?new Date(r.ts):null; const quando=q&&!isNaN(q)?(q.toLocaleDateString('pt-BR')+' '+q.toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'})):'';
+  return `<div id="nfa-rasc-box" class="card card-pad" style="border-left:4px solid var(--amber);background:var(--amber-soft);margin-bottom:14px;display:flex;gap:10px;align-items:center;flex-wrap:wrap">
+    <div style="flex:1;font-size:13px">${ico('clock')} <b>Há uma nota avulsa não emitida</b>${quando?(' de '+esc(quando)):''}: ${NUM(r.itens)} item(ns)${r.cliente?(' · '+esc(r.cliente)):''} · ${BRL(Math.max(0,r.total))}. <span class="t-mut">A tela está em branco; recupere só se quiser continuar aquela nota — se lançar uma nota nova, ela é descartada.</span></div>
+    <button class="btn btn-amber btn-sm" onclick="nfaRascRecuperar()">${ico('dl')} Recuperar</button>
+    <button class="btn btn-ghost btn-sm" onclick="nfaRascDescartar()">${ico('x')} Descartar</button></div>`; }
+function nfaRascRecuperar(){ if(!nfaRascRestaurar()){ toast('Não há nota guardada','err'); return; } window._nfaManter=true; viewNFAvulsa(); toast('Nota recuperada — confira e emita','ok'); }
+function nfaRascDescartar(){ if(!confirm('Descartar a nota não emitida? Os itens e o destinatário guardados serão apagados.')) return; nfaRascLimpar(); const b=document.getElementById('nfa-rasc-box'); if(b) b.remove(); toast('Nota descartada','ok'); }
 function viewNFAvulsa(){ const clientes=DB.all('clientes');
-  /* Voltou para a tela e a nota estava vazia? Devolve o rascunho guardado. */
-  if(!nfaTemConteudo(NFA)) nfaRascRestaurar();
   nfaErroCarregar();
+  if(window._nfaEntrada){ window._nfaEntrada=false;
+    if(NFA_ERRO && nfaTemConteudo(NFA)){ /* falhou hoje e ainda está na memória: fica para corrigir */ }
+    else if(NFA_ERRO && nfaRascRestaurar()){ /* falhou hoje: volta preenchida para corrigir */ }
+    else { if(nfaTemConteudo(NFA)) nfaRascSalvar();   // o que estava na memória vira rascunho (nada se perde)
+      NFA=nfaClone(NFA_VAZIA); } }
+  window._nfaManter=false;
   document.getElementById('view').innerHTML=`
-   ${nfaErroHTML()}
+   ${nfaErroHTML()}${nfaRascAvisoHTML()}
    <div class="bi-banner" style="margin-bottom:16px"><div>${ico('doc')}</div>
      <div><b>Nota Fiscal Avulsa</b><p>Emite uma NF-e (modelo 55) que <b>movimenta o estoque normalmente</b>, mas <b>não é contabilizada no faturamento</b> (não gera venda). Útil para remessas, brindes, transferências e ajustes com documento fiscal. A transmissão real à SEFAZ exige certificado e backend — aqui o registro é de demonstração.</p></div></div>
    <div class="g2" style="gap:16px;align-items:start">
@@ -33176,7 +33802,7 @@ function renderNfaResults(){
   dd.innerHTML=NFA.results.map(p=>{ const active=p.id===NFA.activePid; const un=(p.unidade||'UN').toUpperCase();
     return `<div class="orc-row ${active?'active':''}" data-pid="${p.id}" onclick="nfaActivate('${p.id}')">
       <div style="flex:1;min-width:0"><div class="orc-rn">${esc(p.nome)}</div>
-        <div class="orc-rs">SKU: ${esc(p.sku||'—')} • Est: ${NUM(p.estoque)} ${esc(un)}</div></div>
+        <div class="orc-rs">SKU: ${esc(p.sku||'—')} • Est: ${fmtQ(p.estoque)} ${esc(un)}</div></div>
       <div class="orc-rp">${BRL(p.preco)}</div>
       ${active?`<div class="orc-inl" onclick="event.stopPropagation()">
         <label>Qtd:</label><input id="nfa-rq" type="number" min="0" step="any" value="${NFA.qtyPrefix||1}" onkeydown="nfaRowKey(event)">
@@ -34389,7 +35015,7 @@ function catvCardsHTML(lista){ if(!lista.length) return `<div class="empty" styl
       <div class="catv-thumb" onclick="catvAdd('${p.id}')">${p.imagem?`<img src="${esc(p.imagem)}" alt="">`:ico('cart')}${semEst?`<span class="catv-badge">Sem estoque</span>`:''}</div>
       <div class="catv-body"><div class="catv-nome">${esc(p.nome)}</div><div class="catv-sku">${esc(p.sku||'')}</div>
         <div class="catv-preco">${BRL(preco)}${promo?` <span class="tag pos" style="font-size:9px;vertical-align:middle">promo</span>`:''}</div>
-        <div class="catv-est">Estoque: ${NUM(p.estoque||0)} ${esc(p.unidade||'un')}</div>
+        <div class="catv-est">Estoque: ${fmtQ(p.estoque||0)} ${esc(p.unidade||'un')}</div>
         <div class="catv-qtyrow" onclick="event.stopPropagation()">
           <input type="number" min="1" step="any" value="1" id="catv-qty-${p.id}" onclick="event.stopPropagation()" onkeydown="if(event.key==='Enter')catvAdd('${p.id}')" aria-label="Quantidade">
           <button class="catv-addbtn" onclick="event.stopPropagation();catvAdd('${p.id}')">${ico('plus')} Adicionar</button>
