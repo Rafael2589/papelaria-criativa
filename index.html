@@ -48,7 +48,7 @@ const CONFIG_EMPRESA = {
      Aparece no topo do menu e no rodapé das Configurações. Troque a cada publicação.
      MANTENHA O FORMATO 'vDD/MM-X' — é ele que o sistema usa para comparar as máquinas
      da loja e avisar quando alguma ficou para trás.                                  */
-  versao: 'v07/10-B',
+  versao: 'v07/10-C',
 
   /* 4) NUVEM (Supabase)  ------------------------------------------------------------
      Cole aqui a Project URL e a chave PUBLISHABLE do projeto Supabase DESTA empresa
@@ -1362,6 +1362,15 @@ if(MODO_TESTE && typeof window!=='undefined' && typeof window.fetch==='function'
     return Promise.resolve(testeRespostaBloqueada(url, /\/rest\/v1\//.test(url)));
   };
 }
+/* Contador de requisições à nuvem (Supabase) em andamento: a cortina de sincronização da abertura
+   usa isto para não desistir enquanto um download/envio grande ainda está chegando. */
+if(typeof window!=='undefined' && typeof window.fetch==='function' && !window.__fetchContaNuvem){ window.__fetchContaNuvem=true;
+  const _f=window.fetch.bind(window); window._nuvemReqAtivas=window._nuvemReqAtivas||0;
+  window.fetch=function(input, init){ let u=''; try{ u=(typeof input==='string')?input:((input&&input.url)||String(input)); }catch(e){}
+    const conta=/supabase\.co\/(rest|storage)\//.test(u);
+    if(!conta) return _f(input, init);
+    window._nuvemReqAtivas=(window._nuvemReqAtivas||0)+1;
+    return _f(input, init).finally(()=>{ window._nuvemReqAtivas=Math.max(0,(window._nuvemReqAtivas||0)-1); }); }; }
 function modoTesteFaixa(){ try{ if(!MODO_TESTE || document.getElementById('modo-teste-faixa')) return;
     const d=document.createElement('div'); d.id='modo-teste-faixa';
     d.setAttribute('style','position:fixed;left:0;right:0;bottom:0;z-index:99999;padding:6px 14px;font:700 12.5px/1.35 system-ui,sans-serif;color:#fff;text-align:center;background:repeating-linear-gradient(135deg,#b91c1c 0 14px,#991b1b 14px 28px);box-shadow:0 -2px 8px rgba(0,0,0,.25);pointer-events:none');
@@ -26048,12 +26057,16 @@ let _syncGateUltAvanco=0, _syncGateInicio=0;
 function nuvemTravaMsg(msg){ if(!_syncGateOn) return; _syncGateUltAvanco=Date.now(); const m=document.getElementById('sg-msg'); if(m && msg) m.textContent=msg; }
 /* Vigia da cortina: resolve como "parou" só quando NADA avança por 45 s (ou 5 min no total).
    Enquanto páginas e coleções vão chegando, ela espera o tempo que for preciso. */
-let SYNC_GATE_SEM_AVANCO_MS=90000, SYNC_GATE_TETO_MS=8*60*1000;
+let SYNC_GATE_SEM_AVANCO_MS=120000, SYNC_GATE_TETO_MS=12*60*1000;
+/* Download em andamento (ex.: a coleção de produtos inteira, que com milhares de itens leva minutos
+   numa conexão lenta) conta como "avançando": a cortina não desiste no meio de uma transferência. */
+window._nuvemReqAtivas=window._nuvemReqAtivas||0;
 function nuvemTravaVigia(promessa){
   _syncGateInicio=Date.now(); _syncGateUltAvanco=Date.now();
   let timer=null; const sub=document.getElementById('sg-sub');
   const rel=setInterval(()=>{ try{ const t=Math.round((Date.now()-_syncGateInicio)/1000); const e=document.getElementById('sg-tempo'); if(e) e.textContent=t>=5?('há '+t+' s'):''; }catch(x){} }, 1000);
   const vigia=new Promise(res=>{ timer=setInterval(()=>{ const agora=Date.now();
+      if((window._nuvemReqAtivas||0)>0) _syncGateUltAvanco=agora;   // ainda recebendo dados
       if(agora-_syncGateUltAvanco>SYNC_GATE_SEM_AVANCO_MS) res({__timeout:true, __motivo:'A sincronização ficou '+Math.round(SYNC_GATE_SEM_AVANCO_MS/1000)+' s sem avançar'});
       else if(agora-_syncGateInicio>SYNC_GATE_TETO_MS) res({__timeout:true, __motivo:'Passou de '+Math.round(SYNC_GATE_TETO_MS/60000)+' minutos'}); }, 1000); });
   return Promise.race([ Promise.resolve(promessa).then(v=>({__ok:true, v})).catch(e=>({__erro:e})), vigia ])
@@ -26081,7 +26094,16 @@ function nuvemSyncInicial(depois, denovo){
     if(!window._nuvemAutoSyncEmCurso){ window._nuvemAutoSyncEmCurso=Promise.resolve().then(()=>nuvemAutoSync()).finally(()=>{ window._nuvemAutoSyncEmCurso=null; }); }
     else nuvemTravaMsg('Continuando a sincronização que já estava em andamento…');
     const r=await nuvemTravaVigia(window._nuvemAutoSyncEmCurso);
-    if(r && (r.__timeout || r.__erro)){ _syncGateProm=null; nuvemTravaFalha(r.__timeout?(r.__motivo||'A sincronização não avançou'):((r.__erro&&r.__erro.message)||'Falha ao baixar')); return false; }
+    if(r && (r.__timeout || r.__erro)){ _syncGateProm=null; nuvemTravaFalha(r.__timeout?(r.__motivo||'A sincronização não avançou'):((r.__erro&&r.__erro.message)||'Falha ao baixar'));
+      // A sincronização pode continuar em segundo plano e terminar depois do aviso: nesse caso a
+      // tela abre sozinha (o operador não precisa ficar clicando em "Tentar de novo").
+      if(r.__timeout && window._nuvemAutoSyncEmCurso){ const _p=window._nuvemAutoSyncEmCurso;
+        Promise.resolve(_p).then(()=>{ if(!_syncGateOn || _syncGateProm) return;
+          const fn=_syncGateDepois; _syncGateDepois=null; nuvemTravaHide();
+          try{ if(typeof fn==='function') fn(); }catch(e){}
+          try{ if(typeof CURRENT_USER!=='undefined' && CURRENT_USER) uiRedesenhar(); }catch(e){}
+          try{ toast('Sincronização concluída — dados atualizados da nuvem','ok'); }catch(e){} }).catch(()=>{}); }
+      return false; }
     const fn=_syncGateDepois; _syncGateDepois=null; nuvemTravaHide(); _syncGateProm=null;
     try{ if(typeof logoRestaurarSeSumiu==='function') logoRestaurarSeSumiu(); }catch(e){}
     try{ if(typeof fn==='function') fn(); }catch(e){}
@@ -26360,10 +26382,10 @@ async function nuvemV2CarregarTudo(){ const sb=nuvemClient(); if(!sb) return fal
   // sobrecarregado (CPU no talo), um pedido único trazendo TUDO de uma vez é derrubado
   // pelo navegador -> "Failed to fetch". Pedidos pequenos passam mesmo com a CPU cheia,
   // e a repetição (até 4 tentativas) cobre quedas passageiras da conexão.
-  async function pegar(q){ let t=0; for(;;){ try{ const r=await q(); if(r.error) throw r.error; return r; }
+  async function pegar(q){ let t=0; for(;;){ window._nuvemReqAtivas=(window._nuvemReqAtivas||0)+1; try{ const r=await q(); if(r.error) throw r.error; return r; }
       catch(e){ const em=(''+((e&&e.message)||e)).toLowerCase();
         if(/failed to fetch|networkerror|network error|load failed|timeout|connection|fetch/.test(em) && t<3){ await new Promise(rs=>setTimeout(rs,800*(t+1))); t++; continue; }
-        throw e; } } }
+        throw e; } finally{ window._nuvemReqAtivas=Math.max(0,(window._nuvemReqAtivas||0)-1); } } }
   try{ const tenant=nuvemTenant();
     const rLista=await pegar(()=>sb.from('acervo_col').select('col,atualizado').eq('tenant',tenant));
     const lista=(rLista.data||[]).filter(r=>r.col!=='__meta');
@@ -26371,7 +26393,7 @@ async function nuvemV2CarregarTudo(){ const sb=nuvemClient(); if(!sb) return fal
     nuvemV2Cols(base).forEach(c=>{ base[c]=[]; base._meta.del[c]={}; });   // coleções virão TODAS da nuvem; config local preservada como fallback
     let i=0; const total=lista.length;
     for(const it of lista){ const col=it.col; i++;
-      nuvemStatus('sync','Baixando da nuvem… ('+i+'/'+total+')');
+      nuvemStatus('sync','Baixando da nuvem… ('+i+'/'+total+') — '+col+(/^(produtos|vendas|movEstoque|financeiro|clientes)$/.test(col)?' (pode levar alguns minutos)':''));
       const rr=await pegar(()=>sb.from('acervo_col').select('dados,atualizado').eq('tenant',tenant).eq('col',col).maybeSingle());
       const dd=(rr.data&&rr.data.dados)||{}; const atu=(rr.data&&rr.data.atualizado)||it.atualizado;
       if(col==='__config'){ const c=dd.c||{}; const cloudNewer=nuvemTs((dd.m||{}).mod)>=nuvemTs((base._meta||{}).mod); try{ if(c.fiscalConfig || base.fiscalConfig){ c.fiscalConfig=nuvemMergeFiscal(base.fiscalConfig, c.fiscalConfig); } }catch(e){} try{ if(c.comissaoConfig || base.comissaoConfig){ c.comissaoConfig=nuvemMergeComissao(base.comissaoConfig, c.comissaoConfig); } }catch(e){} nuvemAplicaConfObj(base, c, cloudNewer); if(cloudNewer){ base._meta.mod=(dd.m||{}).mod; base._meta.wipedAt=(dd.m||{}).wipedAt; } }
