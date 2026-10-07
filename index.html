@@ -48,7 +48,7 @@ const CONFIG_EMPRESA = {
      Aparece no topo do menu e no rodapé das Configurações. Troque a cada publicação.
      MANTENHA O FORMATO 'vDD/MM-X' — é ele que o sistema usa para comparar as máquinas
      da loja e avisar quando alguma ficou para trás.                                  */
-  versao: 'v07/10-C',
+  versao: 'v07/10-D',
 
   /* 4) NUVEM (Supabase)  ------------------------------------------------------------
      Cole aqui a Project URL e a chave PUBLISHABLE do projeto Supabase DESTA empresa
@@ -25226,6 +25226,7 @@ async function nuvemV3Push(){
   let enviados=0, pulados=0, maiorMod=cfg.envio;
   for(let i=0;i<linhas.length;i+=V3_LOTE_ENVIO){
     const grupo=linhas.slice(i,i+V3_LOTE_ENVIO);
+    if(linhas.length>V3_LOTE_ENVIO) nuvemProgresso('Enviando o que foi lançado neste computador… '+NUM(Math.min(i+V3_LOTE_ENVIO,linhas.length))+' de '+NUM(linhas.length));
     const lote=grupo.map(l=>({ tenant, col:l.col, id:l.id, dados:l.del?l.dados:nuvemLimparRegistro(l.dados), del:l.del, mod:l.mod }));
     const r=await nuvemV3UpsertLote(sb, lote);
     if(!r.ok){   // rede/offline: retoma depois (nada se perde — é retomável pela marca)
@@ -25692,6 +25693,10 @@ async function nuvemV3UpsertLote(sb, lote){
   catch(e){ msg=(e&&e.message)||(''+e); }
   if(!msg){ _v3FalhasConsec=0; return {ok:true, pulados:0}; }
   if(typeof navigator!=='undefined' && navigator.onLine===false) return {ok:false, rede:true, motivo:msg};   // offline: pausa (retomável)
+  // Servidor lento / rede (timeout, 5xx, sobrecarga): dividir o lote ao meio não resolve e, com 20 s
+  // de espera em cada pedaço, prendia a abertura do sistema por dezenas de minutos. Pausa e retoma
+  // depois (nada se perde: a marca de envio só avança no que foi confirmado).
+  if(lote.length>1 && _v3ErroRede(msg)) return {ok:false, rede:true, motivo:msg};
   if(lote.length===1){
     const tamKB=(function(){ try{ return JSON.stringify(lote[0]).length/1024; }catch(e){ return 0; } })();
     await new Promise(r=>setTimeout(r,700));
@@ -26050,6 +26055,7 @@ function nuvemTravaShow(msg){ const g=nuvemTravaEl(); g.style.display='flex'; _s
   document.documentElement.classList.add('sync-lock');
   const a=document.getElementById('sg-acoes'); if(a) a.style.display='none';
   const sp=document.getElementById('sg-spin'); if(sp) sp.style.display='';
+  try{ const sub=document.querySelector('#sync-gate .sg-sub'); if(sub) sub.textContent='O sistema abre assim que tudo estiver atualizado — para ninguém vender em cima de estoque ou pedido desatualizado.'; }catch(e){}
   const t=document.getElementById('sg-tit'); if(t) t.textContent='Sincronizando com a nuvem';
   if(msg) nuvemTravaMsg(msg);
   if(!window._syncGateKeyHook){ window._syncGateKeyHook=true; ['keydown','keyup','keypress'].forEach(ev=>window.addEventListener(ev, nuvemTravaBloqueiaTeclas, true)); } }
@@ -26064,7 +26070,11 @@ window._nuvemReqAtivas=window._nuvemReqAtivas||0;
 function nuvemTravaVigia(promessa){
   _syncGateInicio=Date.now(); _syncGateUltAvanco=Date.now();
   let timer=null; const sub=document.getElementById('sg-sub');
-  const rel=setInterval(()=>{ try{ const t=Math.round((Date.now()-_syncGateInicio)/1000); const e=document.getElementById('sg-tempo'); if(e) e.textContent=t>=5?('há '+t+' s'):''; }catch(x){} }, 1000);
+  const rel=setInterval(()=>{ try{ const t=Math.round((Date.now()-_syncGateInicio)/1000); const e=document.getElementById('sg-tempo'); if(e) e.textContent=t>=5?('há '+t+' s'):'';
+      // demorando: libera a opção de entrar já (a sincronização continua e a tela se atualiza sozinha ao terminar)
+      if(t>=45){ const a=document.getElementById('sg-acoes'); if(a && a.style.display==='none'){ a.style.display='flex';
+          const bt=a.querySelector('.btn-amber'); if(bt) bt.style.display='none';
+          const sub=document.querySelector('#sync-gate .sg-sub'); if(sub) sub.textContent='Está demorando mais que o normal (conexão ou nuvem lenta). Você pode esperar — recomendado — ou entrar agora com os dados deste computador; a sincronização continua por trás e a tela se atualiza quando terminar.'; } } }catch(x){} }, 1000);
   const vigia=new Promise(res=>{ timer=setInterval(()=>{ const agora=Date.now();
       if((window._nuvemReqAtivas||0)>0) _syncGateUltAvanco=agora;   // ainda recebendo dados
       if(agora-_syncGateUltAvanco>SYNC_GATE_SEM_AVANCO_MS) res({__timeout:true, __motivo:'A sincronização ficou '+Math.round(SYNC_GATE_SEM_AVANCO_MS/1000)+' s sem avançar'});
@@ -26073,6 +26083,7 @@ function nuvemTravaVigia(promessa){
     .finally(()=>{ clearInterval(timer); clearInterval(rel); }); }
 function nuvemTravaHide(){ const g=document.getElementById('sync-gate'); if(g) g.style.display='none'; _syncGateOn=false; document.documentElement.classList.remove('sync-lock'); }
 function nuvemTravaFalha(motivo){ if(!_syncGateOn) nuvemTravaShow();
+  try{ const bt=document.querySelector('#sg-acoes .btn-amber'); if(bt) bt.style.display=''; }catch(e){}
   const t=document.getElementById('sg-tit'); if(t) t.textContent='A sincronização não terminou';
   const sp=document.getElementById('sg-spin'); if(sp) sp.style.display='none';
   nuvemTravaMsg((motivo?(motivo+'. '):'')+'Sem a sincronização, este aparelho pode estar com dados desatualizados.');
@@ -26081,6 +26092,7 @@ function nuvemTravaFalha(motivo){ if(!_syncGateOn) nuvemTravaShow();
 function nuvemTravaEntrarMesmoAssim(){ try{ logAcao('Entrou sem sincronizar','Nuvem não respondeu na abertura — operador escolheu entrar com os dados deste aparelho'); }catch(e){}
   try{ nuvemStatus('off','Sem sincronizar — dados deste aparelho'); }catch(e){}
   const fn=_syncGateDepois; _syncGateDepois=null; nuvemTravaHide(); try{ if(typeof fn==='function') fn(); }catch(e){}
+  try{ const _p=window._nuvemAutoSyncEmCurso; if(_p) Promise.resolve(_p).then(()=>{ try{ nuvemStatus('on'); if(typeof CURRENT_USER!=='undefined' && CURRENT_USER) uiAtualizarDados(); toast('Sincronização concluída — dados atualizados da nuvem','ok'); }catch(e){} }).catch(()=>{}); }catch(e){}
   try{ toast('Você entrou SEM sincronizar. Os dados podem estar desatualizados — o sistema continua tentando a nuvem em segundo plano.','err'); }catch(e){} }
 /* A sincronização da ABERTURA: segura a tela até terminar. `depois` roda quando
    terminar (ou quando o operador decidir entrar mesmo assim). */
