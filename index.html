@@ -48,7 +48,7 @@ const CONFIG_EMPRESA = {
      Aparece no topo do menu e no rodapé das Configurações. Troque a cada publicação.
      MANTENHA O FORMATO 'vDD/MM-X' — é ele que o sistema usa para comparar as máquinas
      da loja e avisar quando alguma ficou para trás.                                  */
-  versao: 'v09/10-I',
+  versao: 'v09/10-K',
 
   /* 4) NUVEM (Supabase)  ------------------------------------------------------------
      Cole aqui a Project URL e a chave PUBLISHABLE do projeto Supabase DESTA empresa
@@ -21784,11 +21784,7 @@ function listaFormHTML(){ const F=LISTAF; const escolas=[...new Set(DB.all('list
    </div>
    <div class="modal-foot"><button class="btn btn-ghost" onclick="closeModal()">Cancelar</button><div style="flex:1"></div>
      ${F.avulsa?`<label style="display:flex;align-items:center;gap:6px;font-size:12.5px"><input type="checkbox" id="lista-salvar-av"> Salvar a lista</label>`:`<button class="btn btn-ghost" onclick="listaSalvar(false)">${ico('check')} Salvar lista</button>`}
-     <button class="btn btn-ghost" style="border:1px solid var(--line)" title="Salva a lista com os produtos marcados (●) e abre a escolha do orçamento (econômica, premium ou personalizada)" onclick="listaSalvar(true)">${ico('check')} ${F.avulsa?'Montar orçamento':'Salvar e montar'}</button>
-     <span class="t-mut" style="font-size:11.5px;align-self:center;margin-left:6px">${F.avulsa?'Direto:':'Salvar e criar orçamento:'}</span>
-     <button class="btn btn-ghost" style="border:1px solid var(--line)" title="Cada item com a opção econômica" onclick="listaSalvar(true,'econ')">${ico('quote')} Lista econômica</button>
-     <button class="btn btn-ghost" style="border:1px solid var(--line)" title="Cada item com a opção premium" onclick="listaSalvar(true,'marca')">${ico('quote')} Lista premium</button>
-     <button class="btn btn-amber" title="Cada item com o produto marcado (●) na lista de produtos" onclick="listaSalvar(true,'sel')">${ico('quote')} Lista personalizada</button></div>`; }
+     <button class="btn btn-amber" title="Salva a lista com os produtos marcados (●) e abre a escolha do orçamento (econômica, premium ou personalizada)" onclick="listaSalvar(true)">${ico('check')} ${F.avulsa?'Montar orçamento':'Salvar e montar'}</button></div>`; }
 function listaFormTotaisHTML(){ const t=listaTotais(LISTAF);
   return `<div style="display:flex;gap:16px;flex-wrap:wrap;font-size:13px"><span>Lista econômica: <b class="tnum">${BRL(t.econ)}</b></span><span>Lista premium: <b class="tnum">${BRL(t.marca)}</b></span><span style="color:#15803d">Lista personalizada (marcados): <b class="tnum">${BRL(t.sel)}</b></span>${t.falta?`<span style="color:var(--amber-d)">${t.falta} item(ns) sem produto</span>`:''}</div>`; }
 function listaFormTotais(){ const el=document.getElementById('lista-tot'); if(el) el.innerHTML=listaFormTotaisHTML(); }
@@ -25719,7 +25715,7 @@ function nuvemMerge(local, remote){
 }
 let _nuvemPullTimer=null, _nuvemPulling=false;
 function nuvemAgendarPull(){ clearTimeout(_nuvemPullTimer); _nuvemPullTimer=setTimeout(nuvemPullMerge, 250); } // junta rajadas de eventos
-async function nuvemPullMerge(){ if(nuvemV3On() && nuvemV3Cfg().migrado){ try{ return await nuvemV3Pull(); }catch(e){ return; } } if(!window._v3Checked && await nuvemV3Check()){ try{ return await nuvemV3Pull(); }catch(e){ return; } } if(nuvemCfg().v2) return nuvemPullV2(); if(!window._v2Checked && await nuvemV2Check()) return nuvemPullV2();
+async function nuvemPullMerge(){ if(nuvemV3On() && nuvemV3Cfg().migrado){ try{ return await nuvemV3Pull({fundo:true}); }catch(e){ return; } } if(!window._v3Checked && await nuvemV3Check()){ try{ return await nuvemV3Pull({fundo:true}); }catch(e){ return; } } if(nuvemCfg().v2) return nuvemPullV2(); if(!window._v2Checked && await nuvemV2Check()) return nuvemPullV2();
   if(_nuvemPulling) return; const sb=nuvemClient(); if(!sb||_nuvemOffline) return; _nuvemPulling=true;
   try{ const tenant=nuvemTenant(); const { data, error }=await sb.from('acervo').select('dados,atualizado').eq('tenant',tenant).maybeSingle();
     if(data&&data.atualizado) window._nuvemRemoteTs=data.atualizado;
@@ -25740,8 +25736,8 @@ async function nuvemPullMerge(){ if(nuvemV3On() && nuvemV3Cfg().migrado){ try{ r
   }catch(e){ NUVEM_LOADING=false; _nuvemPulling=false; } }
 async function nuvemPollCheck(){
   if(nuvemPausado()) return;
-  if(nuvemV3On() && nuvemV3Cfg().migrado){ try{ return await nuvemV3Pull(); }catch(e){ return; } }
-  if(!window._v3Checked && await nuvemV3Check()){ try{ return await nuvemV3Pull(); }catch(e){ return; } }   // detecta v3 e troca sozinho
+  if(nuvemV3On() && nuvemV3Cfg().migrado){ try{ return await nuvemV3Pull({fundo:true}); }catch(e){ return; } }
+  if(!window._v3Checked && await nuvemV3Check()){ try{ return await nuvemV3Pull({fundo:true}); }catch(e){ return; } }   // detecta v3 e troca sozinho
   if(nuvemCfg().v2) return nuvemPullV2(true);
   const sb=nuvemClient(); if(!sb||_nuvemOffline||!nuvemRtOn()) return;
   try{ const tenant=nuvemTenant(); const { data, error }=await sb.from('acervo').select('atualizado').eq('tenant',tenant).maybeSingle();
@@ -25861,18 +25857,37 @@ function cfgStamp(obj){ if(obj && typeof obj==='object'){ try{ obj._mod=new Date
    sincroniza normalmente. Antes, um único registro ruim travava TODO o envio do
    aparelho (ficava eternamente "Reenviando"). Falha de REDE não pula nada: pausa e
    retoma depois, sem perder dados. */
+/* ENVIO UM POR VEZ: dois envios simultâneos subiam os mesmos registros duas vezes. Quem chega
+   durante um envio pede "mais um depois" (o que foi salvo nesse meio-tempo vai no seguinte). */
+let _v3LoteAtual=0;
 async function nuvemV3Push(){
+  if(window._v3PushEmCurso){ window._v3PushDeNovo=true; return window._v3PushEmCurso; }
+  const p=nuvemV3PushExec(); window._v3PushEmCurso=p;
+  let r; try{ r=await p; return r; }
+  finally{ if(window._v3PushEmCurso===p) window._v3PushEmCurso=null;
+    if(window._v3PushDeNovo){ window._v3PushDeNovo=false; try{ setTimeout(function(){ try{ nuvemSalvar(); }catch(e){} }, 300); }catch(e){} } }
+}
+async function nuvemV3PushExec(){
   if(MODO_TESTE) return {ok:true, enviados:0, teste:true};   // ambiente de teste: só lê a nuvem
   const sb=nuvemClient(); if(!sb) return {ok:false, motivo:'sem conexão'};
   const tenant=nuvemTenant(); const cfg=nuvemV3Cfg();
   const linhas=nuvemV3Pendentes(cfg.envio);
   if(!linhas.length) return {ok:true, enviados:0};
   let enviados=0, pulados=0, maiorMod=cfg.envio;
-  for(let i=0;i<linhas.length;i+=V3_LOTE_ENVIO){
-    const grupo=linhas.slice(i,i+V3_LOTE_ENVIO);
-    if(linhas.length>V3_LOTE_ENVIO) nuvemProgresso('Enviando o que foi lançado neste computador… '+NUM(Math.min(i+V3_LOTE_ENVIO,linhas.length))+' de '+NUM(linhas.length));
+  // LOTE ADAPTATIVO (v09/10-K): servidor lento = "tempo esgotado" no lote grande. Em vez de
+  // desistir na hora (e acender o aviso vermelho), tenta de novo com lote menor; quando o
+  // servidor volta a responder bem, o lote cresce de novo até o normal.
+  if(!_v3LoteAtual) _v3LoteAtual=V3_LOTE_ENVIO;
+  let _reduz=0;
+  for(let i=0;i<linhas.length;){
+    const tam=_v3LoteAtual;
+    const grupo=linhas.slice(i,i+tam);
+    if(linhas.length>tam) nuvemProgresso('Enviando o que foi lançado neste computador… '+NUM(Math.min(i+tam,linhas.length))+' de '+NUM(linhas.length));
     const lote=grupo.map(l=>({ tenant, col:l.col, id:l.id, dados:l.del?l.dados:nuvemLimparRegistro(l.dados), del:l.del, mod:l.mod }));
     const r=await nuvemV3UpsertLote(sb, lote);
+    if(!r.ok && r.rede && !(typeof navigator!=='undefined' && navigator.onLine===false) && _reduz<3 && _v3LoteAtual>5){
+      _reduz++; _v3LoteAtual=Math.max(5, Math.floor(_v3LoteAtual/2));
+      await new Promise(rs=>setTimeout(rs, 1200)); continue; }   // mesmo ponto, lote menor
     if(!r.ok){   // rede/offline: retoma depois (nada se perde — é retomável pela marca)
       if(String(maiorMod)!==String(cfg.envio)) nuvemCfgSalvar({ v3Envio:maiorMod });
       if(typeof nuvemServidorReclamou==='function' && !r.rede) nuvemServidorReclamou(r.motivo||'');
@@ -25880,6 +25895,9 @@ async function nuvemV3Push(){
     enviados+=(lote.length-(r.pulados||0)); pulados+=(r.pulados||0);
     const ult=grupo[grupo.length-1].mod; if(String(ult)>String(maiorMod)) maiorMod=ult;
     nuvemCfgSalvar({ v3Envio:maiorMod });   // avança a marca (inclui os pulados: não re-travam o envio)
+    i+=grupo.length;
+    // servidor respondeu: volta a crescer (no envio em que precisou reduzir, segue no tamanho que funcionou)
+    if(!_reduz && _v3LoteAtual<V3_LOTE_ENVIO) _v3LoteAtual=Math.min(V3_LOTE_ENVIO, _v3LoteAtual*2);
   }
   if(typeof nuvemServidorOk==='function') nuvemServidorOk();
   if(pulados>0){ try{ nuvemAvisarPulados(pulados); }catch(e){} }
@@ -25941,7 +25959,22 @@ function nuvemV3PersistApplied(aplicados, _colsIdb, marcaIdb){
    elimina isso: independe de relógio. Se a coluna "seq" ainda não existe no banco,
    voltamos automaticamente ao modo antigo por data (compatível). */
 let _v3SeqIndisponivel=false;
-async function nuvemV3Pull(){
+/* LEITURA SEM SOBREPOSIÇÃO: antes, a conferência periódica, o aviso em tempo real e a abertura
+   podiam ler a nuvem AO MESMO TEMPO (o mesmo trabalho 2-3 vezes, pesando no servidor).
+   Agora as leituras entram em fila: uma conferência de fundo que chega enquanto outra está
+   em andamento só pede "mais uma depois" — e a abertura/baixar espera a atual terminar. */
+async function nuvemV3Pull(opt){
+  const fundo=!!(opt&&opt.fundo);
+  if(window._v3PullEmCurso){
+    if(fundo){ window._v3PullDeNovo=true; return window._v3PullEmCurso; }
+    for(let k=0;k<20 && window._v3PullEmCurso;k++){ try{ await window._v3PullEmCurso; }catch(e){} }
+  }
+  const p=nuvemV3PullExec(); window._v3PullEmCurso=p;
+  try{ return await p; }
+  finally{ if(window._v3PullEmCurso===p) window._v3PullEmCurso=null;
+    if(window._v3PullDeNovo){ window._v3PullDeNovo=false; try{ nuvemAgendarPull(); }catch(e){} } }
+}
+async function nuvemV3PullExec(){
   const sb=nuvemClient(); if(!sb) return {ok:false, motivo:'sem conexão'};
   const tenant=nuvemTenant(); const cfg=nuvemV3Cfg();
   if(!_v3SeqIndisponivel){
@@ -25957,7 +25990,7 @@ const V3_FOLGA_SEQ=50;   // relê um pouco atrás p/ absorver ordem de confirma�
    Sem isso, a releitura completa por registro (primeira abertura do dia) passava de 45 s sem
    mensagem e a cortina desistia — embora o download estivesse correndo normalmente. */
 function nuvemProgresso(msg){ try{ if(typeof _syncGateOn!=='undefined' && _syncGateOn) nuvemTravaMsg(msg); }catch(e){} }
-async function nuvemV3PullSeq(sb, tenant, cfg){
+async function nuvemV3PullSeqFull(sb, tenant, cfg){
   let cursor=Math.max(0, (+cfg.leituraSeq||0) - V3_FOLGA_SEQ);
   let marcaSeq=+cfg.leituraSeq||0, aplicados=0, pagina=0, lidos=0; const _colsIdb={};
   while(pagina<500){
@@ -25984,13 +26017,13 @@ async function nuvemV3PullSeq(sb, tenant, cfg){
 }
 /* LEITURA antiga — por data (marca d'água com folga). Mantida só como retaguarda
    enquanto a coluna seq não existir no banco. */
-async function nuvemV3PullMod(sb, tenant, cfg){
+async function nuvemV3PullModFull(sb, tenant, cfg, desdeForcado){
   // Sem a coluna 'seq' no banco, a leitura por data usava janela de só 2 min e dois aparelhos
   // paravam de trocar registros mais antigos (um abria às 10:36 e nunca puxava a venda das 07:58).
   // Para renivelar: a PRIMEIRA leitura de cada carregamento do sistema é COMPLETA (desde o início);
   // as seguintes usam a marca d'água (incremental). Rodar o comando SQL 'seq' torna isto desnecessário.
   const primeira = !window._v3ModFullFeito;
-  const desde=(primeira || !cfg.leitura) ? '1970-01-01T00:00:00.000Z' : new Date(nuvemTs(cfg.leitura)-V3_FOLGA_MS).toISOString();
+  const desde=desdeForcado || ((primeira || !cfg.leitura) ? '1970-01-01T00:00:00.000Z' : new Date(nuvemTs(cfg.leitura)-V3_FOLGA_MS).toISOString());
   window._v3ModFullFeito=true;
   let marca=cfg.leitura||'', aplicados=0, pagina=0;
   let cursor=desde; const _colsIdb={};
@@ -26013,13 +26046,130 @@ async function nuvemV3PullMod(sb, tenant, cfg){
   return {ok:true, aplicados};
 }
 
+/* ============================================================================
+   LEITURA LEVE (v09/10-K)
+   Antes, CADA conferência (a cada poucos segundos, em cada computador) baixava o conteúdo
+   COMPLETO dos registros da janela de folga — mesmo quando nada tinha mudado — e a primeira
+   leitura de cada abertura baixava a base inteira de novo. Era isso que deixava o servidor
+   lento (e aí os envios davam "tempo esgotado").
+   Agora a conferência pergunta primeiro só o "cabeçalho" (coleção, id, data, exclusão) — sem
+   o conteúdo — compara com o que este computador já tem e baixa o conteúdo SÓ do que é novo.
+   A regra de aplicação (nuvemV3Aplicar) é a mesma de antes: nada muda no resultado, só no peso.
+   Se houver coisa demais para buscar (aparelho muito atrasado), usa a leitura completa antiga.
+   ============================================================================ */
+const V3_LEVE_LOTE_IDS=100;
+window._v3Vistos=window._v3Vistos||new Map();   // tenant|col|id -> mod já processado nesta sessão
+function nuvemV3VistoChave(tenant,col,id){ return tenant+'|'+col+'|'+id; }
+/* O registro do cabeçalho mudaria alguma coisa neste computador? (espelha nuvemV3Aplicar;
+   na dúvida responde SIM — buscar a mais nunca perde nada). */
+function nuvemV3Precisa(d, ix, colsOk, tenant, h){
+  const col=h.col, id=String(h.id), mt=nuvemTs(h.mod);
+  const visto=window._v3Vistos.get(nuvemV3VistoChave(tenant,col,id))===String(h.mod);
+  if(col==='__config') return !visto;
+  if(!colsOk.has(col)) return false;                                  // coleção que a aplicação ignora
+  const local=ix(col).get(id);
+  const lap=(((d._meta||{}).del||{})[col]||{})[id];
+  if(h.del){
+    if(col==='caixaSessoes' || col==='caixaMovs') return false;        // a aplicação nunca exclui caixa
+    if(!local) return !(lap && nuvemTs(lap)>=mt);                     // só falta gravar a lápide
+    return !visto;                                                     // existe aqui: aplica a exclusão (ou a proteção)
+  }
+  if(lap) return !!local || mt>=nuvemTs(lap);
+  if(!local) return true;                                              // não temos: busca
+  const lm=nuvemTs(local._mod);
+  if(col==='vendas'){ if(mt===lm) return false; }                     // venda: só a mesma versão é pulada
+  else if(mt<=lm) return false;                                        // já temos igual ou mais novo
+  return !visto;
+}
+/* Recebe os cabeçalhos lidos, busca o conteúdo só do necessário e aplica. 'CHEIO' = muito
+   para buscar por id: quem chamou usa a leitura completa. */
+async function nuvemV3AplicarLeve(sb, tenant, heads){
+  if(!heads.length) return {ok:true, aplicados:0, cols:{}};
+  const d=DB._load(); const idx={};
+  const ix=col=>{ let m=idx[col]; if(!m){ m=new Map(); const a=Array.isArray(d[col])?d[col]:[]; for(let j=0;j<a.length;j++){ const x=a[j]; if(x&&x.id!=null){ const k=String(x.id); if(!m.has(k)) m.set(k,x); } } idx[col]=m; } return m; };
+  const colsOk=new Set(nuvemV3Cols());
+  const ult=new Map(); heads.forEach(h=>{ if(h && h.col && h.id!=null) ult.set(h.col+'|'+h.id, h); });
+  const prec=[]; const busca={}; let nb=0;
+  heads.forEach(h=>{ if(!h || !h.col || h.id==null) return; if(ult.get(h.col+'|'+h.id)!==h) return;
+    if(!nuvemV3Precisa(d, ix, colsOk, tenant, h)) return;
+    prec.push(h); if(!h.del){ (busca[h.col]=busca[h.col]||[]).push(String(h.id)); nb++; } });
+  if(!prec.length) return {ok:true, aplicados:0, cols:{}};
+  if(nb>400 && nb>ult.size*0.5) return 'CHEIO';
+  const got=new Map(); let feitos=0;
+  for(const col in busca){ const ids=busca[col];
+    for(let i=0;i<ids.length;i+=V3_LEVE_LOTE_IDS){ const ch=ids.slice(i,i+V3_LEVE_LOTE_IDS);
+      let res; try{ res=await nuvemComTimeout(sb.from('acervo_reg').select('col,id,dados,del,mod').eq('tenant',tenant).eq('col',col).in('id',ch), 20000); }
+      catch(e){ return {ok:false, motivo:(e&&e.message)||'falha na leitura'}; }
+      if(res.error) return {ok:false, motivo:res.error.message||'falha na leitura'};
+      (res.data||[]).forEach(r=>{ if(r && r.col!=null && r.id!=null) got.set(r.col+'|'+r.id, r); });
+      feitos+=ch.length; if(nb>300) nuvemProgresso('Baixando o que mudou na nuvem… '+NUM(feitos)+' de '+NUM(nb)); } }
+  const linhas=[];
+  prec.forEach(h=>{ if(h.del){ linhas.push({ col:h.col, id:h.id, dados:null, del:true, mod:h.mod }); return; }
+    const r=got.get(h.col+'|'+h.id); if(r) linhas.push(r); });
+  const n=linhas.length ? nuvemV3Aplicar(linhas) : 0;
+  const cols={}; linhas.forEach(l=>{ if(l && l.col && l.col!=='__config' && l.col!=='__meta') cols[l.col]=1; });
+  return {ok:true, aplicados:n, cols};
+}
+function nuvemV3ErroSeqAusente(error){ const em=((error&&(error.message||error.code))||'')+''; const e2=em.toLowerCase();
+  return (error&&error.code==='42703') || (/seq/.test(e2) && /(does not exist|não existe|not found|unknown|column)/.test(e2)); }
+async function nuvemV3PullSeq(sb, tenant, cfg){
+  if(window._v3LeveOff) return nuvemV3PullSeqFull(sb, tenant, cfg);
+  let cursor=Math.max(0, (+cfg.leituraSeq||0) - V3_FOLGA_SEQ);
+  let marcaSeq=+cfg.leituraSeq||0, pagina=0; const heads=[];
+  while(pagina<500){ pagina++;
+    let res; try{ res=await nuvemComTimeout(sb.from('acervo_reg').select('col,id,del,mod,seq').eq('tenant',tenant).gt('seq', cursor).order('seq',{ascending:true}).limit(V3_LOTE_LEITURA), 25000); }
+    catch(e){ return {ok:false, motivo:(e&&e.message)||'falha na leitura', aplicados:0}; }
+    const { data, error }=res;
+    if(error){ if(nuvemV3ErroSeqAusente(error)) return 'SEQ_AUSENTE'; return {ok:false, motivo:error.message||'falha na leitura', aplicados:0}; }
+    const L=data||[]; if(!L.length) break;
+    for(let j=0;j<L.length;j++) heads.push(L[j]);
+    const ultSeq=+L[L.length-1].seq||0; cursor=ultSeq; if(ultSeq>marcaSeq) marcaSeq=ultSeq;
+    if(heads.length>=V3_LOTE_LEITURA) nuvemProgresso('Conferindo o que mudou na nuvem… '+NUM(heads.length)+' registro(s)');
+    if(L.length<V3_LOTE_LEITURA) break; }
+  const r=await nuvemV3AplicarLeve(sb, tenant, heads);
+  if(r==='CHEIO') return nuvemV3PullSeqFull(sb, tenant, cfg);
+  if(!r.ok) return {ok:false, motivo:r.motivo||'falha na leitura', aplicados:0};
+  if(marcaSeq) nuvemCfgSalvar({ v3LeituraSeq:marcaSeq });
+  nuvemV3PersistApplied(r.aplicados, r.cols, new Date().toISOString());
+  try{ nuvemCfgSalvar({ ultimoSync:new Date().toISOString() }); }catch(e){}
+  return {ok:true, aplicados:r.aplicados, leve:true};
+}
+async function nuvemV3PullMod(sb, tenant, cfg){
+  if(window._v3LeveOff) return nuvemV3PullModFull(sb, tenant, cfg);
+  const primeira = !window._v3ModFullFeito;
+  const desde=(primeira || !cfg.leitura) ? '1970-01-01T00:00:00.000Z' : new Date(nuvemTs(cfg.leitura)-V3_FOLGA_MS).toISOString();
+  let marca=cfg.leitura||'', pagina=0, cursor=desde; const heads=[];
+  while(pagina<500){ pagina++;
+    let res; try{ res=await nuvemComTimeout(sb.from('acervo_reg').select('col,id,del,mod').eq('tenant',tenant).gt('mod', cursor).order('mod',{ascending:true}).limit(V3_LOTE_LEITURA), 25000); }
+    catch(e){ return {ok:false, motivo:(e&&e.message)||'falha na leitura', aplicados:0}; }
+    const { data, error }=res;
+    if(error) return {ok:false, motivo:error.message||'falha na leitura', aplicados:0};
+    const L=data||[]; if(!L.length) break;
+    for(let j=0;j<L.length;j++) heads.push(L[j]);
+    const ult=L[L.length-1].mod; cursor=ult; if(String(ult)>String(marca)) marca=ult;
+    if(heads.length>=V3_LOTE_LEITURA) nuvemProgresso('Conferindo o que mudou na nuvem… '+NUM(heads.length)+' registro(s)');
+    if(L.length<V3_LOTE_LEITURA) break; }
+  const r=await nuvemV3AplicarLeve(sb, tenant, heads);
+  if(r==='CHEIO') return nuvemV3PullModFull(sb, tenant, cfg, desde);
+  if(!r.ok) return {ok:false, motivo:r.motivo||'falha na leitura', aplicados:0};
+  window._v3ModFullFeito=true;
+  if(marca) nuvemCfgSalvar({ v3Leitura:marca });
+  nuvemV3PersistApplied(r.aplicados, r.cols, marca||new Date().toISOString());
+  return {ok:true, aplicados:r.aplicados, leve:true};
+}
+
 /* Aplica as linhas lidas sobre a base local, sem atropelar edição mais nova. */
 function nuvemV3Aplicar(linhas){
   const d=DB._load(); d._meta=d._meta||{}; d._meta.del=d._meta.del||{};
   let n=0;
+  // Índice por id (antes: uma busca na coleção inteira para CADA linha — com milhares de
+  // produtos a leitura completa travava a tela por segundos).
+  const _ix={}; const _tn=(function(){ try{ return nuvemTenant(); }catch(e){ return ''; } })();
+  const _ixDe=(col,arr)=>{ let m=_ix[col]; if(!m){ m=new Map(); for(let j=0;j<arr.length;j++){ const x=arr[j]; if(x && x.id!=null){ const k=String(x.id); if(!m.has(k)) m.set(k,j); } } _ix[col]=m; } return m; };
   linhas.forEach(l=>{
     if(!l || !l.col || l.id==null) return;
     const col=l.col;
+    try{ window._v3Vistos && window._v3Vistos.set(nuvemV3VistoChave(_tn,col,String(l.id)), String(l.mod)); }catch(e){}
     if(col==='__config'){
       const meu=(d._meta||{}).confMod||'';
       const cloudNewer=nuvemTs(l.mod)>nuvemTs(meu);
@@ -26035,7 +26185,7 @@ function nuvemV3Aplicar(linhas){
     }
     if(nuvemV3Cols().indexOf(col)<0) return;
     const arr=Array.isArray(d[col])?d[col]:(d[col]=[]);
-    const i=arr.findIndex(x=>x && String(x.id)===String(l.id));
+    const _i0=_ixDe(col,arr).get(String(l.id)); const i=(_i0===undefined)?-1:_i0;
     if(l.del){
       // PROTEÇÃO: o histórico de CAIXA (sessões e movimentos) NUNCA é excluído por sincronização.
       // Assim uma exclusão acidental/propagada não apaga os caixas de dias anteriores em todos os
@@ -26052,7 +26202,7 @@ function nuvemV3Aplicar(linhas){
       // exclusão é exclusão: remove o registro local SEMPRE (mesmo que a cópia local
       // tenha _mod mais novo por uma atualização automática de status). Sem isso, uma
       // nota tocada depois de excluída "ganhava" da exclusão e voltava.
-      if(i>=0){ arr.splice(i,1); n++; }
+      if(i>=0){ arr.splice(i,1); delete _ix[col]; n++; }
       return;
     }
     const novo=l.dados; if(!novo || novo.id==null) return;
@@ -26064,11 +26214,11 @@ function nuvemV3Aplicar(linhas){
       // Se chegou uma cópia "viva" MAIS NOVA que a exclusão, algum aparelho ressuscitou o
       // registro na nuvem. Reassinamos a exclusão (mod = agora) para que o próximo envio
       // corrija a nuvem e a exclusão não reapareça em aparelhos novos.
-      if(i>=0){ arr.splice(i,1); n++; }
+      if(i>=0){ arr.splice(i,1); delete _ix[col]; n++; }
       if(nuvemTs(l.mod)>=nuvemTs(lapide)) d._meta.del[col][l.id]=new Date().toISOString();
       return;
     }
-    if(i<0){ arr.push(novo); n++; }
+    if(i<0){ arr.push(novo); try{ if(_ix[col]){ const k=String(novo.id); if(!_ix[col].has(k)) _ix[col].set(k,arr.length-1); } }catch(e){} n++; }
     else if(nuvemTs(novo._mod)>nuvemTs(arr[i]._mod)){ arr[i]=(col==='vendas')?vendaMesclarProgresso(novo,arr[i]):novo; n++; }
     else if(col==='vendas'){ const m=vendaMesclarProgresso(arr[i],novo); if(_vmpMudou){ arr[i]=m; n++; } }
   });
@@ -26099,7 +26249,11 @@ function nuvemFalhaLimpa(tipo){ try{
     if(!nuvemDesatualizado()) nuvemAvisoDesatualizadoLimpar();
     else nuvemAvisoDesatualizado();
   }catch(e){} }
-function nuvemDesatualizado(){ try{ const f=window._nuvemFalha||{}; return !!((f.leitura&&f.leitura.n>=2)||(f.envio&&f.envio.n>=2)); }catch(e){ return false; } }
+/* v09/10-K: uma oscilação do servidor (1-2 tentativas que demoram) não acende mais a faixa vermelha.
+   Ela aparece só se a falha PERSISTIR: leitura há 1 min ou envio há 3 min, tentando sozinho nesse
+   meio-tempo. Durante a oscilação, o indicador da nuvem fica âmbar ("Reenviando…") — nada se perde. */
+function nuvemFalhaAtiva(f, ms){ try{ return !!(f && f.n>=2 && (Date.now()-Date.parse(f.desde||0))>=ms); }catch(e){ return false; } }
+function nuvemDesatualizado(){ try{ const f=window._nuvemFalha||{}; return nuvemFalhaAtiva(f.leitura,60000) || nuvemFalhaAtiva(f.envio,180000); }catch(e){ return false; } }
 function nuvemLeituraRegistra(r){ try{
     if(!r || r.ocupado || r.perigo) return;
     if(r.ok){ nuvemFalhaLimpa('leitura'); return; }
@@ -26110,8 +26264,8 @@ function nuvemLeituraRegistra(r){ try{
 function nuvemAvisoDesatualizadoTexto(){
   const f=window._nuvemFalha||{}; const hh=iso=>{ try{ return new Date(iso).toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'}); }catch(e){ return ''; } };
   const p=[];
-  if(f.leitura&&f.leitura.n>=2) p.push('<b>não está conseguindo LER a nuvem</b> desde '+esc(hh(f.leitura.desde))+' — pedidos, entregas e estoque na tela podem estar DESATUALIZADOS (já faturados/entregues em outro aparelho)');
-  if(f.envio&&f.envio.n>=2) p.push('<b>não está conseguindo ENVIAR para a nuvem</b> desde '+esc(hh(f.envio.desde))+' — o que for lançado aqui NÃO aparece nos outros computadores');
+  if(nuvemFalhaAtiva(f.leitura,60000)) p.push('<b>não está conseguindo LER a nuvem</b> desde '+esc(hh(f.leitura.desde))+' — pedidos, entregas e estoque na tela podem estar DESATUALIZADOS (já faturados/entregues em outro aparelho)');
+  if(nuvemFalhaAtiva(f.envio,180000)) p.push('<b>não está conseguindo ENVIAR para a nuvem</b> desde '+esc(hh(f.envio.desde))+' — o que for lançado aqui NÃO aparece nos outros computadores');
   const msg=(f.leitura&&f.leitura.msg)||(f.envio&&f.envio.msg)||'';
   return {html:'Este computador '+p.join('; e ')+'.', motivo:msg}; }
 function nuvemAvisoDesatualizado(){ try{
@@ -26446,8 +26600,16 @@ async function nuvemSalvar(){
     if(r.ok){ nuvemCfgSalvar({ ultimoEnvio:new Date().toISOString(), ultimoSync:new Date().toISOString() });
       if(!_nuvemFalhasSeguidas) nuvemStatus('on');
       try{ outboxRegistrar(); }catch(e){}
+      window._v3RetryN=0; try{ clearTimeout(window._v3RetryTimer); }catch(e){}
       return true; }
-    nuvemStatus('sync','Reenviando…'); _nuvemPendingPush=true; return false;
+    nuvemStatus('sync','Reenviando…'); _nuvemPendingPush=true;
+    try{ window._nuvemUltimoErroEnvio=(r&&r.motivo)||window._nuvemUltimoErroEnvio||''; }catch(e){}
+    // Nova tentativa SOZINHA (antes só tentava de novo no próximo salvamento): 4 s, 8 s, 16 s… até 1 min.
+    // Os dados estão guardados neste computador e a marca de envio só avança no que a nuvem confirmou.
+    try{ clearTimeout(window._v3RetryTimer); window._v3RetryN=Math.min(6,(window._v3RetryN||0)+1);
+      const _esp=Math.min(60000, 4000*Math.pow(2, window._v3RetryN-1));
+      window._v3RetryTimer=setTimeout(function(){ if(_nuvemPendingPush && !nuvemPausado()){ try{ nuvemSalvar(); }catch(e){} } }, _esp); }catch(e){}
+    return false;
   }
   if(nuvemCfg().v2) return nuvemSalvarV2();
   const sb=nuvemClient(); if(!sb){ if(typeof nuvemStatus==='function')nuvemStatus('idle'); toast('Configure a nuvem primeiro','err'); return false; }
@@ -27684,7 +27846,10 @@ async function nuvemRealtimeStart(){ if(nuvemPausado()){ nuvemStatus('off','Sinc
       // houver movimento no sistema e 30s quando ninguém mexe — buscar de 3 em 3
       // segundos o dia inteiro sobrecarrega o servidor (CPU do plano gratuito).
       const parado=(Date.now()-(window._uiLastAct||0))>120000;
-      const passo = NUVEM_RT_OK ? 6 : (parado ? 20 : 2);   // rede de segurança: com tempo real de pé confere a cada ~9s (mesmo que os eventos instantâneos não cheguem); parado a cada 30s; sem tempo real a cada 3s
+      const oculto=(typeof document!=='undefined' && document.hidden);
+      // v09/10-K: com o canal instantâneo de pé, a conferência é só rede de segurança (15 s);
+      // sem ele, 4,5 s com movimento; parado 30 s; janela minimizada/aba escondida 60 s.
+      const passo = oculto ? 40 : (NUVEM_RT_OK ? 10 : (parado ? 20 : 3));   // rede de segurança: com tempo real de pé confere a cada ~9s (mesmo que os eventos instantâneos não cheguem); parado a cada 30s; sem tempo real a cada 3s
       if(_tick%passo===0) nuvemPollCheck();
     },1500);
   }catch(e){ nuvemRtAgendarReconexao('exceção'); } }
