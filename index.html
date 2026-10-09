@@ -48,7 +48,7 @@ const CONFIG_EMPRESA = {
      Aparece no topo do menu e no rodapé das Configurações. Troque a cada publicação.
      MANTENHA O FORMATO 'vDD/MM-X' — é ele que o sistema usa para comparar as máquinas
      da loja e avisar quando alguma ficou para trás.                                  */
-  versao: 'v09/10-E',
+  versao: 'v09/10-I',
 
   /* 4) NUVEM (Supabase)  ------------------------------------------------------------
      Cole aqui a Project URL e a chave PUBLISHABLE do projeto Supabase DESTA empresa
@@ -2545,7 +2545,7 @@ function openModal(html,wide){ const bg=document.getElementById('modal-bg');
   // desliga o preenchimento automático do navegador (endereços/telefones) sobre os campos do sistema
   try{ bg.querySelectorAll('input,textarea').forEach(el=>{ el.setAttribute('autocomplete','off'); el.setAttribute('autocorrect','off'); el.setAttribute('autocapitalize','off'); el.setAttribute('spellcheck','false'); }); }catch(e){}
   edLinhaMarcar(bg); }
-function closeModal(){ document.getElementById('modal-bg').classList.remove('open'); document.getElementById('modal-bg').innerHTML=''; }
+function closeModal(){ document.getElementById('modal-bg').classList.remove('open'); document.getElementById('modal-bg').innerHTML=''; try{ const f=document.getElementById('la-float'); if(f) f.style.display='none'; }catch(e){} }
 document.addEventListener('keydown',e=>{ if(e.key==='Escape') closeModal(); });
 
 /* ===================================================================
@@ -21577,10 +21577,10 @@ function listaListasHTML(){ const q=listaNorm(LISTA_Q||'');
   const L=DB.all('listasEscolares').filter(l=>l && (!q || listaNorm((l.escola||'')+' '+(l.serie||'')+' '+(l.ano||'')).indexOf(q)>=0))
     .sort((a,b)=>((b.ano||0)-(a.ano||0)) || (a.escola||'').localeCompare(b.escola||'','pt-BR') || (a.serie||'').localeCompare(b.serie||'','pt-BR',{numeric:true}));
   return `<div class="field" style="max-width:380px;margin:0 0 10px"><input placeholder="Buscar escola ou série…" value="${esc(LISTA_Q||'')}" oninput="LISTA_Q=this.value;clearTimeout(window._lqT);window._lqT=setTimeout(()=>{const b=document.getElementById('lista-body'); if(b) b.innerHTML=listaListasHTML(); const i=document.querySelector('#lista-body input'); if(i){ i.focus(); i.setSelectionRange(i.value.length,i.value.length);} },250)"></div>
-   <div class="card"><div class="tbl-wrap"><table><thead><tr><th>Escola</th><th>Série</th><th>Ano</th><th class="t-right">Itens</th><th class="t-right">Selecionados</th><th class="t-right">Econômica</th><th class="t-right">Marca</th><th class="t-right">Pedidos</th><th style="width:190px"></th></tr></thead><tbody>
+   <div class="card"><div class="tbl-wrap"><table><thead><tr><th>Escola</th><th>Série</th><th>Ano</th><th class="t-right">Itens</th><th class="t-right">Econômica</th><th class="t-right">Premium</th><th class="t-right">Personalizada</th><th class="t-right">Pedidos</th><th style="width:190px"></th></tr></thead><tbody>
    ${L.length?L.map(l=>{ const t=listaTotais(l); const np=listaPedidos(l.id).length; return `<tr><td><b>${esc(l.escola||'—')}</b></td><td>${esc(l.serie||'')}</td><td class="tnum">${esc(''+(l.ano||''))}</td>
       <td class="t-right tnum">${NUM((l.itens||[]).length)}${t.falta?` <span class="tag warn" title="Itens sem produto escolhido">${t.falta} sem produto</span>`:''}</td>
-      <td class="t-right tnum" style="color:#15803d;font-weight:700">${BRL(t.sel)}</td><td class="t-right tnum">${BRL(t.econ)}</td><td class="t-right tnum">${BRL(t.marca)}</td><td class="t-right tnum">${NUM(np)}</td>
+      <td class="t-right tnum">${BRL(t.econ)}</td><td class="t-right tnum">${BRL(t.marca)}</td><td class="t-right tnum" style="color:#15803d;font-weight:700">${BRL(t.sel)}</td><td class="t-right tnum">${NUM(np)}</td>
       <td class="t-right" style="white-space:nowrap"><button class="btn btn-amber btn-sm" onclick="listaMontar('${l.id}')">${ico('quote')} Orçamento</button>
         <button class="btn-icon btn-ghost" onclick="listaForm('${l.id}')" title="Editar">${ico('edit')}</button>
         <button class="btn-icon btn-ghost" onclick="listaCopiarAno('${l.id}')" title="Copiar para o próximo ano">${ico('layers')}</button>
@@ -21595,7 +21595,7 @@ function listaPedidosHTML(){ const L=listaPedidos().sort((a,b)=>((b.criadoEm||b.
   return `<div class="card"><div class="tbl-wrap"><table><thead><tr><th>Nº</th><th>Data</th><th>Cliente</th><th>Lista</th><th class="t-right">Total</th><th>Situação</th><th>Separação</th><th style="width:220px"></th></tr></thead><tbody>
    ${L.length?L.map(o=>{ const st=listaStatusDoc(o); const sep=o.listaSep||''; const le=o.listaEscolar||{}; return `<tr>
      <td class="tnum">${esc(''+(o.numero||''))}</td><td class="tnum">${fDate(o.data)}</td><td><b>${esc(o.clienteNome||'Consumidor')}</b></td>
-     <td style="font-size:12px">${esc(le.escola||'Lista avulsa')}${le.serie?(' · '+esc(le.serie)):''}${le.opcao?` <span class="t-mut">(${le.opcao==='marca'?'marca':(le.opcao==='econ'?'econômica':'selecionados')})</span>`:''}</td>
+     <td style="font-size:12px">${esc(le.escola||'Lista avulsa')}${le.serie?(' · '+esc(le.serie)):''}${le.opcao?` <span class="t-mut">(${le.opcao==='marca'?'premium':(le.opcao==='econ'?'econômica':'personalizada')})</span>`:''}</td>
      <td class="t-right tnum">${BRL(+o.total||0)}</td><td><span class="tag ${st.cls}">${esc(st.txt)}</span></td>
      <td><select onchange="listaSepSet('${o.id}',this.value)" style="padding:4px 6px">${Object.keys(LISTA_SEP).map(k=>`<option value="${k}" ${sep===k?'selected':''}>${LISTA_SEP[k]}</option>`).join('')}</select></td>
      <td class="t-right" style="white-space:nowrap">${sep==='pronto'?`<button class="btn btn-ghost btn-sm" style="color:#15803d;border:1px solid #86efac" onclick="listaAvisarWa('${o.id}')">WhatsApp</button>`:''}
@@ -21625,6 +21625,70 @@ function listaMaisHTML(){ const ano=listaAnoPadrao(); const por={}; let docs=0;
    ${Object.keys(porLista).length?Object.entries(porLista).sort((a,b)=>b[1]-a[1]).map(([k,n])=>`<tr><td>${esc(k)}</td><td class="t-right tnum">${NUM(n)}</td></tr>`).join(''):'<tr><td class="t-mut" style="padding:18px">—</td></tr>'}
    </tbody></table></div></div></div>`; }
 /* ---- editor da lista ---- */
+/* ===== LISTA ESCOLAR A PARTIR DE PDF / FOTO =====
+   PDF com texto: lê pelo leitor de PDF do sistema (pdf.js), remonta as linhas pela posição (inclusive
+   listas em 2 colunas) e separa o que é material do que é cabeçalho/observação. PDF escaneado ou foto:
+   reconhece o texto (OCR, português) — o leitor é baixado só na primeira vez. Depois disso as linhas
+   vão para o campo "Colar a lista" e o sistema já procura os produtos (econômica e premium). */
+const LISTA_MAT_RX=/\b(caderno|caderneta|cadernos|lapis|caneta|canetinha|borracha|cola|tesoura|apontador|regua|pasta|papel|papeis|folha|folhas|giz|tinta|pincel|massinha|modelar|estojo|envelope|fita|cartolina|eva|glitter|marcador|marca texto|corretivo|caixa|bloco|durex|clips|clipe|grampeador|grampo|etiqueta|plastico|tnt|crepom|lantejoula|palito|barbante|agenda|livro|dicionario|transferidor|compasso|esquadro|calculadora|hidrocor|aquarela|guache|sulfite|oficio|color ?set|camurca|celofane|papelao|isopor|avental|copo|garrafa|toalha|escova|creme dental|sabonete|lenco|refil|lapiseira|grafite|post ?it|adesivo|cartao|alfabeto|jogo|quebra cabeca|revista|gibi|feltro|botao|botoes|micanga|elastico|algodao|cotonete|saco|pacote|resma|duplex|kraft|crepe|seda|laminado|verge|canson|desenho|caligrafia|brochura|espiral|fichario|pochete|mochila|lancheira|squeeze|tela|prendedor|fantoche|bambole|bola|massa)\b/;
+function listaLinhaEhMaterial(l){ const s=(''+(l||'')).trim(); const n=normTxt(s); if(s.length<3 || !/[a-z]{3}/i.test(n)) return false;
+  if(/^(lista|relacao|material escolar|materiais|escola|colegio|centro educacional|emef|eeef|cmei|turma|serie|ano letivo|professor|obs|observa|atencao|importante|data|telefone|tel|e-?mail|endereco|rua |av |cnpj|www|http|horario|reuniao|uniforme|entregar|entrega|favor|todo material|todos os materiais|identificad|ass:|assinatura|direcao|coordena)/.test(n)) return false;
+  if(/^\s*[•\-–*·>]?\s*\(?\d{1,3}\)?\s*[-–.)x:]?\s*(un|und|unid|unidades?|pct|pcte|pacotes?|cx|caixas?|folhas?|fls|metros?|m|vidros?|potes?|tubos?|rolos?|blocos?|jogos?|pares?)?\b/.test(n) && /[a-z]{3}/.test(n.replace(/^\s*[\W\d]+/,''))) return true;
+  return LISTA_MAT_RX.test(n); }
+/* Linhas de texto de um PDF, pela posição (y = linha; distância grande em x = outra coluna). */
+async function listaPdfTexto(file, onProg){
+  if(!window.pdfjsLib) throw new Error('Leitor de PDF indisponível. Verifique a conexão e recarregue a página.');
+  pdfjsLib.GlobalWorkerOptions.workerSrc='https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+  const pdf=await pdfjsLib.getDocument({data:await file.arrayBuffer()}).promise; const linhas=[];
+  for(let np=1; np<=pdf.numPages; np++){ if(onProg) onProg('Lendo a página '+np+' de '+pdf.numPages+'…');
+    const page=await pdf.getPage(np); const tc=await page.getTextContent();
+    const it=tc.items.filter(i=>(i.str||'').trim()).map(i=>({s:i.str, x:i.transform[4], y:i.transform[5], w:i.width||0, h:Math.abs(i.transform[3])||10}));
+    it.sort((a,b)=>(b.y-a.y)||(a.x-b.x)); const rows=[];
+    it.forEach(i=>{ const r=rows.find(r=>Math.abs(r.y-i.y)<=Math.max(2.5,i.h*0.35)); if(r) r.it.push(i); else rows.push({y:i.y, it:[i]}); });
+    rows.forEach(r=>{ r.it.sort((a,b)=>a.x-b.x); let seg='', fim=null;
+      r.it.forEach(i=>{ const gap=fim==null?0:(i.x-fim); if(fim!=null && gap>Math.max(40, i.h*3.2)){ if(seg.trim()) linhas.push(seg.trim()); seg=''; }
+        seg+=(seg && gap>1 && !/\s$/.test(seg) && !/^\s/.test(i.s)?' ':'')+i.s; fim=i.x+i.w; });
+      if(seg.trim()) linhas.push(seg.trim()); }); }
+  return {linhas, paginas:pdf.numPages, pdf}; }
+/* OCR (texto de imagem). Carrega o Tesseract só quando precisa. */
+let _ocrProm=null;
+function listaOcrCarregar(){ if(window.Tesseract) return Promise.resolve(window.Tesseract);
+  if(!_ocrProm) _ocrProm=new Promise((res,rej)=>{ const s=document.createElement('script'); s.src='https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js';
+    s.onload=()=>window.Tesseract?res(window.Tesseract):rej(new Error('leitor de imagem não carregou')); s.onerror=()=>{ _ocrProm=null; rej(new Error('sem acesso ao leitor de imagem (internet)')); }; document.head.appendChild(s); });
+  return _ocrProm; }
+async function listaOcr(imagens, onProg){ const T=await listaOcrCarregar(); const linhas=[];
+  for(let k=0;k<imagens.length;k++){ if(onProg) onProg('Reconhecendo o texto'+(imagens.length>1?(' da página '+(k+1)+' de '+imagens.length):'')+'… (a primeira vez demora um pouco)');
+    const r=await T.recognize(imagens[k],'por'); ((r&&r.data&&r.data.text)||'').split(/\r?\n/).forEach(l=>{ if(l.trim()) linhas.push(l.trim()); }); }
+  return linhas; }
+async function listaPdfParaImagens(pdf){ const imgs=[]; for(let np=1; np<=Math.min(pdf.numPages,6); np++){ const page=await pdf.getPage(np); const vp=page.getViewport({scale:2});
+    const c=document.createElement('canvas'); c.width=vp.width; c.height=vp.height; await page.render({canvasContext:c.getContext('2d'), viewport:vp}).promise; imgs.push(c); } return imgs; }
+function listaAnexoStatus(msg, cor){ const el=document.getElementById('lista-anexo-st'); if(el){ el.innerHTML=msg||''; el.style.color=cor||'var(--muted)'; } }
+async function listaAnexar(file){ if(!file || !LISTAF) return; const ehPdf=/pdf$/i.test(file.type||'')||/\.pdf$/i.test(file.name||''); const ehImg=/^image\//i.test(file.type||'');
+  if(!ehPdf && !ehImg){ toast('Envie um PDF ou uma foto (JPG/PNG) da lista','err'); return; }
+  let linhas=[];
+  try{
+    if(ehPdf){ const r=await listaPdfTexto(file, m=>listaAnexoStatus(ico('clock')+' '+m)); linhas=r.linhas;
+      const comTexto=linhas.join(' ').replace(/\s/g,'').length;
+      if(comTexto<30){ listaAnexoStatus(ico('clock')+' O PDF é uma imagem (escaneado) — reconhecendo o texto…'); linhas=await listaOcr(await listaPdfParaImagens(r.pdf), m=>listaAnexoStatus(ico('clock')+' '+m)); } }
+    else { linhas=await listaOcr([file], m=>listaAnexoStatus(ico('clock')+' '+m)); }
+  }catch(e){ console.error('lista anexo',e); listaAnexoStatus(ico('alert')+' Não consegui ler o arquivo: '+esc((e&&e.message)||''+e)+'. Se for possível, copie o texto da lista e cole no campo.', 'var(--neg)'); return; }
+  // escola / série no cabeçalho (só se ainda estiverem em branco)
+  const tudo=linhas.join('\n');
+  if(!(LISTAF.escola||'').trim()){ const m=linhas.find(l=>/\b(escola|colegio|col\.|emef|eeef|eeefm|cmei|centro educacional|instituto)\b/i.test(normTxt(l))); if(m) LISTAF.escola=m.replace(/^(nome da )?escola\s*[:\-]?\s*/i,'').trim().toUpperCase().slice(0,80); }
+  if(!(LISTAF.serie||'').trim()){ const m=normTxt(tudo).match(/\b(\d{1,2}\s*[ºo°]?\s*(ano|serie)|pre\s*[- ]?\s*(escola|i{1,2}|[12])|maternal\s*[i1-3]*|grupo\s*\d|educacao infantil|berçario|bercario)\b/i); if(m) LISTAF.serie=m[0].replace(/\s+/g,' ').trim().replace(/^(\d+)\s*[ºo°]?\s*/,'$1º ').replace(/\bserie\b/,'série'); }
+  const mat=linhas.map(l=>l.replace(/\s{2,}/g,' ').trim()).filter(listaLinhaEhMaterial);
+  const fora=linhas.length-mat.length;
+  if(!mat.length){ listaAnexoStatus(ico('alert')+' Li o arquivo, mas não reconheci itens de material. Confira o texto abaixo e apague o que não for item.', 'var(--amber-d)');
+    const ta=document.getElementById('lista-texto'); if(ta){ ta.value=linhas.join('\n'); LISTAF.texto=ta.value; } return; }
+  LISTAF.texto=mat.join('\n'); window.__listaAnexoTexto=linhas;
+  // redesenha (escola/série podem ter sido preenchidas) e já procura os produtos
+  try{ openModal(listaFormHTML(),'xwide'); }catch(e){}
+  const ta=document.getElementById('lista-texto'); if(ta) ta.value=LISTAF.texto;
+  listaInterpretar();
+  listaAnexoStatus(ico('check')+' <b>'+esc(file.name||'arquivo')+'</b>: '+mat.length+' item(ns) de material lido(s)'+(fora?(' · '+fora+' linha(s) de cabeçalho/observação ignorada(s) — <a href="javascript:void(0)" onclick="listaAnexoVerTudo()">ver o texto completo</a>'):'')+'. Confira as quantidades e os produtos.', '#15803d'); }
+function listaAnexoVerTudo(){ const L=window.__listaAnexoTexto||[]; const ta=document.getElementById('lista-texto'); if(!ta) return;
+  ta.value=L.join('\n'); LISTAF.texto=ta.value; ta.rows=10; ta.focus(); listaAnexoStatus('Texto completo do arquivo no campo — apague o que não for item e clique em <b>Encontrar produtos</b>. (Os itens já lidos continuam na tabela; remova os repetidos se clicar de novo.)','var(--amber-d)'); }
+
 function listaForm(id, avulsa){ const l=id?DB.get('listasEscolares',id):null;
   LISTAF={ id:l?l.id:null, avulsa:!!avulsa, escola:l?(l.escola||''):'', serie:l?(l.serie||''):'', ano:l?(l.ano||listaAnoPadrao()):listaAnoPadrao(), obs:l?(l.obs||''):'',
     itens:l?(l.itens||[]).map(it=>{ const o=listaOpc(it); return {desc:it.desc||'',qtd:+it.qtd||1,opcoes:o.opcoes,sel:o.sel}; }):[], texto:'' };
@@ -21634,10 +21698,10 @@ function listaProdOpt(pid){ const p=pid?DB.get('produtos',pid):null; return p?`$
    sistema. Vazio/ao focar: mostra os produtos sugeridos para o item da lista. */
 /* Campo de produto com BUSCA DIGITANDO (nome, SKU ou código de barras), igual às outras buscas do
    sistema. Vazio/ao focar: mostra os produtos sugeridos para o item da lista. */
-function listaOpcRotulo(k){ return k===0?'Econômica':(k===1?'Marca':('Opção '+(k+1))); }
+function listaOpcRotulo(k){ return k===0?'Econômica':(k===1?'Premium':('Opção '+(k+1))); }
 function listaSelHTML(i, k){ const it=LISTAF.itens[i]; const pid=it.opcoes[k]; const p=pid?DB.get('produtos',pid):null; const marcado=(it.sel===k);
   return `<div style="display:flex;gap:4px;align-items:center;margin:2px 0;${marcado?'background:#ecfdf5;border-radius:7px':''}">
-    <label title="Este é o produto que vai para o orçamento" style="display:flex;align-items:center;gap:4px;font-size:11px;min-width:86px;cursor:pointer;color:${marcado?'#15803d':'var(--muted)'};font-weight:${marcado?'700':'500'}">
+    <label title="Produto que vai na lista personalizada" style="display:flex;align-items:center;gap:4px;font-size:11px;min-width:86px;cursor:pointer;color:${marcado?'#15803d':'var(--muted)'};font-weight:${marcado?'700':'500'}">
       <input type="radio" name="la-sel-${i}" ${marcado?'checked':''} onchange="LISTAF.itens[${i}].sel=${k};listaFormItensRefresh()"> ${listaOpcRotulo(k)}</label>
     <div style="position:relative;flex:1;min-width:200px">
       <input id="la-${i}-${k}" value="${p?esc(p.nome):''}" placeholder="Digite nome, SKU ou código…" autocomplete="off" title="${p?esc(p.nome+' — '+BRL(+p.preco||0)):''}"
@@ -21667,26 +21731,33 @@ function listaAcBuscar(i, k, q){ const it=LISTAF.itens[i]; if(!it) return; q=(q|
     const exato=(dig.length>=4 && dig===q.replace(/\s/g,'')) ? base.filter(p=>(''+p.sku)===q || (''+(p.codigoBarras||'')).replace(/\D/g,'')===dig || (p.codigosBarrasAdic||[]).some(c=>(''+c).replace(/\D/g,'')===dig)) : [];
     res=exato.length?exato:prodSearchSort(base.filter(p=>matchTokens((p.nome||'')+' '+(p.sku||'')+' '+(p.codigoBarras||'')+' '+(p.marca||''),q)),q).slice(0,25); }
   LISTA_AC={i,campo:k,res,sel:0}; listaAcRender(); }
-function listaAcRender(){ const A=LISTA_AC; const dd=document.getElementById('la-dd-'+A.i+'-'+A.campo); if(!dd) return;
-  try{ const r=document.getElementById('la-'+A.i+'-'+A.campo).getBoundingClientRect(); const w=Math.min(440, window.innerWidth*0.9);
-    dd.style.left=Math.max(8, Math.min(r.left, window.innerWidth-w-8))+'px';
-    const abaixo=window.innerHeight-r.bottom; if(abaixo<300 && r.top>abaixo){ dd.style.top=''; dd.style.bottom=(window.innerHeight-r.top+2)+'px'; } else { dd.style.bottom=''; dd.style.top=(r.bottom+2)+'px'; } }catch(e){}
+/* A lista de resultados fica numa camada PRÓPRIA no <body> (a janela do modal tem animação/transform e
+   "position:fixed" dentro dela sai deslocado, cobrindo o campo). Abre logo abaixo do campo; se não
+   couber, logo acima — sempre sem tapar o que está sendo digitado. */
+function listaAcFloat(){ let f=document.getElementById('la-float'); if(!f){ f=document.createElement('div'); f.id='la-float'; f.style.cssText='display:none;position:fixed;z-index:10050'; document.body.appendChild(f); } return f; }
+function listaAcRender(){ const A=LISTA_AC; const inp=document.getElementById('la-'+A.i+'-'+A.campo); if(!inp) return; const dd=listaAcFloat();
+  const r=inp.getBoundingClientRect(); const w=Math.max(r.width, Math.min(440, window.innerWidth*0.9));
+  const abaixo=window.innerHeight-r.bottom-8, acima=r.top-8; const paraBaixo=(abaixo>=220 || abaixo>=acima);
+  const alt=Math.max(120, Math.min(300, paraBaixo?abaixo:acima));
+  dd.style.width=w+'px'; dd.style.left=Math.max(8, Math.min(r.left, window.innerWidth-w-8))+'px';
+  if(paraBaixo){ dd.style.bottom=''; dd.style.top=(r.bottom+3)+'px'; } else { dd.style.top=''; dd.style.bottom=(window.innerHeight-r.top+3)+'px'; }
   dd.style.display='block';
-  dd.innerHTML=`<div class="wiz-assoc-dd" style="max-height:280px;overflow:auto">${A.res.length?A.res.map((p,k)=>`<div class="wiz-opt" style="${k===A.sel?'background:var(--amber-soft)':''}" onmousedown="event.preventDefault();listaAcPegar(${A.i},${A.campo},'${p.id}')">
+  dd.innerHTML=`<div class="wiz-assoc-dd" style="position:static;max-height:${alt}px;overflow:auto;box-shadow:0 10px 30px rgba(15,31,58,.22)">${A.res.length?A.res.map((p,k)=>`<div class="wiz-opt" data-k="${k}" style="${k===A.sel?'background:var(--amber-soft)':''}" onmousedown="event.preventDefault();listaAcPegar(${A.i},${A.campo},'${p.id}')">
       <b>${esc(p.nome)}</b><div class="t-mut" style="font-size:11px">SKU ${esc(p.sku||'—')}${p.codigoBarras?(' · '+esc(p.codigoBarras)):''} · <b style="color:var(--ink)">${BRL(+p.preco||0)}</b> · estoque ${NUM(+p.estoque||0)}</div></div>`).join('')
-    :`<div class="t-mut" style="padding:10px;font-size:12px">Nenhum produto encontrado</div>`}</div>`; }
-function listaAcFechar(i,campo){ const dd=document.getElementById('la-dd-'+i+'-'+campo); if(dd) dd.style.display='none';
+    :`<div class="t-mut" style="padding:10px;font-size:12px">Nenhum produto encontrado</div>`}</div>`;
+  try{ const at=dd.querySelector('[data-k="'+A.sel+'"]'); if(at) at.scrollIntoView({block:'nearest'}); }catch(e){} }
+function listaAcFechar(i,campo){ const dd=document.getElementById('la-float'); if(dd && LISTA_AC.i===i && LISTA_AC.campo===campo) dd.style.display='none';
   const inp=document.getElementById('la-'+i+'-'+campo); const it=LISTAF&&LISTAF.itens[i]; if(inp && it){ const pid=(it.opcoes||[])[campo]; const p=pid?DB.get('produtos',pid):null; inp.value=p?p.nome:''; } }
 function listaAcKey(e,i,campo){ const A=LISTA_AC; if(A.i!==i||A.campo!==campo) return;
   if(e.key==='ArrowDown'){ e.preventDefault(); A.sel=Math.min(A.res.length-1,A.sel+1); listaAcRender(); }
   else if(e.key==='ArrowUp'){ e.preventDefault(); A.sel=Math.max(0,A.sel-1); listaAcRender(); }
   else if(e.key==='Enter'){ e.preventDefault(); const p=A.res[A.sel]; if(p) listaAcPegar(i,campo,p.id); }
-  else if(e.key==='Escape'){ e.preventDefault(); listaAcFechar(i,campo); e.target.blur(); } }
-function listaAcPegar(i,k,pid){ const it=LISTAF.itens[i]; if(!it) return; it.opcoes[k]=pid||null; if(it._auto) it._auto[k]=false; LISTA_AC={i:-1,campo:'',res:[],sel:0}; listaFormItensRefresh();
+  else if(e.key==='Escape'){ e.preventDefault(); e.stopPropagation(); const f=document.getElementById('la-float'); const aberto=f && f.style.display!=='none'; listaAcFechar(i,campo); if(aberto) return; e.target.blur(); } }   // Esc fecha só a lista de resultados — não a janela da lista escolar
+function listaAcPegar(i,k,pid){ try{ const f=document.getElementById('la-float'); if(f) f.style.display='none'; }catch(e){} const it=LISTAF.itens[i]; if(!it) return; it.opcoes[k]=pid||null; if(it._auto) it._auto[k]=false; LISTA_AC={i:-1,campo:'',res:[],sel:0}; listaFormItensRefresh();
   if(pid){ const nxt=document.getElementById('la-'+i+'-'+(k+1)) || document.getElementById('la-'+(i+1)+'-0'); if(nxt) setTimeout(()=>{ try{ nxt.focus(); }catch(e){} },30); } }
 function listaFormItensHTML(){ const I=LISTAF.itens;
   if(!I.length) return `<div class="t-mut" style="font-size:12.5px;padding:10px 0">Nenhum item. Cole a lista acima e clique em <b>Encontrar produtos</b>, ou adicione item por item.</div>`;
-  return `<table><thead><tr><th style="width:60px">Qtd</th><th style="width:26%">Item da lista</th><th>Produtos <span class="t-mut" style="font-weight:400;text-transform:none">— digite para buscar · marque <b style="color:#15803d">●</b> o que vai para o orçamento</span></th><th style="width:40px"></th></tr></thead><tbody>
+  return `<table><thead><tr><th style="width:60px">Qtd</th><th style="width:26%">Item da lista</th><th>Produtos <span class="t-mut" style="font-weight:400;text-transform:none">— digite para buscar · marque <b style="color:#15803d">●</b> o que vai na lista personalizada</span></th><th style="width:40px"></th></tr></thead><tbody>
    ${I.map((it,i)=>{ const vazio=!it.opcoes.some(Boolean); return `<tr style="${vazio?'background:#fff7ed':''};vertical-align:top"><td><input type="number" min="1" step="1" value="${it.qtd}" style="width:56px" onchange="LISTAF.itens[${i}].qtd=Math.max(1,+this.value||1);listaFormTotais()"></td>
      <td><input id="la-desc-${i}" value="${esc(it.desc)}" placeholder="Descreva o item (ex.: BORRACHA BRANCA)" style="width:100%;min-width:150px;text-transform:uppercase" onchange="listaDescMudou(${i},this.value)" onkeydown="if(event.key==='Enter'){event.preventDefault();this.blur();}"></td>
      <td>${it.opcoes.map((_,k)=>listaSelHTML(i,k)).join('')}
@@ -21700,34 +21771,42 @@ function listaFormHTML(){ const F=LISTAF; const escolas=[...new Set(DB.all('list
      <div class="field-row"><div class="field"><label>Escola${F.avulsa?'':' *'}</label><input list="lista-escolas" class="cad-upper" value="${esc(F.escola)}" oninput="LISTAF.escola=this.value" placeholder="Ex.: EMEF JOÃO DA SILVA"><datalist id="lista-escolas">${escolas.map(e=>`<option>${esc(e)}</option>`).join('')}</datalist></div>
        <div class="field"><label>Série / turma${F.avulsa?'':' *'}</label><input value="${esc(F.serie)}" oninput="LISTAF.serie=this.value" placeholder="Ex.: 3º ano"></div>
        <div class="field" style="max-width:110px"><label>Ano</label><input type="number" value="${F.ano}" oninput="LISTAF.ano=+this.value||LISTAF.ano"></div></div>
-     <div class="field"><label>Colar a lista (um item por linha)</label><textarea id="lista-texto" rows="5" placeholder="2 cadernos universitários 10 matérias&#10;1 caixa de lápis de cor 24 cores&#10;3 lápis preto nº 2&#10;1 cola branca 90g" oninput="LISTAF.texto=this.value">${esc(F.texto||'')}</textarea>
+     <div class="card card-pad" style="margin:0 0 10px;background:#eff6ff;border:1px dashed #93c5fd;display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+       <button class="btn btn-amber btn-sm" onclick="document.getElementById('lista-anexo').click()">${ico('dl')} Anexar PDF ou foto da lista</button>
+       <input type="file" id="lista-anexo" accept=".pdf,application/pdf,image/*" style="display:none" onchange="listaAnexar(this.files[0]);this.value=''">
+       <span id="lista-anexo-st" class="t-mut" style="font-size:12px;flex:1;min-width:220px">O sistema lê a lista (PDF da escola ou foto), separa os materiais e já procura os produtos — opção econômica e premium.</span></div>
+     <div class="field"><label>Ou cole a lista (um item por linha)</label><textarea id="lista-texto" rows="5" placeholder="2 cadernos universitários 10 matérias&#10;1 caixa de lápis de cor 24 cores&#10;3 lápis preto nº 2&#10;1 cola branca 90g" oninput="LISTAF.texto=this.value">${esc(F.texto||'')}</textarea>
        <div style="display:flex;gap:8px;margin-top:6px;flex-wrap:wrap"><button class="btn btn-amber btn-sm" onclick="listaInterpretar()">${ico('search')} Encontrar produtos</button><button class="btn btn-ghost btn-sm" onclick="LISTAF.itens.push({desc:'',qtd:1,opcoes:[null,null],sel:0,_auto:{}});listaFormItensRefresh();setTimeout(()=>{ const el=document.getElementById('la-desc-'+(LISTAF.itens.length-1)); if(el){ el.focus(); el.scrollIntoView({block:'center'}); } },40)">${ico('plus')} Item</button>
-       <span class="t-mut" style="font-size:11.5px;align-self:center">Itens em laranja ficaram sem produto: digite no campo para buscar. Use <b>Mais uma opção</b> para oferecer outros produtos e marque qual vai para o orçamento.</span></div></div>
+       <span class="t-mut" style="font-size:11.5px;align-self:center">Itens em laranja ficaram sem produto: digite no campo para buscar. Use <b>Mais uma opção</b> para oferecer outros produtos e marque (●) o que vai na <b>lista personalizada</b>.</span></div></div>
      <div id="lista-itens">${listaFormItensHTML()}</div>
      <div id="lista-tot" style="margin-top:10px">${listaFormTotaisHTML()}</div>
      <div class="field" style="margin-top:8px"><label>Observações</label><input value="${esc(F.obs)}" oninput="LISTAF.obs=this.value" placeholder="Ex.: material entregue na 1ª semana de aula"></div>
    </div>
    <div class="modal-foot"><button class="btn btn-ghost" onclick="closeModal()">Cancelar</button><div style="flex:1"></div>
      ${F.avulsa?`<label style="display:flex;align-items:center;gap:6px;font-size:12.5px"><input type="checkbox" id="lista-salvar-av"> Salvar a lista</label>`:`<button class="btn btn-ghost" onclick="listaSalvar(false)">${ico('check')} Salvar lista</button>`}
-     <button class="btn btn-amber" onclick="listaSalvar(true)">${ico('quote')} ${F.avulsa?'Montar orçamento':'Salvar e montar orçamento'}</button></div>`; }
+     <button class="btn btn-ghost" style="border:1px solid var(--line)" title="Salva a lista com os produtos marcados (●) e abre a escolha do orçamento (econômica, premium ou personalizada)" onclick="listaSalvar(true)">${ico('check')} ${F.avulsa?'Montar orçamento':'Salvar e montar'}</button>
+     <span class="t-mut" style="font-size:11.5px;align-self:center;margin-left:6px">${F.avulsa?'Direto:':'Salvar e criar orçamento:'}</span>
+     <button class="btn btn-ghost" style="border:1px solid var(--line)" title="Cada item com a opção econômica" onclick="listaSalvar(true,'econ')">${ico('quote')} Lista econômica</button>
+     <button class="btn btn-ghost" style="border:1px solid var(--line)" title="Cada item com a opção premium" onclick="listaSalvar(true,'marca')">${ico('quote')} Lista premium</button>
+     <button class="btn btn-amber" title="Cada item com o produto marcado (●) na lista de produtos" onclick="listaSalvar(true,'sel')">${ico('quote')} Lista personalizada</button></div>`; }
 function listaFormTotaisHTML(){ const t=listaTotais(LISTAF);
-  return `<div style="display:flex;gap:16px;flex-wrap:wrap;font-size:13px"><span style="color:#15803d">Selecionados: <b class="tnum">${BRL(t.sel)}</b></span><span>Toda econômica: <b class="tnum">${BRL(t.econ)}</b></span><span>Toda de marca: <b class="tnum">${BRL(t.marca)}</b></span>${t.falta?`<span style="color:var(--amber-d)">${t.falta} item(ns) sem produto</span>`:''}</div>`; }
+  return `<div style="display:flex;gap:16px;flex-wrap:wrap;font-size:13px"><span>Lista econômica: <b class="tnum">${BRL(t.econ)}</b></span><span>Lista premium: <b class="tnum">${BRL(t.marca)}</b></span><span style="color:#15803d">Lista personalizada (marcados): <b class="tnum">${BRL(t.sel)}</b></span>${t.falta?`<span style="color:var(--amber-d)">${t.falta} item(ns) sem produto</span>`:''}</div>`; }
 function listaFormTotais(){ const el=document.getElementById('lista-tot'); if(el) el.innerHTML=listaFormTotaisHTML(); }
-try{ document.addEventListener('scroll',function(e){ try{ if(LISTA_AC && LISTA_AC.i>=0 && e.target && e.target.classList && e.target.classList.contains('modal-body')) listaAcFechar(LISTA_AC.i, LISTA_AC.campo); }catch(_){} }, true); }catch(e){}
+try{ document.addEventListener('scroll',function(e){ try{ const f=document.getElementById('la-float'); if(f && f.style.display!=='none' && !(e.target && f.contains && f.contains(e.target))){ if(LISTA_AC && LISTA_AC.i>=0) listaAcRender(); } }catch(_){} }, true); }catch(e){}
 function listaFormItensRefresh(){ const el=document.getElementById('lista-itens'); if(el) el.innerHTML=listaFormItensHTML(); listaFormTotais(); }
 function listaInterpretar(){ const txt=(document.getElementById('lista-texto')||{}).value||LISTAF.texto||''; LISTAF.texto=txt;
   const linhas=txt.split(/\r?\n|;/).map(listaParseLinha).filter(Boolean); if(!linhas.length){ toast('Cole a lista no campo (um item por linha)','err'); return; }
   let achou=0; linhas.forEach(x=>{ const s=listaSugerir(x.desc); if(s.econ||s.marca) achou++; LISTAF.itens.push({desc:x.desc, qtd:x.qtd, opcoes:[s.econ||null, s.marca||null], sel:0, _auto:{0:!!s.econ,1:!!s.marca}}); });
   LISTAF.texto=''; const ta=document.getElementById('lista-texto'); if(ta) ta.value='';
   listaFormItensRefresh(); toast(linhas.length+' item(ns) lidos · '+achou+' com produto encontrado'+(linhas.length-achou?(' · '+(linhas.length-achou)+' para conferir'):''), achou===linhas.length?'ok':'info'); }
-function listaSalvar(montar){ const F=LISTAF; if(!F) return; const itens=F.itens.filter(it=>(it.desc||'').trim()).map(it=>{ const o=listaOpc(it); return {desc:it.desc.trim().toUpperCase(),qtd:+it.qtd||1,opcoes:o.opcoes,sel:o.sel,econ:o.opcoes[0]||null,marca:o.opcoes[1]||null}; });
+function listaSalvar(montar, opcao){ const F=LISTAF; if(!F) return; const itens=F.itens.filter(it=>(it.desc||'').trim()).map(it=>{ const o=listaOpc(it); return {desc:it.desc.trim().toUpperCase(),qtd:+it.qtd||1,opcoes:o.opcoes,sel:o.sel,econ:o.opcoes[0]||null,marca:o.opcoes[1]||null}; });
   if(!itens.length){ toast('A lista está vazia','err'); return; }
   const salvar = !F.avulsa || ((document.getElementById('lista-salvar-av')||{}).checked);
   if(salvar && !F.avulsa && (!(F.escola||'').trim() || !(F.serie||'').trim())){ toast('Informe a escola e a série','err'); return; }
   let id=F.id; const dados={escola:(F.escola||'').trim().toUpperCase(), serie:(F.serie||'').trim(), ano:+F.ano||listaAnoPadrao(), obs:F.obs||'', itens};
   if(salvar){ if(id) DB.update('listasEscolares',id,dados); else id=DB.insert('listasEscolares',dados).id; try{ nuvemPushJa(); }catch(e){} }
   closeModal();
-  if(montar){ listaMontarDe(Object.assign({id:salvar?id:null},dados)); return; }
+  if(montar){ const _l=Object.assign({id:salvar?id:null},dados); if(opcao){ window.__listaMontar=_l; listaAbrirOrc(opcao); } else listaMontarDe(_l); return; }
   toast('Lista salva','ok'); LISTA_TAB='listas'; viewListas(); }
 function listaCopiarAno(id){ const l=DB.get('listasEscolares',id); if(!l) return; const novo=(+l.ano||listaAnoPadrao())+1;
   if(DB.all('listasEscolares').some(x=>x.escola===l.escola && x.serie===l.serie && +x.ano===novo)){ toast('Já existe a lista de '+novo+' para esta escola e série','err'); return; }
@@ -21742,11 +21821,11 @@ function listaMontarDe(l){ window.__listaMontar=l; const t=listaTotais(l);
   openModal(`<div class="modal-head"><h3>${ico('quote')} Montar orçamento da lista</h3><button class="btn-icon btn-ghost" onclick="closeModal()">${ico('x')}</button></div>
    <div class="modal-body"><p style="margin:0 0 10px;font-size:13px">${esc(l.escola||'Lista do cliente')}${l.serie?(' · '+esc(l.serie)):''} — ${NUM((l.itens||[]).length)} item(ns)</p>
      <div style="display:flex;flex-direction:column;gap:8px">
-       <button class="btn btn-amber" style="justify-content:space-between" onclick="listaAbrirOrc('sel')"><span><b>Produtos selecionados</b> — o marcado em cada item</span><b class="tnum">${BRL(t.sel)}</b></button>
-       <button class="btn btn-ghost" style="justify-content:space-between" onclick="listaAbrirOrc('econ')"><span><b>Toda econômica</b> — a 1ª opção de cada item</span><b class="tnum">${BRL(t.econ)}</b></button>
-       <button class="btn btn-ghost" style="justify-content:space-between" onclick="listaAbrirOrc('marca')"><span><b>Toda de marca</b> — a opção de marca de cada item</span><b class="tnum">${BRL(t.marca)}</b></button></div>
+       <button class="btn btn-ghost" style="justify-content:space-between" onclick="listaAbrirOrc('econ')"><span><b>Lista econômica</b> — a opção econômica de cada item</span><b class="tnum">${BRL(t.econ)}</b></button>
+       <button class="btn btn-ghost" style="justify-content:space-between" onclick="listaAbrirOrc('marca')"><span><b>Lista premium</b> — a opção premium de cada item</span><b class="tnum">${BRL(t.marca)}</b></button>
+       <button class="btn btn-amber" style="justify-content:space-between" onclick="listaAbrirOrc('sel')"><span><b>Lista personalizada</b> — o produto marcado em cada item</span><b class="tnum">${BRL(t.sel)}</b></button></div>
      ${t.falta?`<p class="t-mut" style="font-size:12px;margin-top:10px;color:var(--amber-d)">${t.falta} item(ns) sem produto vão para as observações do orçamento para você lançar à mão.</p>`:''}
-     <p class="t-mut" style="font-size:11.5px;margin-top:8px">Para escolher produto por produto, edite a lista e marque a opção de cada item.</p></div>`, true); }
+     <p class="t-mut" style="font-size:11.5px;margin-top:8px">Para a personalizada, edite a lista e marque (●) o produto de cada item.</p></div>`, true); }
 function listaAbrirOrc(opcao){ const l=window.__listaMontar; if(!l) return; closeModal();
   const itens=[], semProd=[];
   (l.itens||[]).forEach(it=>{ const pid=listaPidDe(it, opcao); const p=pid?DB.get('produtos',pid):null;
@@ -21756,7 +21835,7 @@ function listaAbrirOrc(opcao){ const l=window.__listaMontar; if(!l) return; clos
   go('orc'); setTimeout(()=>{ try{
     orcEditor(null,'orcamento');
     ORC.itens=itens; ORC.listaEscolar={id:l.id||null, escola:l.escola||'', serie:l.serie||'', ano:l.ano||'', opcao};
-    ORC.obs=('Lista escolar: '+(l.escola||'lista do cliente')+(l.serie?(' — '+l.serie):'')+(l.ano?(' ('+l.ano+')'):'')+(opcao==='marca'?' · toda de marca':(opcao==='econ'?' · toda econômica':' · produtos selecionados'))
+    ORC.obs=('Lista escolar: '+(l.escola||'lista do cliente')+(l.serie?(' — '+l.serie):'')+(l.ano?(' ('+l.ano+')'):'')+(opcao==='marca'?' · lista premium':(opcao==='econ'?' · lista econômica':' · lista personalizada'))
       +(semProd.length?('\nITENS SEM PRODUTO (lançar à mão): '+semProd.join('; ')):''));
     const ob=document.getElementById('orc-obs'); if(ob) ob.value=ORC.obs;
     orcRefreshItens(); orcTotals();
