@@ -48,7 +48,7 @@ const CONFIG_EMPRESA = {
      Aparece no topo do menu e no rodapé das Configurações. Troque a cada publicação.
      MANTENHA O FORMATO 'vDD/MM-X' — é ele que o sistema usa para comparar as máquinas
      da loja e avisar quando alguma ficou para trás.                                  */
-  versao: 'v08/10-A',
+  versao: 'v09/10-A',
 
   /* 4) NUVEM (Supabase)  ------------------------------------------------------------
      Cole aqui a Project URL e a chave PUBLISHABLE do projeto Supabase DESTA empresa
@@ -98,7 +98,13 @@ const CONFIG_EMPRESA = {
      true  = libera o gerador de dados fictícios (útil só para treinar a equipe numa
              instalação de teste; NUNCA ligue numa base de produção — ele APAGA a
              base atual antes de recriar a de demonstração).                          */
-  permitirDemo: false
+  permitirDemo: false,
+
+  /* 10) TELAS ESCONDIDAS NESTA EMPRESA  ---------------------------------------------
+     Telas que não fazem sentido para o ramo (ex.: material de construção numa papelaria).
+     Somem do menu e das permissões para TODOS (inclusive o administrador). Nada é apagado:
+     para voltar a mostrar uma tela, é só tirar o id daqui.                             */
+  ocultarTelas: ['calcobra','veiculos','combustivel','frete','freterel','entregas','feedbackent','maquinas','aluguel','aluguelrel']
 
 };
 
@@ -1786,7 +1792,7 @@ const DB = {
     else this._ensure();
     return this.cache; },
   _ensure(){ // backfill de coleções para compatibilidade ao evoluir o schema
-    const cols=['produtos','clientes','fornecedores','vendedores','transportadoras','funcionarios','servicos','contasBancarias','centroCustos','planoContas','gruposCP','vendas','financeiro','movEstoque','compras','cotacoes','servicosContratados','servicosPrestados','devolucoes','creditos','creditoMovs','orcamentos','categorias','indicadores','tarefas','caixaSessoes','caixaMovs','maquinas','contratosAluguel','notasFiscais','beneficiosFiscais','recebimentos','pedidosOnline','ordensCompra','cotacaoRespostas','clientesSaaS','mensalidades','cheques','conciliacaoTx','veiculos','abastecimentos','manutencoes','chamados','contratos','licencas','implantacoes','leads','gruposProd','subgruposProd','notasRecebidas','prospecEmpresas','calcObraServicos','listaPedidos','produtosFalta','transferencias','marcas','lixeira','ofxImportacoes','dispositivos'];
+    const cols=['produtos','clientes','fornecedores','vendedores','transportadoras','funcionarios','servicos','contasBancarias','centroCustos','planoContas','gruposCP','vendas','financeiro','movEstoque','compras','cotacoes','servicosContratados','servicosPrestados','devolucoes','creditos','creditoMovs','orcamentos','categorias','indicadores','tarefas','caixaSessoes','caixaMovs','maquinas','contratosAluguel','notasFiscais','beneficiosFiscais','recebimentos','pedidosOnline','ordensCompra','cotacaoRespostas','clientesSaaS','mensalidades','cheques','conciliacaoTx','veiculos','abastecimentos','manutencoes','chamados','contratos','licencas','implantacoes','leads','gruposProd','subgruposProd','notasRecebidas','prospecEmpresas','calcObraServicos','listaPedidos','produtosFalta','transferencias','marcas','lixeira','ofxImportacoes','dispositivos','listasEscolares'];
     let changed=false; cols.forEach(c=>{ if(!Array.isArray(this.cache[c])){ this.cache[c]=[]; changed=true; } });
     if(!this.cache.empresa){ this.cache.empresa={nome:EMPRESA_NOME(),cidade:(CFG_E.cidade||'')}; changed=true; }
     // UF da loja: se não estiver preenchida, deduz (cidade "Cidade/UF" → CEP → DDD do telefone) e grava,
@@ -2218,6 +2224,7 @@ const NAV=[
     {id:'func',label:'Funcionários e Vendedores',icon:'people',title:'Funcionários e Vendedores',sub:'Equipe da loja — vendedores são definidos pelo cargo'},
     {id:'indic',label:'Indicadores',icon:'gift',title:'Indicadores',sub:'Quem indica clientes'},
     {id:'prod',label:'Produtos',icon:'prod',title:'Produtos & Estoque',sub:'Catálogo e controle de estoque'},
+    {id:'servpap',label:'Serviços (cópias e impressões)',icon:'print',title:'Serviços',sub:'Cópia, impressão, plastificação, encadernação — sem estoque, preço por quantidade'},
     {id:'contagem',label:'Contagem de Inventário',icon:'layers',title:'Contagem de Inventário',sub:'Conferência física e ajuste de estoque'},
     {id:'cat',label:'Categorias de Produtos',icon:'layers',title:'Categorias de Produtos',sub:'Organização do catálogo'},
     {id:'kits',label:'Kits Promocionais',icon:'gift',title:'Kits Promocionais',sub:'Combos de produtos com preço/desconto especial'},
@@ -2239,6 +2246,7 @@ const NAV=[
   {g:'Vendas',icon:'cart',items:[
     {id:'pdv',label:'Frente de Caixa (PDV)',icon:'pdv',title:'Frente de Caixa (PDV)',sub:'Registrar nova venda'},
     {id:'orc',label:'Orçamentos',icon:'quote',title:'Orçamentos',sub:'Criar e gerenciar propostas'},
+    {id:'listas',label:'Listas Escolares',icon:'doc',title:'Listas de Material Escolar',sub:'Listas por escola e série, orçamento automático e separação'},
     {id:'sales',label:'Pedidos',icon:'sales',title:'Pedidos',sub:'Pedidos faturados no PDV'},
     {id:'salesvend',label:'Pedidos Vendedores',icon:'sales',title:'Pedidos Vendedores',sub:'Somente pedidos em aberto e faturados'},
     {id:'trocas',label:'Troca / Devolução',icon:'ret',title:'Troca / Devolução',sub:'Devolução de produtos com geração de crédito'},
@@ -2305,7 +2313,7 @@ const NAV_OCULTOS={ impxml:{id:'impxml',label:'Importar / Buscar NF-e',icon:'dl'
 Object.keys(NAV_OCULTOS).forEach(k=>{ NAV_ITEMS[k]=NAV_OCULTOS[k]; });
 function buildNav(){
   try{ formasPagAplicar(); }catch(e){}   // formas de pagamento cadastradas entram nas listas (também depois de baixar da nuvem)
-  const lowStock = DB.all('produtos').filter(p=>!p.usoConsumo && p.estoque<=p.estoqueMinimo).length;
+  const lowStock = DB.all('produtos').filter(p=>!p.usoConsumo && !p.servico && p.estoque<=p.estoqueMinimo).length;
   const overdue = DB.all('financeiro').filter(f=>f.tipo==='pagar'&&f.status==='aberto'&&f.vencimento<today()).length;
   const pendReceb = DB.all('compras').filter(c=>c.situacao==='pendente').length;
   document.getElementById('nav').innerHTML = NAV.map(grp=>{
@@ -2335,7 +2343,7 @@ function navGo(id){ STATE.menuId=id; go(id); }
 function navReport(id,repId){ STATE.menuId=id; toggleSidebar(false); openReport(repId); }
 /* Mapa de rota -> função que desenha a tela. Fica numa função para poder ser
    usado tanto pela navegação (go) quanto pela atualização em segundo plano. */
-function rotaViews(){ return {vendascfg:viewVendasCfg,dash:viewDash,dashvend:viewDashVend,pdv:viewPDV,orc:viewOrc,sales:viewSales,prod:viewProd,cli:viewCli,func:viewFunc,contasrec:viewContasReceber,contaspag:viewContasPagar,cheques:viewCheques,concil:viewConciliacao,contasbanc:viewContasBancarias,gruposcp:viewGruposCP,deppessoal:viewDepPessoal,rep:viewRep,cfg:viewCfg,ficha:fichaAbrirNaAba,frete:viewFrete,caixa:viewCaixa,entregas:viewEntregas,maquinas:viewMaquinas,aluguel:viewAluguel,
+function rotaViews(){ return {servpap:viewServPap,listas:viewListas,vendascfg:viewVendasCfg,dash:viewDash,dashvend:viewDashVend,pdv:viewPDV,orc:viewOrc,sales:viewSales,prod:viewProd,cli:viewCli,func:viewFunc,contasrec:viewContasReceber,contaspag:viewContasPagar,cheques:viewCheques,concil:viewConciliacao,contasbanc:viewContasBancarias,gruposcp:viewGruposCP,deppessoal:viewDepPessoal,rep:viewRep,cfg:viewCfg,ficha:fichaAbrirNaAba,frete:viewFrete,caixa:viewCaixa,entregas:viewEntregas,maquinas:viewMaquinas,aluguel:viewAluguel,
     nfeent:viewNfeEntrada,notasemit:viewNotasEmit,nfesai:viewNfeSaida,auditoria:viewAuditoria,contador:viewContador,impostos:viewImpostos,aliquotas:viewAliquotas,sped:viewSped,beneficios:viewBeneficios,fiscalcfg:viewFiscalCfg,cfopmap:viewCfopMap,entrada:viewEntradaManual,
     forn:viewForn,vend:viewVend,indic:viewIndic,crmwa:viewCrmWa,waatend:viewAtendWa,prospec:viewProspec,banner:viewBanner,cat:viewCat,calc:viewCalc,calcobra:viewCalcObra,funil:viewFunil,tarefas:viewTarefas,sugcompra:viewSugCompra,pedcompra:viewListaPedidos,comis:viewComissao,impxml:viewImportXML,etiq:viewEtiquetas,cot:viewCotacoes,nfavulsa:viewNFAvulsa,ecommerce:viewEcommerce,ecalc:viewEcalc,vendmobile:viewVendMobile,freterel:viewFreteRel,aluguelrel:viewAluguelRel,central:viewCentral,veiculos:viewVeiculos,combustivel:viewCombustivel,orcrel:viewOrcRel,retiradas:viewRetiradas,salesvend:viewSalesVendedor,trocas:viewTrocas,fluxocaixa:viewFluxoCaixa,contagem:viewContagem,auditlog:viewAuditoriaLog,faltas:viewProdutosFalta,kits:viewKits,nuvem:viewNuvem,lixeira:viewLixeira,anual:viewAnual,saude:viewSaude,pendencias:viewPendencias,feedbackent:viewFeedbackEntrega};
 
@@ -3814,7 +3822,7 @@ function viewDash(){
   const serie=ANL.serieDiaria(range,vendas);
   const cats=ANL.porCategoria(vendas);
   const topProd=ANL.porProduto(vendas).slice(0,12);
-  const lowStock=DB.all('produtos').filter(p=>!p.usoConsumo && p.estoque<=p.estoqueMinimo).sort((a,b)=>(a.estoque/a.estoqueMinimo)-(b.estoque/b.estoqueMinimo));
+  const lowStock=DB.all('produtos').filter(p=>!p.usoConsumo && !p.servico && p.estoque<=p.estoqueMinimo).sort((a,b)=>(a.estoque/a.estoqueMinimo)-(b.estoque/b.estoqueMinimo));
   const venc=produtosVencendo(60);
   const aniv=aniversariantesHoje();
   const aReceber=DB.all('financeiro').filter(f=>f.tipo==='receber'&&['aberto','pendente'].includes(f.status)).reduce((s,f)=>s+f.valor,0);
@@ -4026,7 +4034,7 @@ function formaTipoPeloNome(nome){ const n=normTxt(nome||''); if(/cred/.test(n)) 
 function formaExtraMaquina(forma){ const x=formaPagExtra(forma||''); if(!x||!formaTipoCartao(forma)) return ''; return (x.maquina && maquinasCartao().some(m=>m.id===x.maquina))?x.maquina:'padrao'; }
 const CART={ itens:[], clienteId:null, clienteNome:'', desconto:0, descModo:'valor', descPct:0, pagamento:'PIX', pagamentos:[], canal:'', retiraLoja:false, entrega:false, frete:0, distanciaKm:0, enderecoEntrega:'', obs:'', fromOrcId:null, fromOrcNumero:null, faturaPedidoId:null, faturaPedidoNumero:null, vendedorId:null, vendedorNome:null, contratoId:null };
 function numBR(v){ v=(''+(v==null?'':v)).trim(); if(!v)return 0; if(v.indexOf(',')>-1){ v=v.replace(/\./g,'').replace(',','.'); } const n=parseFloat(v); return isNaN(n)?0:n; }
-function cartSub(){ return CART.itens.reduce((s,i)=>s+i.qtd*i.preco,0); }
+function cartSub(){ try{ servRecalcItens(CART.itens,'id'); }catch(e){} return CART.itens.reduce((s,i)=>s+i.qtd*i.preco,0); }
 function cartFrete(){ return CART.entrega?Math.round((+CART.frete||0)*100)/100:0; }
 function cartTotalValue(){ return Math.round((Math.max(0,cartSub()-CART.desconto)+cartFrete())*100)/100; }
 /* VENDAS QUE FICARAM SEM NOTA POR ERRO NA EMISSÃO — continuam aqui no PDV para emitir a nota
@@ -4109,6 +4117,7 @@ function renderPDV(){
       <div id="pdv-dd" class="orc-dd"></div>
     </div>
   </div>
+  ${(function(){ try{ return servPdvBarraHTML(); }catch(e){ return ''; } })()}
   <div class="doc-avisos"><div id="pdv-credito-chip" class="doc-avisos-in">${pdvCreditoChipHTML()}</div><div id="cart-cli-complete"></div></div>
   <div class="pdv-grid">
     <div class="card">
@@ -4225,7 +4234,7 @@ function pdvRowKey(e){ if(e.key!=='Enter') return; e.preventDefault(); const id=
   else if(id==='pdv-rp'){ const el=document.getElementById('pdv-rd'); if(el){el.focus();el.select();} }
   else { pdvAddActive(); } }
 function pdvAddActive(){ const p=DB.get('produtos',PDVS.activePid); if(!p){ toast('Selecione um produto','err'); return; }
-  if(p.estoque<=0 && !permiteVendaSemEstoque()){ toast('Produto sem estoque','err'); return; }
+  if(p.estoque<=0 && !p.servico && !permiteVendaSemEstoque()){ toast('Produto sem estoque','err'); return; }
   const qIn=Math.max(0.001,+(document.getElementById('pdv-rq')||{}).value||1);
   const unit=Math.round(Math.max(0,+(document.getElementById('pdv-rp')||{}).value||p.preco)*100)/100; const lista=p.preco;
   if(ehMadeiraSerrada(p)){                                          // pergunta o tamanho da peça (0,5 em 0,5 m)
@@ -4275,7 +4284,7 @@ function pdvEntregaTop(v){ if(!!v===!!CART.entrega){ renderPDV(); return; } pdvT
 function cartRetira(idx){ const it=CART.itens[idx]; if(!it) return; it.retiradoLoja=!it.retiradoLoja; renderPDV(); }
 function pdvSetVend(id){ CART.vendedorId=id||null; const v=DB.get('vendedores',id); CART.vendedorNome=v?v.nome:null; }
 function itemLista(it){ return it.precoLista || (DB.get('produtos',it.id)||{}).preco || it.preco; }
-function cartRows(){
+function cartRows(){ try{ servRecalcItens(CART.itens,'id'); }catch(e){}
   return CART.itens.map((it,idx)=>{ const p=DB.get('produtos',it.id); const un=((it.unidade||(p&&p.unidade)||'un')).toUpperCase();
     const lista=itemLista(it); const pct=lista>0?Math.max(0,(lista-it.preco)/lista*100):0;
     const qtyDisplay = it.embalagem ? `${NUM(it.pacotes)} ${esc(it.embalagemTipo||'Cx')}${it.pacotes!==1?'s':''}` : fmtQ(it.qtd);
@@ -4298,9 +4307,9 @@ function cartRows(){
       <b class="tnum cr2-sub">${BRL(it.qtd*it.preco)}</b>
     </div>`; }).join('');
 }
-function cartPrice(idx,v){ const it=CART.itens[idx]; if(!it)return; it.preco=Math.max(0,Math.round((+v||0)*100)/100);
+function cartPrice(idx,v){ const it=CART.itens[idx]; if(!it)return; it.precoManual=true; it.preco=Math.max(0,Math.round((+v||0)*100)/100);
   if(it.madeira && (+it.tamanho>0)) it.precoMetro=Math.round((it.preco/it.tamanho)*100)/100; cartChanged(); }
-function cartDisc(idx,v){ const it=CART.itens[idx]; if(!it)return; const lista=itemLista(it); const dp=Math.max(0,Math.min(100,+v||0));
+function cartDisc(idx,v){ const it=CART.itens[idx]; if(!it)return; it.precoManual=true; const lista=itemLista(it); const dp=Math.max(0,Math.min(100,+v||0));
   it.precoLista=lista; it.preco=Math.round(lista*(1-dp/100)*100)/100;
   if(it.madeira && (+it.tamanho>0)) it.precoMetro=Math.round((it.preco/it.tamanho)*100)/100; cartChanged(); }
 /* Ajusta o tamanho da peça de madeira serrada em passos de 0,5 m (mínimo 0,5). */
@@ -4563,7 +4572,7 @@ async function prodImgUpload(input){ const f=input.files&&input.files[0]; if(!f)
     if(url){ if(inp) inp.value=url; prodImgPrev(); toast('Imagem enviada — salve o produto.','ok'); } else { toast('Imagem carregada — salve o produto.','ok'); }
   }; fr.readAsDataURL(f); input.value=''; }
 function permiteVendaSemEstoque(){ return !!((DB._load().empresa||{}).permitirVendaSemEstoque); }
-function vendaItemSemEstoque(i){ const p=DB.get('produtos',i.id); return !!(p && (p.estoque<=0 || p.estoque < i.qtd)); }
+function vendaItemSemEstoque(i){ const p=DB.get('produtos',i.id); return !!(p && !p.servico && (p.estoque<=0 || p.estoque < i.qtd)); }
 function toggleVendaSemEstoque(v){ const d=DB._load(); d.empresa=d.empresa||{}; d.empresa.permitirVendaSemEstoque=!!v; try{ nuvemConfMarcar(d.empresa); }catch(e){} DB._persist(); toast(v?'Venda de produtos SEM estoque liberada':'Venda de produtos sem estoque bloqueada','ok'); }
 function vendaSemEstoqueConfirm(itens){
   const linhas=itens.map(i=>{ const p=DB.get('produtos',i.id)||{}; return `<div class="cart-total-line"><span>${esc(i.nome)}</span><span class="tnum" style="color:var(--neg)">estoque ${fmtQ(+p.estoque||0)} · vendendo ${fmtQ(i.qtd)}</span></div>`; }).join('');
@@ -4619,7 +4628,7 @@ function prodVendavel(p){ return !!p && !p.usoConsumo && (p.situacao||'ativo')!=
 function cartDupMerge(nome){ return confirm('O produto "'+(nome||'')+'" já está lançado no carrinho.\n\n• OK = SOMAR ao item que já está no carrinho\n• Cancelar = adicionar como um NOVO item separado'); }
 function addToCart(id){ const p=DB.get('produtos',id); if(!p) return;
   if(p.usoConsumo){ toast('"'+(p.nome||'Produto')+'" é de uso e consumo interno — não disponível para venda','err'); return; }
-  if(p.estoque<=0 && !permiteVendaSemEstoque()){ toast('Produto sem estoque','err'); return; }
+  if(p.estoque<=0 && !p.servico && !permiteVendaSemEstoque()){ toast('Produto sem estoque','err'); return; }
   if(ehMadeiraSerrada(p)){                                          // madeira serrada: pergunta o tamanho (0,5 em 0,5 m)
     const tam=madeiraTamanhoPrompt(p.nome); if(tam===null) return;
     const precoMetro=+p.preco||0; const custoMetro=+p.custo||0;
@@ -5209,7 +5218,7 @@ function finalizarVenda(){
     if(ct){ const pago=Math.round((((+ct.multaAtrasoPaga||0))+(li.preco*(li.qtd||1)))*100)/100;
       DB.update('contratosAluguel',ct.id,{multaAtrasoPaga:pago, multaAtrasoVendaId:venda.id, multaAtrasoData:today()}); } });
   // baixa de estoque
-  CART.itens.forEach(i=>{ const p=DB.get('produtos',i.id); if(p){ DB.update('produtos',i.id,{estoque:Math.max(0,p.estoque-i.qtd)});
+  CART.itens.forEach(i=>{ const p=DB.get('produtos',i.id); if(p && !p.servico){ DB.update('produtos',i.id,{estoque:Math.max(0,p.estoque-i.qtd)});
     DB.insert('movEstoque',{produtoId:i.id,tipo:'saida',qtd:i.qtd,data:today(),motivo:'Venda PDV'}); } });
   // parcela a prazo (boleto) vira conta a receber com vencimento
   if(prazo>0.01){ const bp=CART.pagamentos.find(p=>p.forma==='Boleto/Prazo')||{}; const nParc=Math.max(1,+bp.boletoParc||1); const dias=(bp.boletoDias!=null?+bp.boletoDias:28);
@@ -7210,7 +7219,7 @@ function notifItens(){ const out=[]; const t=today(); const md=t.slice(5);
     if(rec.length){ const val=rec.reduce((s,f)=>s+(+f.valor||0),0); out.push({icon:'money',cor:'#dc2626',titulo:rec.length+' conta(s) a receber vencida(s)/hoje',sub:BRL(val),rota:'contasrec'}); } }catch(e){}
   try{ const pag=DB.all('financeiro').filter(f=>f.tipo==='pagar'&&['aberto','pendente'].includes(f.status)&&f.vencimento&&f.vencimento<=t);
     if(pag.length){ const val=pag.reduce((s,f)=>s+(+f.valor||0),0); out.push({icon:'money',cor:'#d97706',titulo:pag.length+' conta(s) a pagar vencida(s)/hoje',sub:BRL(val),rota:'contaspag'}); } }catch(e){}
-  try{ const low=DB.all('produtos').filter(p=>!p.usoConsumo && (p.situacao||'ativo')!=='inativo' && +p.estoqueMinimo>0 && (+p.estoque||0)<=+p.estoqueMinimo);
+  try{ const low=DB.all('produtos').filter(p=>!p.usoConsumo && !p.servico && (p.situacao||'ativo')!=='inativo' && +p.estoqueMinimo>0 && (+p.estoque||0)<=+p.estoqueMinimo);
     if(low.length) out.push({icon:'box',cor:'#dc2626',titulo:low.length+' produto(s) em estoque crítico',sub:'abaixo do estoque mínimo',rota:'prod'}); }catch(e){}
   try{ const fu=DB.all('crmDeals').filter(d=>d.proximoContato && d.proximoContato<=t && d.etapa!=='Fechado' && d.etapa!=='Perdido');
     if(fu.length) out.push({icon:'quote',cor:'#7c3aed',titulo:fu.length+' follow-up(s) de WhatsApp atrasado(s)',sub:'contatos no CRM',rota:'crmwa'}); }catch(e){}
@@ -8380,7 +8389,7 @@ const PROD_PROBLEMAS=[
   {k:'nomedup',  rotulo:'Nome repetido', cor:'#0d9488', desc:'Dois ou mais produtos ativos com o mesmo nome', teste:(p,ctx)=>ctx.nomes[normTxt(p.nome||'')]>1},
   {k:'eandup',   rotulo:'Código de barras repetido', cor:'#0d9488', teste:(p,ctx)=>{ const d=((p.codigoBarras||'')+'').replace(/\D/g,''); return !!d && ctx.eans[d]>1; }},
 ];
-function prodProbContexto(){ const ativos=DB.all('produtos').filter(p=>p && (p.situacao||'ativo')!=='inativo'); const nomes={}, eans={};
+function prodProbContexto(){ const ativos=DB.all('produtos').filter(p=>p && !p.servico && (p.situacao||'ativo')!=='inativo'); const nomes={}, eans={};
   ativos.forEach(p=>{ const n=normTxt(p.nome||''); if(n) nomes[n]=(nomes[n]||0)+1; const d=((p.codigoBarras||'')+'').replace(/\D/g,''); if(d) eans[d]=(eans[d]||0)+1; });
   return {ativos, nomes, eans}; }
 function prodProblemasContagem(){ const ctx=prodProbContexto(); const c={}; let qualquer=0;
@@ -12996,7 +13005,7 @@ function sugCalcular(cfg){ cfg=cfg||sugCfg();
   const caminho={}; const compras=(d.compras||[]).slice().sort((a,b)=>String(b.data||'').localeCompare(String(a.data||'')));
   compras.filter(c=>c && c.situacao==='pendente').forEach(c=>(c.itens||[]).forEach(i=>{ if(i&&i.produtoId) caminho[i.produtoId]=(caminho[i.produtoId]||0)+(+i.qtd||0); }));
   const rows=[];
-  (d.produtos||[]).forEach(p=>{ if(!p || p.situacao==='inativo' || p.usoConsumo) return;
+  (d.produtos||[]).forEach(p=>{ if(!p || p.situacao==='inativo' || p.usoConsumo || p.servico) return;
     const vendaDia=(vend[p.id]||0)/cfg.dias; const est=+p.estoque||0; const min=+p.estoqueMinimo||0; const cam=caminho[p.id]||0;
     const fo=sugFornDe(p, compras); const prazo=(fo.prazo!==''&&fo.prazo!=null)?(+fo.prazo||0):cfg.prazo;
     const disp=est+cam;
@@ -18016,7 +18025,7 @@ function finPgDataToggle(pref){ const st=(document.getElementById(pref+'-status'
   const baixado=(st==='pago'||st==='recebido') && w.getAttribute('data-baixado')==='1'; w.style.display=baixado?'':'none'; }
 
 /* =================== LIXEIRA (30 dias) =================== */
-const LIXEIRA_COLS=['clientes','fornecedores','produtos','vendas','financeiro','compras','orcamentos','servicos','funcionarios','vendedores','transportadoras','veiculos','maquinas','contratosAluguel','cheques','notasFiscais'];
+const LIXEIRA_COLS=['listasEscolares','clientes','fornecedores','produtos','vendas','financeiro','compras','orcamentos','servicos','funcionarios','vendedores','transportadoras','veiculos','maquinas','contratosAluguel','cheques','notasFiscais'];
 const LIXEIRA_LABEL={clientes:'Cliente',fornecedores:'Fornecedor',produtos:'Produto',vendas:'Venda',financeiro:'Lançamento financeiro',compras:'Compra/Entrada',orcamentos:'Orçamento',servicos:'Serviço',funcionarios:'Funcionário',vendedores:'Vendedor',transportadoras:'Transportadora',veiculos:'Veículo',maquinas:'Máquina',contratosAluguel:'Contrato de aluguel',cheques:'Cheque',notasFiscais:'Nota fiscal'};
 function lixeiraPurge(){ try{ const d=DB._load(); if(!Array.isArray(d.lixeira)||!d.lixeira.length) return;
   const corte=Date.now()-30*864e5; const antes=d.lixeira.length;
@@ -20103,7 +20112,7 @@ const REPORTS=[
  search:['nome','sku'],searchPh:'Nome ou SKU...',
  nums:[{k:'limite',label:'Estoque abaixo de',default:5}],
  run(f){ const lim=(f.limite==null?5:+f.limite);
-   const rows=DB.all('produtos').filter(p=>!p.usoConsumo && (p.situacao||'ativo')!=='inativo' && (p.estoque||0)<lim && mq(f,p.nome,p.sku))
+   const rows=DB.all('produtos').filter(p=>!p.usoConsumo && !p.servico && (p.situacao||'ativo')!=='inativo' && (p.estoque||0)<lim && mq(f,p.nome,p.sku))
      .map(p=>({id:p.id,nome:p.nome,sku:p.sku||'',categoria:p.categoria||'—',estoque:p.estoque||0,minimo:p.estoqueMinimo||0,unidade:p.unidade||'UN'}))
      .sort((a,b)=>a.estoque-b.estoque);
    return {cols:[{k:'nome',label:'Produto'},{k:'sku',label:'SKU'},{k:'categoria',label:'Categoria'},
@@ -21120,6 +21129,7 @@ function orcEditor(id, modo, opts){ opts=opts||{};
     : (ex&&ex.formaPagamento&&ex.formaPagamento!=='A combinar' ? [{forma:ex.formaPagamento,valor:ex.total||0}] : [{forma:'',valor:(ex?ex.total||0:0)}]);
   try{ ORC._totalAnt=orcCalc().total; }catch(e){ ORC._totalAnt=null; }   // referência para o pagamento acompanhar mudanças do total (frete, itens, desconto)
   ORC.receberLocal = !!(ex && ex.receberLocal);
+  ORC.listaEscolar = (ex && ex.listaEscolar) ? ex.listaEscolar : null;   // orçamento montado a partir de uma lista escolar
   ORC.results=[]; ORC.activePid=null;
   ORC.voltarRota = opts.voltar || (ORC.tipo==='Pedido' ? 'salesvend' : 'orc');
   { const _ped = opts.pedidoId ? DB.get('vendas',opts.pedidoId) : orcPedidoVinculado(id);
@@ -21367,6 +21377,323 @@ function kitRegraTxt(k){ return (k.mix
   ? 'Vale pela quantidade total: '+NUM(kitQtdMin(k))+' unidade(s) entre os produtos da lista'
   : 'Um de cada (na quantidade pedida)') + ' · ' + ((k.excedente==='multiplo')?'a cada kit completo':'excedente também com desconto'); }
 function kitTipoTxt(k){ return k.modo==='preco'?'Preço fechado':k.modo==='item'?'Preço por item':((k.valor||0)+'% de desconto'); }
+/* =====================================================================================
+   PAPELARIA — SERVIÇOS (cópia, impressão, plastificação, encadernação…)
+   Serviço = produto marcado com servico:true. Não tem estoque (não baixa, não entra na
+   contagem, no estoque mínimo nem na sugestão de compra) e pode ter PREÇO POR FAIXA DE
+   QUANTIDADE (faixasPreco:[{ate:10,preco:0.5},{ate:50,preco:0.4},{ate:0,preco:0.3}] — ate 0 = "acima").
+   No PDV aparecem como botões rápidos. Categoria padrão: SERVIÇOS (sai separado nos relatórios).
+===================================================================================== */
+function prodEhServico(p){ return !!(p && p.servico); }
+function servFaixasOrd(p){ return ((p&&p.faixasPreco)||[]).filter(f=>f && (+f.preco||0)>0)
+  .map(f=>({ate:+f.ate||0, preco:Math.round((+f.preco||0)*100)/100}))
+  .sort((a,b)=>(a.ate||Infinity)-(b.ate||Infinity)); }
+/* Preço unitário do serviço para a quantidade (a faixa é escolhida pela quantidade total da linha). */
+function servPrecoFaixa(p, qtd){ const F=servFaixasOrd(p); if(!F.length) return +(p&&p.preco)||0; qtd=+qtd||0;
+  for(const f of F){ if(!f.ate || qtd<=f.ate) return f.preco; } return F[F.length-1].preco; }
+function servFaixasTxt(p){ const F=servFaixasOrd(p); if(!F.length) return BRL(+p.preco||0)+' / '+(p.unidade||'UN');
+  let ini=1; return F.map(f=>{ const t=f.ate?(ini===f.ate?(''+f.ate):(ini+'–'+f.ate)):(ini+'+'); ini=(f.ate||0)+1; return t+': '+BRL(f.preco); }).join(' · '); }
+/* Linhas do carrinho / orçamento: serviço com faixa acompanha a quantidade (a não ser que o preço
+   tenha sido digitado à mão na linha). */
+function servRecalcItens(itens, chaveId){ try{ (itens||[]).forEach(it=>{ if(!it || it.precoManual) return;
+    const p=DB.get('produtos', it[chaveId||'id']||it.produtoId||it.id); if(!p || !p.servico || !servFaixasOrd(p).length) return;
+    const pr=servPrecoFaixa(p, it.qtd); if(Math.abs((+it.preco||0)-pr)>0.0001){ it.preco=pr; it.precoLista=pr; } }); }catch(e){} }
+const SERV_PADRAO=[
+  {nome:'CÓPIA P/B A4', faixas:[{ate:10,preco:0.5},{ate:50,preco:0.4},{ate:0,preco:0.3}]},
+  {nome:'CÓPIA COLORIDA A4', faixas:[{ate:10,preco:2},{ate:50,preco:1.5},{ate:0,preco:1.2}]},
+  {nome:'IMPRESSÃO P/B A4', faixas:[{ate:10,preco:1},{ate:50,preco:0.8},{ate:0,preco:0.6}]},
+  {nome:'IMPRESSÃO COLORIDA A4', faixas:[{ate:10,preco:2.5},{ate:50,preco:2},{ate:0,preco:1.5}]},
+  {nome:'PLASTIFICAÇÃO A4', faixas:[{ate:0,preco:5}]},
+  {nome:'ENCADERNAÇÃO ESPIRAL', faixas:[{ate:0,preco:8}]} ];
+function servLista(){ return DB.all('produtos').filter(p=>p && p.servico && (p.situacao||'ativo')!=='inativo').sort((a,b)=>(a.nome||'').localeCompare(b.nome||'','pt-BR')); }
+function servCandidatosConverter(){ return DB.all('produtos').filter(p=>p && !p.servico && (p.situacao||'ativo')!=='inativo' && /\b(IMPRESS|COPIA|CÓPIA|XEROX|PLASTIFIC|ENCADERN|DIGITALIZ|SCANNER)/i.test(p.nome||'')).slice(0,40); }
+function servVendidoMes(){ const ini=today().slice(0,8)+'01'; let q=0, v=0;
+  DB.all('vendas').forEach(s=>{ if(!s || s.status==='cancelada' || (s.data||'')<ini) return; if(typeof pedidoStatusInfo==='function' && pedidoStatusInfo(s).k!=='faturado') return;
+    (s.itens||[]).forEach(i=>{ const p=DB.get('produtos',i.produtoId||i.id); if(p && p.servico){ q+=(+i.qtd||0); v+=(+i.qtd||0)*(+i.preco||0); } }); });
+  return {q:Math.round(q*1000)/1000, v:Math.round(v*100)/100}; }
+function viewServPap(){ const L=servLista(); const conv=servCandidatosConverter(); const mes=servVendidoMes();
+  document.getElementById('view').innerHTML=`
+   <div class="bi-banner" style="margin-bottom:16px"><div>${ico('print')}</div>
+     <div><b>Serviços — cópias, impressões, plastificação, encadernação</b><p>Serviço <b>não tem estoque</b> (não baixa, não entra na contagem nem no estoque mínimo) e pode ter <b>preço por quantidade</b> (ex.: 1–10 cópias R$ 0,50; 11–50 R$ 0,40). No PDV os serviços marcados aparecem como <b>botões rápidos</b> logo abaixo da busca.</p></div></div>
+   <div class="toolbar">
+     <span class="t-mut" style="font-size:12.5px">Vendido no mês: <b>${NUM(mes.q)}</b> unidade(s) · <b>${BRL(mes.v)}</b> (categoria SERVIÇOS nos relatórios)</span>
+     <div class="spacer"></div>
+     ${L.length?'':`<button class="btn btn-ghost btn-sm" onclick="servCriarPadrao()">${ico('plus')} Criar serviços padrão</button>`}
+     <button class="btn btn-amber btn-sm" onclick="servForm()">${ico('plus')} Novo serviço</button></div>
+   <div class="card"><div class="tbl-wrap"><table><thead><tr><th>Serviço</th><th>SKU</th><th>Preço por quantidade</th><th>NCM</th><th class="t-center">Botão no PDV</th><th style="width:90px"></th></tr></thead><tbody>
+   ${L.length?L.map(p=>`<tr><td><b>${esc(p.nome)}</b></td><td class="t-mut">${esc(p.sku||'')}</td><td style="font-size:12.5px">${esc(servFaixasTxt(p))}</td>
+      <td class="t-mut">${esc(p.ncm||'—')}</td>
+      <td class="t-center"><span class="switch ${p.servicoAtalho!==false?'on':''}" style="cursor:pointer;display:inline-block" onclick="servAtalhoToggle('${p.id}')"></span></td>
+      <td class="t-right"><button class="btn-icon btn-ghost" onclick="servForm('${p.id}')" title="Editar">${ico('edit')}</button><button class="btn-icon btn-ghost" style="color:var(--neg)" onclick="servRemover('${p.id}')" title="Deixa de ser serviço / inativa">${ico('trash')}</button></td></tr>`).join('')
+     :`<tr><td colspan="6"><div class="empty" style="padding:26px">${ico('print')}<h4>Nenhum serviço cadastrado</h4><p class="t-mut">Clique em <b>Criar serviços padrão</b> (cópia, impressão, plastificação, encadernação) e ajuste os preços.</p></div></td></tr>`}
+   </tbody></table></div></div>
+   ${conv.length?`<div class="card card-pad" style="margin-top:14px"><b style="font-size:13px">${ico('alert')} Produtos que parecem serviço</b>
+     <p class="t-mut" style="font-size:12px;margin:4px 0 8px">Estão cadastrados como produto (mexem no estoque e na contagem). Marque como serviço para tirar do estoque.</p>
+     <div style="display:flex;flex-direction:column;gap:6px">${conv.map(p=>`<div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;border-bottom:1px solid var(--line-2);padding:5px 0"><span style="flex:1;min-width:200px"><b>${esc(p.nome)}</b> <span class="t-mut" style="font-size:11.5px">SKU ${esc(p.sku||'—')} · ${BRL(+p.preco||0)} · estoque ${NUM(+p.estoque||0)}</span></span>
+       <button class="btn btn-ghost btn-sm" onclick="servConverter('${p.id}')">${ico('check')} Marcar como serviço</button></div>`).join('')}</div></div>`:''}`; }
+function servNovoProduto(nome, faixas, extra){ const pr=(faixas&&faixas.length)?(+faixas[0].preco||0):0;
+  try{ catRegistrar('SERVIÇOS','produto'); }catch(e){}
+  return DB.insert('produtos', Object.assign({ nome:(nome||'SERVIÇO').toUpperCase(), sku:prodNovoSKU(), categoria:'SERVIÇOS', grupo:'SERVIÇOS', subgrupo:'', unidade:'UN',
+    preco:pr, custo:0, estoque:0, estoqueMinimo:0, servico:true, servicoAtalho:true, faixasPreco:(faixas||[]).map(f=>({ate:+f.ate||0,preco:+f.preco||0})), situacao:'ativo', marca:'' }, extra||{})); }
+function servCriarPadrao(){ const ja=new Set(servLista().map(p=>normTxt(p.nome)));
+  let n=0; SERV_PADRAO.forEach(s=>{ if(ja.has(normTxt(s.nome))) return; servNovoProduto(s.nome, s.faixas); n++; });
+  try{ logAcao('Serviços padrão criados', n+' serviço(s)'); }catch(e){} try{ nuvemPushJa(); }catch(e){}
+  toast(n+' serviço(s) criados — os preços são de EXEMPLO: confira e ajuste cada um','ok'); viewServPap(); }
+function servConverter(id){ const p=DB.get('produtos',id); if(!p) return;
+  if(!confirm('Marcar "'+p.nome+'" como SERVIÇO?\n\n• Sai do controle de estoque (não baixa mais nas vendas, não entra na contagem)\n• Passa para a categoria SERVIÇOS\n• O histórico de vendas continua igual')) return;
+  try{ catRegistrar('SERVIÇOS','produto'); }catch(e){}
+  DB.update('produtos',id,{servico:true, servicoAtalho:true, categoria:'SERVIÇOS', grupo:'SERVIÇOS', subgrupo:'', estoqueMinimo:0, faixasPreco:(p.faixasPreco&&p.faixasPreco.length)?p.faixasPreco:[{ate:0,preco:+p.preco||0}]});
+  try{ logAcao('Produto marcado como serviço', p.nome||''); }catch(e){} try{ nuvemPushJa(); }catch(e){}
+  toast('"'+p.nome+'" agora é serviço','ok'); viewServPap(); }
+function servAtalhoToggle(id){ const p=DB.get('produtos',id); if(!p) return; DB.update('produtos',id,{servicoAtalho:p.servicoAtalho===false}); try{ nuvemPushJa(); }catch(e){} viewServPap(); }
+function servRemover(id){ const p=DB.get('produtos',id); if(!p) return;
+  const esc2=prompt('O que fazer com "'+p.nome+'"?\n\n1 = INATIVAR (some do PDV, o histórico fica)\n2 = Voltar a ser PRODUTO com estoque','1'); if(esc2===null) return;
+  if((''+esc2).trim()==='2') DB.update('produtos',id,{servico:false, servicoAtalho:false}); else DB.update('produtos',id,{situacao:'inativo'});
+  try{ nuvemPushJa(); }catch(e){} viewServPap(); }
+let SERVF=null;
+function servForm(id){ const p=id?DB.get('produtos',id):null;
+  SERVF={ id:p?p.id:null, nome:p?p.nome:'', unidade:p?(p.unidade||'UN'):'UN', ncm:p?(p.ncm||''):'', atalho:p?p.servicoAtalho!==false:true,
+    faixas:(p&&p.faixasPreco&&p.faixasPreco.length)?servFaixasOrd(p):[{ate:10,preco:0},{ate:0,preco:0}] };
+  openModal(servFormHTML(), true); }
+function servFormHTML(){ const S=SERVF; let ini=1;
+  return `<div class="modal-head"><h3>${ico('print')} ${S.id?'Editar serviço':'Novo serviço'}</h3><button class="btn-icon btn-ghost" onclick="closeModal()">${ico('x')}</button></div>
+   <div class="modal-body">
+     <div class="field"><label>Nome do serviço *</label><input class="cad-upper" value="${esc(S.nome)}" placeholder="Ex.: CÓPIA P/B A4" oninput="SERVF.nome=this.value"></div>
+     <div class="field-row"><div class="field"><label>Unidade</label><input value="${esc(S.unidade)}" oninput="SERVF.unidade=this.value" placeholder="UN"></div>
+       <div class="field"><label>NCM (para a nota fiscal)</label><input value="${esc(S.ncm)}" oninput="SERVF.ncm=this.value" placeholder="use o indicado pelo contador"></div></div>
+     <label style="font-size:12px;color:var(--muted);font-weight:600">Preço por quantidade</label>
+     <p class="t-mut" style="font-size:11.5px;margin:2px 0 6px">A quantidade da linha escolhe a faixa. Deixe "Até" em branco na última faixa para valer "acima". Uma faixa só = preço fixo.</p>
+     <table><thead><tr><th>De</th><th>Até (qtd)</th><th class="t-right">Preço unitário (R$)</th><th></th></tr></thead><tbody>
+     ${S.faixas.map((f,i)=>{ const de=ini; ini=(+f.ate||0)+1; return `<tr><td class="t-mut">${de}</td>
+        <td><input type="number" min="0" step="1" value="${f.ate||''}" placeholder="acima" style="width:90px" onchange="SERVF.faixas[${i}].ate=+this.value||0;servFormRedesenhar()"></td>
+        <td class="t-right"><input inputmode="decimal" value="${(+f.preco||0)?(''+(+f.preco).toFixed(2)).replace('.',','):''}" placeholder="0,00" style="width:100px;text-align:right" onchange="SERVF.faixas[${i}].preco=numBR(this.value)"></td>
+        <td>${S.faixas.length>1?`<button class="btn-icon btn-ghost" onclick="SERVF.faixas.splice(${i},1);servFormRedesenhar()" title="Remover faixa">${ico('x')}</button>`:''}</td></tr>`; }).join('')}
+     </tbody></table>
+     <button class="btn btn-ghost btn-sm" style="margin-top:6px" onclick="SERVF.faixas.push({ate:0,preco:0});servFormRedesenhar()">${ico('plus')} Faixa</button>
+     <div class="switch-row" style="margin-top:12px" onclick="SERVF.atalho=!SERVF.atalho;this.querySelector('.switch').classList.toggle('on',SERVF.atalho)"><div><b>Botão rápido no PDV</b><p class="t-mut">Aparece abaixo da busca de produtos.</p></div><span class="switch ${S.atalho?'on':''}"></span></div>
+   </div>
+   <div class="modal-foot"><button class="btn btn-ghost" onclick="closeModal()">Cancelar</button><div style="flex:1"></div><button class="btn btn-amber" onclick="servSalvar()">${ico('check')} Salvar</button></div>`; }
+function servFormRedesenhar(){ const m=document.querySelector('.modal'); const box=document.getElementById('modal')||m; try{ openModal(servFormHTML(), true); }catch(e){} }
+function servSalvar(){ const S=SERVF; if(!S) return; const nome=(S.nome||'').trim().toUpperCase(); if(!nome){ toast('Informe o nome do serviço','err'); return; }
+  const F=S.faixas.map(f=>({ate:+f.ate||0, preco:Math.round((+f.preco||0)*100)/100})).filter(f=>f.preco>0);
+  if(!F.length){ toast('Informe o preço (pelo menos uma faixa com valor)','err'); return; }
+  const fx=F.sort((a,b)=>(a.ate||Infinity)-(b.ate||Infinity));
+  const dados={ nome, unidade:(S.unidade||'UN').toUpperCase(), ncm:(S.ncm||'').replace(/\D/g,''), servicoAtalho:!!S.atalho, faixasPreco:fx, preco:fx[0].preco };
+  if(S.id) DB.update('produtos',S.id,Object.assign(dados,{servico:true, estoqueMinimo:0})); else servNovoProduto(nome, fx, dados);
+  try{ nuvemPushJa(); }catch(e){} closeModal(); toast('Serviço salvo','ok'); viewServPap(); }
+/* ---- PDV: botões rápidos ---- */
+function servPdvBarraHTML(){ let L=[]; try{ L=servLista().filter(p=>p.servicoAtalho!==false).slice(0,10); }catch(e){} if(!L.length) return '';
+  return `<div class="no-print" style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin:-4px 0 10px">
+    <span class="t-mut" style="font-size:11.5px;font-weight:700;letter-spacing:.03em">SERVIÇOS</span>
+    ${L.map(p=>`<button class="btn btn-ghost btn-sm" style="border:1px solid var(--line);padding:4px 10px" title="${esc(servFaixasTxt(p))}" onclick="servPdvAdd('${p.id}')">${ico('print')} ${esc(p.nome)}</button>`).join('')}</div>`; }
+function servPdvAdd(id){ const p=DB.get('produtos',id); if(!p) return;
+  const r=prompt('Quantidade de "'+p.nome+'"\n\nPreços: '+servFaixasTxt(p),'1'); if(r===null) return;
+  const q=Math.round(Math.max(0,numBR(r))*1000)/1000; if(!(q>0)){ toast('Quantidade inválida','err'); return; }
+  const ex=CART.itens.find(i=>i.id===p.id && !i.precoManual);
+  if(ex) ex.qtd=Math.round((ex.qtd+q)*1000)/1000;
+  else CART.itens.push({id:p.id,nome:p.nome,qtd:q,preco:servPrecoFaixa(p,q),precoLista:servPrecoFaixa(p,q),custo:+p.custo||0,unidade:p.unidade||'UN',servico:true,retiradoLoja:false});
+  servRecalcItens(CART.itens,'id'); renderPDV(); try{ scrollAteItem('cart-items', CART.itens.findIndex(i=>i.id===p.id)); }catch(e){} }
+
+/* =====================================================================================
+   PAPELARIA — LISTAS DE MATERIAL ESCOLAR
+   Coleção listasEscolares: {escola, serie, ano, obs, itens:[{desc,qtd,econ,marca}]}.
+   econ/marca = produto da opção econômica e da opção de marca. "Montar orçamento" abre o
+   editor de orçamento já com os itens (o vendedor confere, escolhe cliente/pagamento e salva —
+   o fluxo de orçamento/pedido/PDV continua o mesmo). O orçamento guarda listaEscolar e o
+   status de separação (listaSep: separando → pronto → entregue) para avisar o cliente.
+===================================================================================== */
+let LISTA_TAB='listas', LISTA_Q='', LISTAF=null;
+const LISTA_STOP=new Set(['de','da','do','das','dos','com','para','p','c','e','em','cor','unid','und','un','unidade','unidades','tipo','marca','sugestao','sugerida','ou','similar','pacote','pct','cx','caixa','folha','obs','uso','no','na','nos','nas','a','o','as','os']);
+function listaNorm(t){ return normTxt(t).replace(/[^a-z0-9 ]/g,' ').replace(/\s+/g,' ').trim(); }
+function listaToks(t){ return listaNorm(t).split(' ').filter(w=>w && (w.length>=2 || /\d/.test(w)) && !LISTA_STOP.has(w)); }
+function listaTokOk(nome, tok, palavras){ if(nome.indexOf(tok)>=0) return true;
+  if(tok.length>4 && /s$/.test(tok)){ const s=tok.replace(/(oes|aes)$/,'ao').replace(/(res|zes|les)$/,m=>m[0]).replace(/s$/,''); if(nome.indexOf(s)>=0) return true; }
+  // abreviação no cadastro: "UNIV" = universitário, "MAT" = matérias, "ESC" = escolar
+  if(tok.length>=5 && palavras){ for(const w of palavras){ if(w.length>=3 && !/\d/.test(w) && tok.startsWith(w)) return true; } }
+  return false; }
+let _listaProdIdx=null, _listaProdRev=-1;
+function listaProdIdx(){ const rev=DB._rev||0; if(_listaProdIdx && _listaProdRev===rev) return _listaProdIdx;
+  _listaProdIdx=DB.all('produtos').filter(p=>p && !p.usoConsumo && !p.servico && (p.situacao||'ativo')!=='inativo').map(p=>{ const n=listaNorm(p.nome); return {p, n:' '+n+' ', w:n.split(' ')}; });
+  _listaProdRev=rev; return _listaProdIdx; }
+/* Produtos que combinam com a descrição de um item da lista, do mais parecido para o menos. */
+function listaCandidatos(desc, max){ const toks=listaToks(desc); if(!toks.length) return [];
+  const idx=listaProdIdx(); const out=[];
+  for(const x of idx){ let ok=0; for(const t of toks){ if(listaTokOk(x.n,t,x.w)) ok++; }
+    if(!ok) continue; const sc=ok/toks.length; if(!listaTokOk(x.n,toks[0],x.w) && sc<1) continue; if(sc<0.6 && ok<3) continue;
+    out.push({p:x.p, sc}); }
+  out.sort((a,b)=> (b.sc-a.sc) || (((+b.p.estoque||0)>0)-((+a.p.estoque||0)>0)) || ((+a.p.preco||0)-(+b.p.preco||0)));
+  if(max==='sc') return out; return out.slice(0,max||12).map(x=>x.p); }
+/* Econômica = o mais barato entre os MAIS parecidos (com estoque, se houver). Marca = o mais caro desse
+   mesmo grupo, limitado a 4x o econômico (evita caixa com 24 unidades no lugar de 1). */
+function listaSugerir(desc){ const C=listaCandidatos(desc,'sc'); if(!C.length) return {econ:null, marca:null};
+  const topSc=C[0].sc; let grupo=C.filter(x=>x.sc>=topSc-0.001).map(x=>x.p).filter(p=>(+p.preco||0)>0); if(!grupo.length) grupo=C.slice(0,8).map(x=>x.p);
+  const comEst=grupo.filter(p=>(+p.estoque||0)>0); const base=(comEst.length?comEst:grupo).slice(0,30);
+  const porPreco=base.slice().sort((a,b)=>(+a.preco||0)-(+b.preco||0)); const econ=porPreco[0];
+  const lim=(+econ.preco||0)*4; const caros=porPreco.filter(p=>p.id!==econ.id && (!(lim>0) || (+p.preco||0)<=lim));
+  const marca=caros.length?caros[caros.length-1]:null;
+  return {econ:econ?econ.id:null, marca:marca?marca.id:null}; }
+/* "02 cadernos universitários 96 folhas" / "Lápis preto nº 2 - 3 unid" / "• cola branca 90g (1)" */
+function listaParseLinha(l){ let s=(''+(l||'')).replace(/^[\s•\-–*·>]+|[\s.;]+$/g,'').trim(); if(!s || s.length<2) return null; let q=1, m;
+  if((m=s.match(/^(\d{1,3})\s*(?:x|un\.?|und\.?|unid\.?|unidades?|pcts?\.?|pacotes?|cx\.?|caixas?)?\s*[-–:.)]?\s+(.+)$/i))){ q=+m[1]; s=m[2]; }
+  else if((m=s.match(/^(.+?)\s*[-–:(]\s*(\d{1,3})\s*(?:x|un\.?|und\.?|unid\.?|unidades?|pcts?|pacotes?)?\s*\)?$/i))){ q=+m[2]; s=m[1]; }
+  else if((m=s.match(/^(.+?)\s+(\d{1,3})\s*(?:un\.?|und\.?|unid\.?|unidades?)$/i))){ q=+m[2]; s=m[1]; }
+  s=s.replace(/^(de|do|da|dos|das)\s+/i,'').trim(); if(!s) return null; return {desc:s.toUpperCase(), qtd:Math.max(1,q||1)}; }
+function listaAnoPadrao(){ const d=new Date(); return d.getMonth()>=8 ? d.getFullYear()+1 : d.getFullYear(); }
+function listaTotais(L){ let e=0,m=0,falta=0; (L.itens||[]).forEach(it=>{ const pe=it.econ?DB.get('produtos',it.econ):null, pm=it.marca?DB.get('produtos',it.marca):null;
+    const q=+it.qtd||1; if(!pe&&!pm){ falta++; return; } e+=q*(+((pe||pm).preco)||0); m+=q*(+((pm||pe).preco)||0); });
+  return {econ:Math.round(e*100)/100, marca:Math.round(m*100)/100, falta}; }
+function listaPedidos(id){ return DB.all('orcamentos').filter(o=>o && o.listaEscolar && (!id || o.listaEscolar.id===id)); }
+function viewListas(){ const tabs=[['listas','Listas'],['pedidos','Pedidos das listas'],['mais','Mais vendidos']];
+  document.getElementById('view').innerHTML=`
+   <div class="bi-banner" style="margin-bottom:16px"><div>${ico('doc')}</div>
+     <div><b>Listas de material escolar</b><p>Cadastre a lista de cada escola e série (vale para o ano todo e pode ser copiada para o próximo). Quando o cliente trouxer a lista, cole o texto e o sistema encontra os produtos — com uma <b>opção econômica</b> e uma <b>opção de marca</b>. O orçamento sai pronto para conferir; depois acompanhe a <b>separação</b> e avise o cliente no WhatsApp.</p></div></div>
+   <div class="toolbar"><div class="seg">${tabs.map(([k,l])=>`<button class="${LISTA_TAB===k?'on':''}" onclick="LISTA_TAB='${k}';viewListas()">${l}</button>`).join('')}</div>
+     <div class="spacer"></div>
+     <button class="btn btn-ghost btn-sm" onclick="listaForm(null,true)">${ico('doc')} Lista do cliente (avulsa)</button>
+     <button class="btn btn-amber btn-sm" onclick="listaForm()">${ico('plus')} Nova lista de escola</button></div>
+   <div id="lista-body">${LISTA_TAB==='pedidos'?listaPedidosHTML():LISTA_TAB==='mais'?listaMaisHTML():listaListasHTML()}</div>`; }
+function listaListasHTML(){ const q=listaNorm(LISTA_Q||'');
+  const L=DB.all('listasEscolares').filter(l=>l && (!q || listaNorm((l.escola||'')+' '+(l.serie||'')+' '+(l.ano||'')).indexOf(q)>=0))
+    .sort((a,b)=>((b.ano||0)-(a.ano||0)) || (a.escola||'').localeCompare(b.escola||'','pt-BR') || (a.serie||'').localeCompare(b.serie||'','pt-BR',{numeric:true}));
+  return `<div class="field" style="max-width:380px;margin:0 0 10px"><input placeholder="Buscar escola ou série…" value="${esc(LISTA_Q||'')}" oninput="LISTA_Q=this.value;clearTimeout(window._lqT);window._lqT=setTimeout(()=>{const b=document.getElementById('lista-body'); if(b) b.innerHTML=listaListasHTML(); const i=document.querySelector('#lista-body input'); if(i){ i.focus(); i.setSelectionRange(i.value.length,i.value.length);} },250)"></div>
+   <div class="card"><div class="tbl-wrap"><table><thead><tr><th>Escola</th><th>Série</th><th>Ano</th><th class="t-right">Itens</th><th class="t-right">Econômica</th><th class="t-right">Marca</th><th class="t-right">Pedidos</th><th style="width:190px"></th></tr></thead><tbody>
+   ${L.length?L.map(l=>{ const t=listaTotais(l); const np=listaPedidos(l.id).length; return `<tr><td><b>${esc(l.escola||'—')}</b></td><td>${esc(l.serie||'')}</td><td class="tnum">${esc(''+(l.ano||''))}</td>
+      <td class="t-right tnum">${NUM((l.itens||[]).length)}${t.falta?` <span class="tag warn" title="Itens sem produto escolhido">${t.falta} sem produto</span>`:''}</td>
+      <td class="t-right tnum">${BRL(t.econ)}</td><td class="t-right tnum">${BRL(t.marca)}</td><td class="t-right tnum">${NUM(np)}</td>
+      <td class="t-right" style="white-space:nowrap"><button class="btn btn-amber btn-sm" onclick="listaMontar('${l.id}')">${ico('quote')} Orçamento</button>
+        <button class="btn-icon btn-ghost" onclick="listaForm('${l.id}')" title="Editar">${ico('edit')}</button>
+        <button class="btn-icon btn-ghost" onclick="listaCopiarAno('${l.id}')" title="Copiar para o próximo ano">${ico('layers')}</button>
+        <button class="btn-icon btn-ghost" style="color:var(--neg)" onclick="listaExcluir('${l.id}')" title="Excluir">${ico('trash')}</button></td></tr>`; }).join('')
+   :`<tr><td colspan="8"><div class="empty" style="padding:30px">${ico('doc')}<h4>Nenhuma lista cadastrada</h4><p class="t-mut">Clique em <b>Nova lista de escola</b> e cole o texto da lista.</p></div></td></tr>`}
+   </tbody></table></div></div>`; }
+const LISTA_SEP={'':'—', separando:'Separando', pronto:'Pronto p/ retirar', entregue:'Entregue'};
+function listaStatusDoc(o){ try{ const v=DB.all('vendas').find(x=>x && x.fromOrcId===o.id && x.status!=='cancelada');
+    if(v){ const s=pedidoStatusInfo(v); return {txt:(s.k==='faturado'?'Faturado':('Pedido · '+s.label)), cls:(s.k==='faturado'?'pos':'warn')}; } }catch(e){}
+  return {txt:'Orçamento', cls:'gray'}; }
+function listaPedidosHTML(){ const L=listaPedidos().sort((a,b)=>((b.criadoEm||b.data||'')+'').localeCompare((a.criadoEm||a.data||'')+''));
+  return `<div class="card"><div class="tbl-wrap"><table><thead><tr><th>Nº</th><th>Data</th><th>Cliente</th><th>Lista</th><th class="t-right">Total</th><th>Situação</th><th>Separação</th><th style="width:220px"></th></tr></thead><tbody>
+   ${L.length?L.map(o=>{ const st=listaStatusDoc(o); const sep=o.listaSep||''; const le=o.listaEscolar||{}; return `<tr>
+     <td class="tnum">${esc(''+(o.numero||''))}</td><td class="tnum">${fDate(o.data)}</td><td><b>${esc(o.clienteNome||'Consumidor')}</b></td>
+     <td style="font-size:12px">${esc(le.escola||'Lista avulsa')}${le.serie?(' · '+esc(le.serie)):''}${le.opcao?` <span class="t-mut">(${le.opcao==='marca'?'marca':'econômica'})</span>`:''}</td>
+     <td class="t-right tnum">${BRL(+o.total||0)}</td><td><span class="tag ${st.cls}">${esc(st.txt)}</span></td>
+     <td><select onchange="listaSepSet('${o.id}',this.value)" style="padding:4px 6px">${Object.keys(LISTA_SEP).map(k=>`<option value="${k}" ${sep===k?'selected':''}>${LISTA_SEP[k]}</option>`).join('')}</select></td>
+     <td class="t-right" style="white-space:nowrap">${sep==='pronto'?`<button class="btn btn-ghost btn-sm" style="color:#15803d;border:1px solid #86efac" onclick="listaAvisarWa('${o.id}')">WhatsApp</button>`:''}
+       <button class="btn btn-ghost btn-sm" onclick="orcEditarDe('${o.id}')">Abrir</button></td></tr>`; }).join('')
+   :`<tr><td colspan="8"><div class="empty" style="padding:30px"><h4>Nenhum orçamento de lista ainda</h4><p class="t-mut">Use o botão <b>Orçamento</b> de uma lista, ou <b>Lista do cliente (avulsa)</b>.</p></div></td></tr>`}
+   </tbody></table></div></div>
+   <p class="t-mut" style="font-size:12px;margin-top:8px">O pagamento (inclusive sinal/parcial) é feito no PDV, importando o pedido — como qualquer outro pedido. Aqui você acompanha a separação e avisa o cliente.</p>`; }
+function listaSepSet(id,v){ DB.update('orcamentos',id,{listaSep:v||'', listaSepEm:new Date().toISOString()}); try{ nuvemPushJa(); }catch(e){}
+  if(v==='pronto'){ toast('Marcado como pronto — clique em WhatsApp para avisar o cliente','ok'); } const b=document.getElementById('lista-body'); if(b) b.innerHTML=listaPedidosHTML(); }
+function listaAvisarWa(id){ const o=DB.get('orcamentos',id); if(!o) return; const c=o.clienteId?DB.get('clientes',o.clienteId):null;
+  const ph=c?waPhone(c):''; if(!ph){ toast('O cliente deste orçamento não tem celular cadastrado','err'); return; }
+  const le=o.listaEscolar||{}; const nome=((c&&c.nome)||o.clienteNome||'').trim().split(' ')[0];
+  const msg='Olá '+nome+'! A lista de material'+(le.escola?(' da '+le.escola):'')+(le.serie?(' ('+le.serie+')'):'')+' está separada e pronta para retirada na '+EMPRESA_NOME()+'. Total: '+BRL(+o.total||0)+'. Te esperamos!';
+  try{ logAcao('Lista escolar — aviso de pronto', (o.clienteNome||'')+' · Nº '+(o.numero||'')); }catch(e){}
+  window.open('https://wa.me/'+ph+'?text='+encodeURIComponent(msg),'_blank'); }
+function listaMaisHTML(){ const ano=listaAnoPadrao(); const por={}; let docs=0;
+  listaPedidos().forEach(o=>{ const st=listaStatusDoc(o); if(st.txt!=='Faturado') return; docs++;
+    (o.itens||[]).forEach(i=>{ const k=i.produtoId||i.nome; if(!por[k]) por[k]={nome:i.nome,qtd:0,valor:0}; por[k].qtd+=(+i.qtd||0); por[k].valor+=(+i.qtd||0)*(+i.preco||0); }); });
+  const L=Object.values(por).sort((a,b)=>b.qtd-a.qtd).slice(0,60);
+  const porLista={}; listaPedidos().forEach(o=>{ const le=o.listaEscolar||{}; const k=(le.escola||'Lista avulsa')+(le.serie?(' · '+le.serie):''); porLista[k]=(porLista[k]||0)+1; });
+  return `<div class="grid2" style="display:grid;grid-template-columns:2fr 1fr;gap:14px">
+   <div class="card"><div class="card-head"><div><h3>Itens mais vendidos pelas listas</h3><div class="ch-sub">${NUM(docs)} lista(s) faturada(s) — use para planejar a compra da volta às aulas ${ano}</div></div></div>
+   <div class="tbl-wrap"><table><thead><tr><th>Produto</th><th class="t-right">Qtd</th><th class="t-right">Valor</th></tr></thead><tbody>
+   ${L.length?L.map(x=>`<tr><td>${esc(x.nome||'')}</td><td class="t-right tnum">${NUM(x.qtd)}</td><td class="t-right tnum">${BRL(x.valor)}</td></tr>`).join(''):`<tr><td colspan="3" class="t-mut" style="padding:18px">Ainda não há listas faturadas.</td></tr>`}
+   </tbody></table></div></div>
+   <div class="card"><div class="card-head"><div><h3>Orçamentos por lista</h3></div></div><div class="tbl-wrap"><table><tbody>
+   ${Object.keys(porLista).length?Object.entries(porLista).sort((a,b)=>b[1]-a[1]).map(([k,n])=>`<tr><td>${esc(k)}</td><td class="t-right tnum">${NUM(n)}</td></tr>`).join(''):'<tr><td class="t-mut" style="padding:18px">—</td></tr>'}
+   </tbody></table></div></div></div>`; }
+/* ---- editor da lista ---- */
+function listaForm(id, avulsa){ const l=id?DB.get('listasEscolares',id):null;
+  LISTAF={ id:l?l.id:null, avulsa:!!avulsa, escola:l?(l.escola||''):'', serie:l?(l.serie||''):'', ano:l?(l.ano||listaAnoPadrao()):listaAnoPadrao(), obs:l?(l.obs||''):'',
+    itens:l?(l.itens||[]).map(it=>({desc:it.desc||'',qtd:+it.qtd||1,econ:it.econ||null,marca:it.marca||null})):[], texto:'' };
+  openModal(listaFormHTML(), true); }
+function listaProdOpt(pid){ const p=pid?DB.get('produtos',pid):null; return p?`${esc(p.nome)} — ${BRL(+p.preco||0)}${(+p.estoque||0)<=0?' (sem estoque)':''}`:'—'; }
+function listaSelHTML(i, campo){ const it=LISTAF.itens[i]; const cur=it[campo]; const C=listaCandidatos(it.desc,10); if(cur && !C.some(p=>p.id===cur)){ const p=DB.get('produtos',cur); if(p) C.unshift(p); }
+  return `<select style="width:100%;max-width:260px;font-size:12px" onchange="LISTAF.itens[${i}].${campo}=this.value||null;listaFormTotais()"><option value="">— nenhum —</option>${C.map(p=>`<option value="${p.id}" ${p.id===cur?'selected':''}>${listaProdOpt(p.id)}</option>`).join('')}</select>`; }
+function listaFormItensHTML(){ const I=LISTAF.itens;
+  if(!I.length) return `<div class="t-mut" style="font-size:12.5px;padding:10px 0">Nenhum item. Cole a lista acima e clique em <b>Encontrar produtos</b>, ou adicione item por item.</div>`;
+  return `<table><thead><tr><th style="width:60px">Qtd</th><th>Item da lista</th><th>Opção econômica</th><th>Opção de marca</th><th></th></tr></thead><tbody>
+   ${I.map((it,i)=>`<tr style="${(!it.econ&&!it.marca)?'background:#fff7ed':''}"><td><input type="number" min="1" step="1" value="${it.qtd}" style="width:56px" onchange="LISTAF.itens[${i}].qtd=Math.max(1,+this.value||1);listaFormTotais()"></td>
+     <td><input value="${esc(it.desc)}" style="width:100%;min-width:180px;text-transform:uppercase" onchange="LISTAF.itens[${i}].desc=this.value.toUpperCase()"></td>
+     <td>${listaSelHTML(i,'econ')}</td><td>${listaSelHTML(i,'marca')}</td>
+     <td style="white-space:nowrap"><button class="btn-icon btn-ghost" title="Procurar outro produto" onclick="listaBuscarItem(${i})">${ico('search')}</button><button class="btn-icon btn-ghost" title="Remover" onclick="LISTAF.itens.splice(${i},1);listaFormItensRefresh()">${ico('x')}</button></td></tr>`).join('')}
+   </tbody></table>`; }
+function listaFormHTML(){ const F=LISTAF; const escolas=[...new Set(DB.all('listasEscolares').map(l=>l.escola).filter(Boolean))].sort();
+  return `<div class="modal-head"><h3>${ico('doc')} ${F.avulsa?'Lista trazida pelo cliente':(F.id?'Editar lista escolar':'Nova lista escolar')}</h3><button class="btn-icon btn-ghost" onclick="closeModal()">${ico('x')}</button></div>
+   <div class="modal-body" style="max-height:74vh;overflow:auto">
+     ${F.avulsa?`<p class="t-mut" style="font-size:12.5px;margin:0 0 8px">Cole (ou digite) a lista do cliente — um item por linha. Se quiser reaproveitar para outros alunos, preencha a escola e a série e marque <b>Salvar a lista</b>.</p>`:''}
+     <div class="field-row"><div class="field"><label>Escola${F.avulsa?'':' *'}</label><input list="lista-escolas" class="cad-upper" value="${esc(F.escola)}" oninput="LISTAF.escola=this.value" placeholder="Ex.: EMEF JOÃO DA SILVA"><datalist id="lista-escolas">${escolas.map(e=>`<option>${esc(e)}</option>`).join('')}</datalist></div>
+       <div class="field"><label>Série / turma${F.avulsa?'':' *'}</label><input value="${esc(F.serie)}" oninput="LISTAF.serie=this.value" placeholder="Ex.: 3º ano"></div>
+       <div class="field" style="max-width:110px"><label>Ano</label><input type="number" value="${F.ano}" oninput="LISTAF.ano=+this.value||LISTAF.ano"></div></div>
+     <div class="field"><label>Colar a lista (um item por linha)</label><textarea id="lista-texto" rows="5" placeholder="2 cadernos universitários 10 matérias&#10;1 caixa de lápis de cor 24 cores&#10;3 lápis preto nº 2&#10;1 cola branca 90g" oninput="LISTAF.texto=this.value">${esc(F.texto||'')}</textarea>
+       <div style="display:flex;gap:8px;margin-top:6px;flex-wrap:wrap"><button class="btn btn-amber btn-sm" onclick="listaInterpretar()">${ico('search')} Encontrar produtos</button><button class="btn btn-ghost btn-sm" onclick="LISTAF.itens.push({desc:'',qtd:1,econ:null,marca:null});listaFormItensRefresh()">${ico('plus')} Item</button>
+       <span class="t-mut" style="font-size:11.5px;align-self:center">Itens em laranja ficaram sem produto: troque a descrição ou use a lupa.</span></div></div>
+     <div id="lista-itens">${listaFormItensHTML()}</div>
+     <div id="lista-tot" style="margin-top:10px">${listaFormTotaisHTML()}</div>
+     <div class="field" style="margin-top:8px"><label>Observações</label><input value="${esc(F.obs)}" oninput="LISTAF.obs=this.value" placeholder="Ex.: material entregue na 1ª semana de aula"></div>
+   </div>
+   <div class="modal-foot"><button class="btn btn-ghost" onclick="closeModal()">Cancelar</button><div style="flex:1"></div>
+     ${F.avulsa?`<label style="display:flex;align-items:center;gap:6px;font-size:12.5px"><input type="checkbox" id="lista-salvar-av"> Salvar a lista</label>`:`<button class="btn btn-ghost" onclick="listaSalvar(false)">${ico('check')} Salvar lista</button>`}
+     <button class="btn btn-amber" onclick="listaSalvar(true)">${ico('quote')} ${F.avulsa?'Montar orçamento':'Salvar e montar orçamento'}</button></div>`; }
+function listaFormTotaisHTML(){ const t=listaTotais(LISTAF);
+  return `<div style="display:flex;gap:16px;flex-wrap:wrap;font-size:13px"><span>Econômica: <b class="tnum">${BRL(t.econ)}</b></span><span>Marca: <b class="tnum">${BRL(t.marca)}</b></span>${t.falta?`<span style="color:var(--amber-d)">${t.falta} item(ns) sem produto</span>`:''}</div>`; }
+function listaFormTotais(){ const el=document.getElementById('lista-tot'); if(el) el.innerHTML=listaFormTotaisHTML(); }
+function listaFormItensRefresh(){ const el=document.getElementById('lista-itens'); if(el) el.innerHTML=listaFormItensHTML(); listaFormTotais(); }
+function listaInterpretar(){ const txt=(document.getElementById('lista-texto')||{}).value||LISTAF.texto||''; LISTAF.texto=txt;
+  const linhas=txt.split(/\r?\n|;/).map(listaParseLinha).filter(Boolean); if(!linhas.length){ toast('Cole a lista no campo (um item por linha)','err'); return; }
+  let achou=0; linhas.forEach(x=>{ const s=listaSugerir(x.desc); if(s.econ||s.marca) achou++; LISTAF.itens.push({desc:x.desc, qtd:x.qtd, econ:s.econ, marca:s.marca}); });
+  LISTAF.texto=''; const ta=document.getElementById('lista-texto'); if(ta) ta.value='';
+  listaFormItensRefresh(); toast(linhas.length+' item(ns) lidos · '+achou+' com produto encontrado'+(linhas.length-achou?(' · '+(linhas.length-achou)+' para conferir'):''), achou===linhas.length?'ok':'info'); }
+function listaBuscarItem(i){ const it=LISTAF.itens[i]; const q=prompt('Procurar produto para "'+it.desc+'"\n(digite parte do nome, SKU ou código de barras)', it.desc); if(q===null) return;
+  const qq=q.trim(); let p=null;
+  if(/^\d{4,}$/.test(qq)) p=DB.all('produtos').find(x=>x && ((''+x.sku)===qq || (''+(x.codigoBarras||'')).replace(/\D/g,'')===qq));
+  if(p){ it.econ=p.id; listaFormItensRefresh(); return; }
+  const C=listaCandidatos(qq,12); if(!C.length){ toast('Nenhum produto encontrado com "'+qq+'"','err'); return; }
+  it.desc=it.desc||qq.toUpperCase(); const porPreco=C.slice(0,8).sort((a,b)=>(+a.preco||0)-(+b.preco||0));
+  it.econ=porPreco[0].id; it.marca=porPreco.length>1?porPreco[porPreco.length-1].id:null;
+  it._q=qq; listaFormItensRefresh(); toast('Produtos atualizados — confira nas duas opções','ok'); }
+function listaSalvar(montar){ const F=LISTAF; if(!F) return; const itens=F.itens.filter(it=>(it.desc||'').trim()).map(it=>({desc:it.desc.trim().toUpperCase(),qtd:+it.qtd||1,econ:it.econ||null,marca:it.marca||null}));
+  if(!itens.length){ toast('A lista está vazia','err'); return; }
+  const salvar = !F.avulsa || ((document.getElementById('lista-salvar-av')||{}).checked);
+  if(salvar && !F.avulsa && (!(F.escola||'').trim() || !(F.serie||'').trim())){ toast('Informe a escola e a série','err'); return; }
+  let id=F.id; const dados={escola:(F.escola||'').trim().toUpperCase(), serie:(F.serie||'').trim(), ano:+F.ano||listaAnoPadrao(), obs:F.obs||'', itens};
+  if(salvar){ if(id) DB.update('listasEscolares',id,dados); else id=DB.insert('listasEscolares',dados).id; try{ nuvemPushJa(); }catch(e){} }
+  closeModal();
+  if(montar){ listaMontarDe(Object.assign({id:salvar?id:null},dados)); return; }
+  toast('Lista salva','ok'); LISTA_TAB='listas'; viewListas(); }
+function listaCopiarAno(id){ const l=DB.get('listasEscolares',id); if(!l) return; const novo=(+l.ano||listaAnoPadrao())+1;
+  if(DB.all('listasEscolares').some(x=>x.escola===l.escola && x.serie===l.serie && +x.ano===novo)){ toast('Já existe a lista de '+novo+' para esta escola e série','err'); return; }
+  DB.insert('listasEscolares',{escola:l.escola, serie:l.serie, ano:novo, obs:l.obs||'', itens:(l.itens||[]).map(i=>({...i}))}); try{ nuvemPushJa(); }catch(e){}
+  toast('Lista copiada para '+novo+' — confira se a escola mudou algum item','ok'); viewListas(); }
+function listaExcluir(id){ const l=DB.get('listasEscolares',id); if(!l) return; if(!confirm('Excluir a lista '+(l.escola||'')+' · '+(l.serie||'')+' ('+(l.ano||'')+')?\n\nOs orçamentos já feitos com ela continuam.')) return;
+  DB.remove('listasEscolares',id); try{ nuvemPushJa(); }catch(e){} viewListas(); }
+function listaMontar(id){ const l=DB.get('listasEscolares',id); if(l) listaMontarDe(l); }
+/* Pergunta a opção (econômica / marca) e abre o ORÇAMENTO já com os itens. */
+function listaMontarDe(l){ window.__listaMontar=l; const t=listaTotais(l);
+  openModal(`<div class="modal-head"><h3>${ico('quote')} Montar orçamento da lista</h3><button class="btn-icon btn-ghost" onclick="closeModal()">${ico('x')}</button></div>
+   <div class="modal-body"><p style="margin:0 0 10px;font-size:13px">${esc(l.escola||'Lista do cliente')}${l.serie?(' · '+esc(l.serie)):''} — ${NUM((l.itens||[]).length)} item(ns)</p>
+     <div style="display:flex;flex-direction:column;gap:8px">
+       <button class="btn btn-ghost" style="justify-content:space-between" onclick="listaAbrirOrc('econ')"><span><b>Opção econômica</b> — o mais em conta de cada item</span><b class="tnum">${BRL(t.econ)}</b></button>
+       <button class="btn btn-ghost" style="justify-content:space-between" onclick="listaAbrirOrc('marca')"><span><b>Opção de marca</b> — produtos de linha superior</span><b class="tnum">${BRL(t.marca)}</b></button></div>
+     ${t.falta?`<p class="t-mut" style="font-size:12px;margin-top:10px;color:var(--amber-d)">${t.falta} item(ns) sem produto vão para as observações do orçamento para você lançar à mão.</p>`:''}
+     <p class="t-mut" style="font-size:11.5px;margin-top:8px">No orçamento dá para trocar item por item (ex.: caderno de marca e o resto econômico).</p></div>`, true); }
+function listaAbrirOrc(opcao){ const l=window.__listaMontar; if(!l) return; closeModal();
+  const itens=[], semProd=[];
+  (l.itens||[]).forEach(it=>{ const pid=(opcao==='marca'?(it.marca||it.econ):(it.econ||it.marca)); const p=pid?DB.get('produtos',pid):null;
+    if(!p){ semProd.push((it.qtd>1?it.qtd+'× ':'')+it.desc); return; }
+    const ex=itens.find(x=>x.produtoId===p.id); if(ex){ ex.qtd+=(+it.qtd||1); return; }
+    itens.push({produtoId:p.id,nome:p.nome,qtd:+it.qtd||1,preco:+p.preco||0,precoLista:+p.preco||0,custo:+p.custo||0,unidade:p.unidade||'UN'}); });
+  go('orc'); setTimeout(()=>{ try{
+    orcEditor(null,'orcamento');
+    ORC.itens=itens; ORC.listaEscolar={id:l.id||null, escola:l.escola||'', serie:l.serie||'', ano:l.ano||'', opcao};
+    ORC.obs=('Lista escolar: '+(l.escola||'lista do cliente')+(l.serie?(' — '+l.serie):'')+(l.ano?(' ('+l.ano+')'):'')+(opcao==='marca'?' · opção de marca':' · opção econômica')
+      +(semProd.length?('\nITENS SEM PRODUTO (lançar à mão): '+semProd.join('; ')):''));
+    const ob=document.getElementById('orc-obs'); if(ob) ob.value=ORC.obs;
+    orcRefreshItens(); orcTotals();
+    toast(itens.length+' item(ns) no orçamento'+(semProd.length?(' · '+semProd.length+' sem produto (nas observações)'):'')+' — escolha cliente, vendedor e pagamento e salve','ok');
+  }catch(e){ console.error('lista → orçamento',e); toast('Não foi possível montar o orçamento: '+((e&&e.message)||e),'err'); } }, 60); }
+
 function viewKits(){ const kits=DB.all('kitsPromo');
   document.getElementById('view').innerHTML=`
    <div class="bi-banner" style="margin-bottom:16px"><div>${ico('gift')}</div>
@@ -21788,7 +22115,7 @@ function orcRemoverDescontos(){
   if(bv&&bp){ bv.className='btn btn-sm btn-amber'; bp.className='btn btn-sm btn-ghost'; }
   orcRefreshItens(); orcTotals(); toast('Descontos removidos — nenhum desconto será aplicado até você informar um novo','ok'); }
 function orcDel(ix){ ORC.itens.splice(ix,1); kitAposMudanca('orc'); orcRefreshItens(); orcTotals(); }
-function orcRefreshItens(idxNovo, sempreRolar){ const it=document.getElementById('orc-items'); if(it)it.innerHTML=orcItemsTable();
+function orcRefreshItens(idxNovo, sempreRolar){ try{ servRecalcItens(ORC.itens,'produtoId'); }catch(e){} const it=document.getElementById('orc-items'); if(it)it.innerHTML=orcItemsTable();
   const nIt=(ORC.itens||[]).length;
   // rola quando: veio um índice, a lista cresceu, ou foi pedido explicitamente
   // (caso do produto repetido, em que a quantidade aumenta sem criar linha nova)
@@ -23902,7 +24229,7 @@ async function orcSave(){
     total:Math.round(t.total*100)/100, custoTotal:Math.round(t.custo*100)/100, formaPagamento:pg.forma, pagamentos:pg.pagamentos,
     receberLocal:!!ORC.receberLocal, creditoUsar:Math.round((+ORC.creditoUsar||0)*100)/100,
     recebimentoLocal: ORC.receberLocal ? (pg.pagamentos.length?pg.pagamentos:(function(){ const f=ORC.pagamentos.find(p=>p.forma); if(f){ const o={forma:f.forma,valor:Math.round(t.total*100)/100}; if(pagFormaParcelavel(f.forma) && +f.parcelas>1) o.parcelas=Math.min(12,+f.parcelas); return [o]; } return [{forma:'A combinar no local',valor:Math.round(t.total*100)/100}]; })()) : null,
-    validade:daysAgo(-(ORC.validadeDias)), status:(prev.status==='receber_local'?'receber_local':'aberto'), obs:ORC.obs,
+    validade:daysAgo(-(ORC.validadeDias)), status:(prev.status==='receber_local'?'receber_local':'aberto'), obs:ORC.obs, listaEscolar:(ORC.listaEscolar||prev.listaEscolar||null),
     criadoEm: ORC.id?(prev.criadoEm||((prev.data||today())+'T00:00:00')):new Date().toISOString() };
   let savedId=ORC.id;
   if(ORC.id){ DB.update('orcamentos',ORC.id,obj); orcSyncPedido(ORC.id);
@@ -24765,7 +25092,7 @@ async function nuvemAppSessao(){
    Requer ter rodado o SQL de segurança e criado a conta da loja em Authentication. Para desligar, ponha false. */
 const NUVEM_SECURE = (CFG_E.nuvemSegura !== false);
 /* coleções (listas de registros com id) que são mescladas registro-a-registro entre aparelhos */
-const NUVEM_COLS = ['produtos','clientes','fornecedores','vendedores','transportadoras','funcionarios','servicos','contasBancarias','centroCustos','planoContas','gruposCP','vendas','financeiro','movEstoque','compras','cotacoes','servicosContratados','servicosPrestados','devolucoes','creditos','creditoMovs','orcamentos','categorias','indicadores','tarefas','caixaSessoes','caixaMovs','maquinas','contratosAluguel','notasFiscais','beneficiosFiscais','recebimentos','pedidosOnline','ordensCompra','cotacaoRespostas','clientesSaaS','mensalidades','cheques','conciliacaoTx','veiculos','abastecimentos','manutencoes','chamados','contratos','licencas','implantacoes','leads','gruposProd','subgruposProd','cfopContrapartida','kitsPromo','crmDeals','crmRespostas','prospecEmpresas','calcObraServicos','listaPedidos','produtosFalta','marcas','notasRecebidas','transferencias','lixeira','ofxImportacoes','folha','dispositivos'];
+const NUVEM_COLS = ['produtos','clientes','fornecedores','vendedores','transportadoras','funcionarios','servicos','contasBancarias','centroCustos','planoContas','gruposCP','vendas','financeiro','movEstoque','compras','cotacoes','servicosContratados','servicosPrestados','devolucoes','creditos','creditoMovs','orcamentos','categorias','indicadores','tarefas','caixaSessoes','caixaMovs','maquinas','contratosAluguel','notasFiscais','beneficiosFiscais','recebimentos','pedidosOnline','ordensCompra','cotacaoRespostas','clientesSaaS','mensalidades','cheques','conciliacaoTx','veiculos','abastecimentos','manutencoes','chamados','contratos','licencas','implantacoes','leads','gruposProd','subgruposProd','cfopContrapartida','kitsPromo','crmDeals','crmRespostas','prospecEmpresas','calcObraServicos','listaPedidos','produtosFalta','marcas','notasRecebidas','transferencias','lixeira','ofxImportacoes','folha','dispositivos','listasEscolares'];
 let NUVEM_SB=null, NUVEM_SB_URL=null, NUVEM_LOADING=false, _nuvemTimer=null, NUVEM_AUTH_USER=null, _nuvemOffline=false;
 let NUVEM_RT=null, NUVEM_RT_TENANT=null, _nuvemLastPushTs='', _nuvemPendingPush=false, _nuvemPendingApply=false, _nuvemRtTick=null, _nuvemReautAviso=false;
 function nuvemCfg(){ let c={}; try{ c=JSON.parse(localStorage.getItem(NUVEM_CFG_KEY)||'{}')||{}; }catch(e){ c={}; }
@@ -26779,7 +27106,7 @@ function pendColetar(){ const d=DB._load(); const hoje=today(); const G=[];
     const ent=vendas.filter(v=>v.entrega && v.entregaStatus==='pendente');
     add({ id:'entregas', grupo:'Vendas', nivel:'aviso', n:ent.length, titulo:'Entregas pendentes', acoes:[{rotulo:'Rota de entregas', fn:"go('entregas')"}] }); }
   { const falta=(d.produtosFalta||[]).length;
-    const baixo=(d.produtos||[]).filter(p=>p && p.situacao!=='inativo' && !p.usoConsumo && (+p.estoqueMinimo||0)>0 && (+p.estoque||0)<=(+p.estoqueMinimo||0)).length;
+    const baixo=(d.produtos||[]).filter(p=>p && p.situacao!=='inativo' && !p.usoConsumo && !p.servico && (+p.estoqueMinimo||0)>0 && (+p.estoque||0)<=(+p.estoqueMinimo||0)).length;
     add({ id:'faltas', grupo:'Compras', nivel:'aviso', n:falta, titulo:'Produtos na lista de falta', acoes:[{rotulo:'Produtos em falta', fn:"go('faltas')"}] });
     add({ id:'baixo', grupo:'Compras', nivel:'aviso', n:baixo, titulo:'Produtos no estoque mínimo ou abaixo', acoes:[{rotulo:'Sugestão de compra', fn:"go('sugcompra')"}] }); }
   { const pend=dispPendentes(); const prob=dispProblemas();
@@ -29655,7 +29982,7 @@ function contInativosCount(){ try{ return DB.all('produtos').filter(p=>p&&p.situ
 /* A lista da contagem, já com o filtro de estoque aplicado. */
 function contProdsFiltrados(){
   const f=CONT.filtro||'';
-  let prods=DB.all('produtos').filter(p=> f==='inativos' ? p.situacao==='inativo' : p.situacao!=='inativo');
+  let prods=DB.all('produtos').filter(p=> !p.servico && (f==='inativos' ? p.situacao==='inativo' : p.situacao!=='inativo'));
   prods=prods.filter(p=>(!CONT.cat||p.categoria===CONT.cat)&&(!CONT.grupo||p.grupo===CONT.grupo)&&(!CONT.sub||p.subgrupo===CONT.sub));
   if(f==='div') prods=prods.filter(p=>{ const c=CONT.cont[p.id]; return c!=null && c!=='' && (+c)!==(+p.estoque||0); });
   else if(f==='neg') prods=prods.filter(p=>(+p.estoque||0)<0);
@@ -34815,7 +35142,7 @@ function saveFiscalCfg(){ const g=x=>(document.getElementById(x).value||'').trim
   try{ nuvemConfMarcar(); }catch(e){}   // marca a config como alterada para SINCRONIZAR (token do Focus, série, CNPJ, regime...) para todas as máquinas
   DB._persist(); try{ fiscalGuardSalvar(); }catch(e){}   // cópia fora do pacote sincronizado
   const fe=document.getElementById('foot-empresa'); if(fe)fe.textContent=d.empresa.nome; toast('Configurações fiscais salvas — serão sincronizadas para as outras máquinas','ok'); }
-function authMenuItems(){ const out=[]; NAV.forEach(g=>g.items.forEach(it=>out.push({id:it.id,label:it.label,grp:g.g}))); return out; }
+function authMenuItems(){ const out=[]; NAV.forEach(g=>g.items.forEach(it=>{ if(typeof telaOculta==='function' && telaOculta(it.id)) return; out.push({id:it.id,label:it.label,grp:g.g}); })); return out; }
 /* O administrador padrão usa um id FIXO. Antes ele nascia com um id novo a cada
    vez: como a base começa vazia enquanto a nuvem não carrega, todo aparelho (e todo
    navegador com dados limpos) criava mais um "Administrador", e a sincronização
@@ -34895,8 +35222,11 @@ async function authUserByLogin(u,p){ u=(u||'').trim().toLowerCase(); if(!u) retu
   const cands=DB.all('funcionarios').filter(f=>f.username && f.username.toLowerCase()===u && (f.situacao||'ativo')==='ativo' && senhaTemAlguma(f));
   for(const f of cands){ if(await authSenhaOk(f,p)) return f; } return null; }
 let SAAS_IMPERSONATE=null;
+function telaOculta(id){ try{ return (CFG_E.ocultarTelas||[]).indexOf(id)>=0; }catch(e){ return false; } }
 function canAccess(id){ if(!CURRENT_USER) return false;
-  if(NAV_OCULTOS[id] && NAV_OCULTOS[id].permDe) id=NAV_OCULTOS[id].permDe; // rota oculta usa a permissão da tela onde fica o acesso
+  if(telaOculta(id)) return false;   // tela escondida nesta empresa (CONFIG_EMPRESA.ocultarTelas)
+  if(NAV_OCULTOS[id] && NAV_OCULTOS[id].permDe) id=NAV_OCULTOS[id].permDe;
+  if(telaOculta(id)) return false; // rota oculta usa a permissão da tela onde fica o acesso
   if(SAAS_IMPERSONATE){ if(id==='dash') return true; return (SAAS_IMPERSONATE.modulos||[]).includes(id); }
   if(CURRENT_USER.perfil==='admin') return true;
   if(id==='dashvend') return funcEhVendedor(CURRENT_USER);   // só vendedores (e admin, acima) veem o Painel do Vendedor
