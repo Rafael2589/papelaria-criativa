@@ -48,7 +48,7 @@ const CONFIG_EMPRESA = {
      Aparece no topo do menu e no rodapé das Configurações. Troque a cada publicação.
      MANTENHA O FORMATO 'vDD/MM-X' — é ele que o sistema usa para comparar as máquinas
      da loja e avisar quando alguma ficou para trás.                                  */
-  versao: 'v09/10-A',
+  versao: 'v09/10-B',
 
   /* 4) NUVEM (Supabase)  ------------------------------------------------------------
      Cole aqui a Project URL e a chave PUBLISHABLE do projeto Supabase DESTA empresa
@@ -21485,7 +21485,7 @@ function servSalvar(){ const S=SERVF; if(!S) return; const nome=(S.nome||'').tri
 function servPdvBarraHTML(){ let L=[]; try{ L=servLista().filter(p=>p.servicoAtalho!==false).slice(0,10); }catch(e){} if(!L.length) return '';
   return `<div class="no-print" style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin:-4px 0 10px">
     <span class="t-mut" style="font-size:11.5px;font-weight:700;letter-spacing:.03em">SERVIÇOS</span>
-    ${L.map(p=>`<button class="btn btn-ghost btn-sm" style="border:1px solid var(--line);padding:4px 10px" title="${esc(servFaixasTxt(p))}" onclick="servPdvAdd('${p.id}')">${ico('print')} ${esc(p.nome)}</button>`).join('')}</div>`; }
+    ${L.map(p=>`<button class="btn btn-ghost btn-sm" style="border:1px solid var(--line);padding:4px 10px" title="${esc(servFaixasTxt(p))}" onclick="servPdvAdd('${p.id}')">${ico('print')} ${p.sku?`<b style="color:var(--amber-d)">${esc(p.sku)}</b> · `:''}${esc(p.nome)}</button>`).join('')}</div>`; }
 function servPdvAdd(id){ const p=DB.get('produtos',id); if(!p) return;
   const r=prompt('Quantidade de "'+p.nome+'"\n\nPreços: '+servFaixasTxt(p),'1'); if(r===null) return;
   const q=Math.round(Math.max(0,numBR(r))*1000)/1000; if(!(q>0)){ toast('Quantidade inválida','err'); return; }
