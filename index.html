@@ -48,7 +48,7 @@ const CONFIG_EMPRESA = {
      Aparece no topo do menu e no rodapé das Configurações. Troque a cada publicação.
      MANTENHA O FORMATO 'vDD/MM-X' — é ele que o sistema usa para comparar as máquinas
      da loja e avisar quando alguma ficou para trás.                                  */
-  versao: 'v07/10-D',
+  versao: 'v08/10-A',
 
   /* 4) NUVEM (Supabase)  ------------------------------------------------------------
      Cole aqui a Project URL e a chave PUBLISHABLE do projeto Supabase DESTA empresa
@@ -26118,6 +26118,7 @@ function nuvemSyncInicial(depois, denovo){
       return false; }
     const fn=_syncGateDepois; _syncGateDepois=null; nuvemTravaHide(); _syncGateProm=null;
     try{ if(typeof logoRestaurarSeSumiu==='function') logoRestaurarSeSumiu(); }catch(e){}
+    try{ authSyncCurrentUser(); }catch(e){}
     try{ if(typeof fn==='function') fn(); }catch(e){}
     try{ if(typeof CURRENT_USER!=='undefined' && CURRENT_USER) uiRedesenhar(); }catch(e){}
     return true; })();
@@ -34922,9 +34923,20 @@ function authPermsDoUsuario(u){
 }
 /* Reaplica ao vivo as permissões do usuário logado (após salvar ou sincronizar):
    atualiza a cópia em memória e reconstrói o menu se o acesso mudou. */
+/* Usuário provisório da nuvem: confere a cada 15 s se o cadastro do funcionário já chegou. */
+try{ setInterval(function(){ try{ if(typeof CURRENT_USER!=='undefined' && CURRENT_USER && String(CURRENT_USER.id||'').indexOf('cloud-')===0) authSyncCurrentUser(); }catch(e){} }, 15000); }catch(e){}
 function authSyncCurrentUser(){ try{
   if(!CURRENT_USER || !CURRENT_USER.id || !DB.get) return;
-  const live=DB.get('funcionarios',CURRENT_USER.id); if(!live) return;
+  let live=DB.get('funcionarios',CURRENT_USER.id);
+  // Entrou pela conta da nuvem ANTES de o cadastro do funcionário chegar a este computador (nuvem
+  // lenta, sincronização incompleta): ficou como usuário provisório "cloud-…" (só o Painel). Assim
+  // que o cadastro com esse e-mail aparecer, troca pelo funcionário — com as permissões dele.
+  if(!live && String(CURRENT_USER.id).indexOf('cloud-')===0){
+    const em=String(CURRENT_USER.id).slice(6).trim().toLowerCase();
+    live=DB.all('funcionarios').find(f=>f && f.email && (''+f.email).trim().toLowerCase()===em && (f.situacao||'ativo')==='ativo')||null;
+    if(live){ try{ acessoDiaGravar(live); }catch(e){} try{ logAcao('Permissões do funcionário aplicadas', (live.nome||em)+' — cadastro chegou da nuvem depois do login'); }catch(e){} }
+  }
+  if(!live) return;
   const antes=JSON.stringify(authPermsDoUsuario(CURRENT_USER).slice().sort());
   CURRENT_USER=live;
   const depois=JSON.stringify(authPermsDoUsuario(CURRENT_USER).slice().sort());
