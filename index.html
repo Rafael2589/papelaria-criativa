@@ -48,7 +48,7 @@ const CONFIG_EMPRESA = {
      Aparece no topo do menu e no rodapé das Configurações. Troque a cada publicação.
      MANTENHA O FORMATO 'vDD/MM-X' — é ele que o sistema usa para comparar as máquinas
      da loja e avisar quando alguma ficou para trás.                                  */
-  versao: 'v09/10-B',
+  versao: 'v09/10-E',
 
   /* 4) NUVEM (Supabase)  ------------------------------------------------------------
      Cole aqui a Project URL e a chave PUBLISHABLE do projeto Supabase DESTA empresa
@@ -1792,7 +1792,7 @@ const DB = {
     else this._ensure();
     return this.cache; },
   _ensure(){ // backfill de coleções para compatibilidade ao evoluir o schema
-    const cols=['produtos','clientes','fornecedores','vendedores','transportadoras','funcionarios','servicos','contasBancarias','centroCustos','planoContas','gruposCP','vendas','financeiro','movEstoque','compras','cotacoes','servicosContratados','servicosPrestados','devolucoes','creditos','creditoMovs','orcamentos','categorias','indicadores','tarefas','caixaSessoes','caixaMovs','maquinas','contratosAluguel','notasFiscais','beneficiosFiscais','recebimentos','pedidosOnline','ordensCompra','cotacaoRespostas','clientesSaaS','mensalidades','cheques','conciliacaoTx','veiculos','abastecimentos','manutencoes','chamados','contratos','licencas','implantacoes','leads','gruposProd','subgruposProd','notasRecebidas','prospecEmpresas','calcObraServicos','listaPedidos','produtosFalta','transferencias','marcas','lixeira','ofxImportacoes','dispositivos','listasEscolares'];
+    const cols=['produtos','clientes','fornecedores','vendedores','transportadoras','funcionarios','servicos','contasBancarias','centroCustos','planoContas','gruposCP','vendas','financeiro','movEstoque','compras','cotacoes','servicosContratados','servicosPrestados','devolucoes','creditos','creditoMovs','orcamentos','categorias','indicadores','tarefas','caixaSessoes','caixaMovs','maquinas','contratosAluguel','notasFiscais','beneficiosFiscais','recebimentos','pedidosOnline','ordensCompra','cotacaoRespostas','clientesSaaS','mensalidades','cheques','conciliacaoTx','veiculos','abastecimentos','manutencoes','chamados','contratos','licencas','implantacoes','leads','gruposProd','subgruposProd','notasRecebidas','prospecEmpresas','calcObraServicos','listaPedidos','produtosFalta','transferencias','marcas','lixeira','ofxImportacoes','dispositivos','listasEscolares','gruposVariacao'];
     let changed=false; cols.forEach(c=>{ if(!Array.isArray(this.cache[c])){ this.cache[c]=[]; changed=true; } });
     if(!this.cache.empresa){ this.cache.empresa={nome:EMPRESA_NOME(),cidade:(CFG_E.cidade||'')}; changed=true; }
     // UF da loja: se não estiver preenchida, deduz (cidade "Cidade/UF" → CEP → DDD do telefone) e grava,
@@ -1869,8 +1869,12 @@ const DB = {
       catch(e2){ try{ avisoStorageCheio(true); }catch(_){} try{ bkpAuto('sem espaço para salvar'); }catch(_){} try{ migrarImagensAuto('sem espaço'); }catch(_){}}} },
   all(col){ return this._load()[col]||[]; },
   get(col,id){ return this.all(col).find(x=>x.id===id); },
-  insert(col,obj){ obj.id=obj.id||uid(); obj._mod=new Date().toISOString(); if(!obj._cri) obj._cri=obj._mod; const d=this._load(); if(!Array.isArray(d[col])) d[col]=[]; d[col].unshift(obj); this._persist(); return obj; },
-  update(col,id,patch){ const x=this.get(col,id); if(x){Object.assign(x,patch); x._mod=new Date().toISOString(); this._persist(); try{ edLinhaGravou(id); }catch(e){}} return x; },
+  insert(col,obj){ if(col==='movEstoque' && obj && obj.produtoId){ try{ const _p=this.get('produtos',obj.produtoId); if(_p && _p.servico){ obj.id=obj.id||uid(); return obj; } }catch(e){} }   // serviço: sem movimentação de estoque
+    obj.id=obj.id||uid(); obj._mod=new Date().toISOString(); if(!obj._cri) obj._cri=obj._mod; const d=this._load(); if(!Array.isArray(d[col])) d[col]=[]; d[col].unshift(obj); this._persist(); return obj; },
+  update(col,id,patch){ const x=this.get(col,id); if(x){
+    // SERVIÇO não tem estoque: nenhuma rotina (estorno, troca, nota de entrada, contagem…) consegue somar/baixar estoque nele
+    if(col==='produtos' && patch && ('estoque' in patch) && (patch.servico===true || (x.servico && patch.servico!==false))) patch=Object.assign({},patch,{estoque:0});
+    Object.assign(x,patch); x._mod=new Date().toISOString(); this._persist(); try{ edLinhaGravou(id); }catch(e){}} return x; },
   remove(col,id){ const d=this._load();
     try{ if((col==='notasFiscais'||col==='vendas') && typeof logAcao==='function' && !NUVEM_LOADING){ const it=(d[col]||[]).find(x=>x&&x.id===id);
       if(it) logAcao(col==='vendas'?'Venda removida':'Nota fiscal removida', (it.numero?('nº '+it.numero+' · '):'')+BRL(it.total||it.valor||0)+(it.clienteNome?(' · '+it.clienteNome):'')+(it.status?(' · '+it.status):''), id); } }catch(e){}
@@ -2224,6 +2228,7 @@ const NAV=[
     {id:'func',label:'Funcionários e Vendedores',icon:'people',title:'Funcionários e Vendedores',sub:'Equipe da loja — vendedores são definidos pelo cargo'},
     {id:'indic',label:'Indicadores',icon:'gift',title:'Indicadores',sub:'Quem indica clientes'},
     {id:'prod',label:'Produtos',icon:'prod',title:'Produtos & Estoque',sub:'Catálogo e controle de estoque'},
+    {id:'variacoes',label:'Produtos com variações',icon:'layers',title:'Produtos com variações',sub:'Mesmo produto em várias cores, tamanhos ou modelos'},
     {id:'servpap',label:'Serviços (cópias e impressões)',icon:'print',title:'Serviços',sub:'Cópia, impressão, plastificação, encadernação — sem estoque, preço por quantidade'},
     {id:'contagem',label:'Contagem de Inventário',icon:'layers',title:'Contagem de Inventário',sub:'Conferência física e ajuste de estoque'},
     {id:'cat',label:'Categorias de Produtos',icon:'layers',title:'Categorias de Produtos',sub:'Organização do catálogo'},
@@ -2343,7 +2348,7 @@ function navGo(id){ STATE.menuId=id; go(id); }
 function navReport(id,repId){ STATE.menuId=id; toggleSidebar(false); openReport(repId); }
 /* Mapa de rota -> função que desenha a tela. Fica numa função para poder ser
    usado tanto pela navegação (go) quanto pela atualização em segundo plano. */
-function rotaViews(){ return {servpap:viewServPap,listas:viewListas,vendascfg:viewVendasCfg,dash:viewDash,dashvend:viewDashVend,pdv:viewPDV,orc:viewOrc,sales:viewSales,prod:viewProd,cli:viewCli,func:viewFunc,contasrec:viewContasReceber,contaspag:viewContasPagar,cheques:viewCheques,concil:viewConciliacao,contasbanc:viewContasBancarias,gruposcp:viewGruposCP,deppessoal:viewDepPessoal,rep:viewRep,cfg:viewCfg,ficha:fichaAbrirNaAba,frete:viewFrete,caixa:viewCaixa,entregas:viewEntregas,maquinas:viewMaquinas,aluguel:viewAluguel,
+function rotaViews(){ return {variacoes:viewVariacoes,servpap:viewServPap,listas:viewListas,vendascfg:viewVendasCfg,dash:viewDash,dashvend:viewDashVend,pdv:viewPDV,orc:viewOrc,sales:viewSales,prod:viewProd,cli:viewCli,func:viewFunc,contasrec:viewContasReceber,contaspag:viewContasPagar,cheques:viewCheques,concil:viewConciliacao,contasbanc:viewContasBancarias,gruposcp:viewGruposCP,deppessoal:viewDepPessoal,rep:viewRep,cfg:viewCfg,ficha:fichaAbrirNaAba,frete:viewFrete,caixa:viewCaixa,entregas:viewEntregas,maquinas:viewMaquinas,aluguel:viewAluguel,
     nfeent:viewNfeEntrada,notasemit:viewNotasEmit,nfesai:viewNfeSaida,auditoria:viewAuditoria,contador:viewContador,impostos:viewImpostos,aliquotas:viewAliquotas,sped:viewSped,beneficios:viewBeneficios,fiscalcfg:viewFiscalCfg,cfopmap:viewCfopMap,entrada:viewEntradaManual,
     forn:viewForn,vend:viewVend,indic:viewIndic,crmwa:viewCrmWa,waatend:viewAtendWa,prospec:viewProspec,banner:viewBanner,cat:viewCat,calc:viewCalc,calcobra:viewCalcObra,funil:viewFunil,tarefas:viewTarefas,sugcompra:viewSugCompra,pedcompra:viewListaPedidos,comis:viewComissao,impxml:viewImportXML,etiq:viewEtiquetas,cot:viewCotacoes,nfavulsa:viewNFAvulsa,ecommerce:viewEcommerce,ecalc:viewEcalc,vendmobile:viewVendMobile,freterel:viewFreteRel,aluguelrel:viewAluguelRel,central:viewCentral,veiculos:viewVeiculos,combustivel:viewCombustivel,orcrel:viewOrcRel,retiradas:viewRetiradas,salesvend:viewSalesVendedor,trocas:viewTrocas,fluxocaixa:viewFluxoCaixa,contagem:viewContagem,auditlog:viewAuditoriaLog,faltas:viewProdutosFalta,kits:viewKits,nuvem:viewNuvem,lixeira:viewLixeira,anual:viewAnual,saude:viewSaude,pendencias:viewPendencias,feedbackent:viewFeedbackEntrega};
 
@@ -4188,6 +4193,7 @@ function pdvParseQty(raw){ const m=(''+(raw||'')).match(/^\s*(\d+(?:[.,]\d+)?)\s
 function pdvSearch(raw){ const parsed=pdvParseQty(raw); PDVS.qtyPrefix=parsed.qty; const q=(parsed.rest||'').trim().toLowerCase(); const dd=document.getElementById('pdv-dd'); if(!dd)return;
   if(q.length<1){ PDVS.results=[]; PDVS.activePid=null; dd.classList.remove('on'); dd.innerHTML=''; return; }
   PDVS.results=prodSearchSort(DB.all('produtos').filter(p=>prodVendavel(p) && matchTokens((p.nome||'')+' '+(p.sku||'')+' '+(p.marca||'')+' '+(p.codigoBarras||'')+' '+((p.codigosBarrasAdic||[]).join(' ')), q)), q).slice(0,50);
+  try{ PDVS.results=varAgruparResultados(PDVS.results, q); }catch(e){}   // variações (cor/tamanho) numa linha só
   if(!PDVS.results.find(p=>p.id===PDVS.activePid)) PDVS.activePid=PDVS.results[0]?PDVS.results[0].id:null;
   renderPdvResults(); }
 /* Mantém a linha ativa do dropdown sempre visível ao navegar pelas setas do teclado,
@@ -4213,9 +4219,12 @@ function ddScrollAtivo(ddId, pid){
 function renderPdvResults(){ const dd=document.getElementById('pdv-dd'); if(!dd)return; dd.classList.add('on');
   if(!PDVS.results.length){ dd.innerHTML=`<div class="orc-empty">Nenhum produto encontrado</div>`; return; }
   dd.innerHTML=PDVS.results.map(p=>{ const active=p.id===PDVS.activePid; const emb=p.embalagemVenda&&p.qtdPorEmbalagem>0; const un=(p.unidade||'UN').toUpperCase();
+    if(p._varG) return `<div class="orc-row ${active?'active':''}" data-pid="${p.id}" onclick="pdvActivate('${p.id}')">
+      <div style="flex:1;min-width:0"><div class="orc-rn">${ico('layers')} ${esc(p.nome)}</div><div class="orc-rs">Estoque total: ${NUM(p.estoque)} ${esc(un)} • <b style="color:var(--amber-d)">${active?'Enter ou clique para escolher':'clique para escolher'}</b></div></div>
+      <div class="orc-rp">${p._precoMax>p.preco?('<span class="t-mut" style="font-size:11px;font-weight:500">a partir de</span> '):''}${BRL(p.preco)}</div></div>`;
     return `<div class="orc-row ${active?'active':''}" data-pid="${p.id}" onclick="pdvActivate('${p.id}')">
       <div style="flex:1;min-width:0"><div class="orc-rn">${esc(p.nome)}</div>
-        <div class="orc-rs">SKU: ${esc(p.sku||'—')} • Est: ${NUM(p.estoque)} ${esc(un)}${emb?` • ${esc(p.embalagemTipo||'Caixa')} de ${NUM(p.qtdPorEmbalagem,2)} ${esc(un)}`:''}${p.estoque<=0?' • <span style="color:var(--neg)">sem estoque</span>':''}</div></div>
+        <div class="orc-rs">SKU: ${esc(p.sku||'—')} • ${p.servico?'<b style="color:var(--blue)">Serviço</b> (sem estoque)':`Est: ${NUM(p.estoque)} ${esc(un)}`}${emb?` • ${esc(p.embalagemTipo||'Caixa')} de ${NUM(p.qtdPorEmbalagem,2)} ${esc(un)}`:''}${(p.estoque<=0&&!p.servico)?' • <span style="color:var(--neg)">sem estoque</span>':''}</div></div>
       <div class="orc-rp">${BRL(p.preco)}</div>
       ${active?`<div class="orc-inl" onclick="event.stopPropagation()">
         <label>${emb?'Qtd ('+esc(un)+'):':'Qtd:'}</label><input id="pdv-rq" type="number" min="0" step="any" value="${PDVS.qtyPrefix||1}" onkeydown="pdvRowKey(event)">
@@ -4224,7 +4233,8 @@ function renderPdvResults(){ const dd=document.getElementById('pdv-dd'); if(!dd)
         <button class="orc-add" title="Adicionar" onclick="pdvAddActive()">${ico('plus')}</button></div>
       ${emb?`<div class="orc-embnote" onclick="event.stopPropagation()">${ico('box')} Vendido em <b>${esc(p.embalagemTipo||'Caixa')}</b> de ${NUM(p.qtdPorEmbalagem,2)} ${esc(un)} — a quantidade é arredondada para embalagem fechada.</div>`:''}`:''}
     </div>`; }).join(''); }
-function pdvActivate(pid){ PDVS.activePid=pid; renderPdvResults(); const rq=document.getElementById('pdv-rq'); if(rq){ if(PDVS.qtyPrefix)rq.value=PDVS.qtyPrefix; rq.focus(); rq.select(); } }
+function pdvActivate(pid){ if(String(pid||'').indexOf('vg:')===0){ PDVS.activePid=pid; varPickerAbrir(String(pid).slice(3)); return; }
+  PDVS.activePid=pid; renderPdvResults(); const rq=document.getElementById('pdv-rq'); if(rq){ if(PDVS.qtyPrefix)rq.value=PDVS.qtyPrefix; rq.focus(); rq.select(); } }
 function pdvListPrice(){ const p=DB.get('produtos',PDVS.activePid); return p?p.preco:0; }
 function pdvPriceToDisc(){ const base=pdvListPrice(); const rp=+(document.getElementById('pdv-rp').value)||0; const d=document.getElementById('pdv-rd');
   if(base>0&&rp<=base) d.value=+(((base-rp)/base)*100).toFixed(2); else d.value=0; }
@@ -4261,7 +4271,7 @@ function pdvKey(e){ if(!PDVS.results.length){ if(e.key==='Enter')e.preventDefaul
   else if(e.key==='End'){ e.preventDefault(); const n=PDVS.results[PDVS.results.length-1]; if(n){PDVS.activePid=n.id;renderPdvResults();ddScrollAtivo('pdv-dd',n.id);} }
   else if(e.key==='PageDown'){ e.preventDefault(); const n=PDVS.results[Math.min(PDVS.results.length-1,(idx<0?0:idx)+5)]; if(n){PDVS.activePid=n.id;renderPdvResults();ddScrollAtivo('pdv-dd',n.id);} }
   else if(e.key==='PageUp'){ e.preventDefault(); const n=PDVS.results[Math.max(0,(idx<0?0:idx)-5)]; if(n){PDVS.activePid=n.id;renderPdvResults();ddScrollAtivo('pdv-dd',n.id);} }
-  else if(e.key==='Enter'){ e.preventDefault(); if(PDVS.qtyPrefix && PDVS.activePid){ const rq=document.getElementById('pdv-rq'); if(rq)rq.value=PDVS.qtyPrefix; pdvAddActive(); return; } const rq=document.getElementById('pdv-rq'); if(rq){ rq.focus(); rq.select(); } } }
+  else if(e.key==='Enter'){ e.preventDefault(); if(String(PDVS.activePid||'').indexOf('vg:')===0){ varPickerAbrir(String(PDVS.activePid).slice(3)); return; } if(PDVS.qtyPrefix && PDVS.activePid){ const rq=document.getElementById('pdv-rq'); if(rq)rq.value=PDVS.qtyPrefix; pdvAddActive(); return; } const rq=document.getElementById('pdv-rq'); if(rq){ rq.focus(); rq.select(); } } }
 function pdvBlur(){ setTimeout(()=>{ const d=document.getElementById('pdv-dd'); if(d && !(document.activeElement && d.contains(document.activeElement))) d.classList.remove('on'); },180); }
 /* RETIRA NA LOJA: ligado na barra, todo produto lançado já entra marcado como retirado
    pelo cliente no ato. Cada linha também pode ser marcada/desmarcada individualmente. */
@@ -8545,7 +8555,7 @@ function prodTable(prods){ prods=prodOrdAplicar((prods||[]).slice());
   if(!prods.length) return `<div class="empty">${ico('box')}<h4>Nenhum produto</h4></div>`;
   const LIM=listLim('prod'); const totalN=prods.length; let nota=''; if(totalN>LIM){ prods=prods.slice(0,LIM); nota=listNota('prod', LIM, totalN, 'produtos'); }
   return nota+`<table><thead><tr>${prodOrdTh('nome','Produto')}${prodOrdTh('sku','SKU')}${prodOrdTh('barras','Cód. barras')}${prodOrdTh('categoria','Categoria')}${prodOrdTh('custo','Custo','t-right')}${prodOrdTh('preco','Venda','t-right')}${prodOrdTh('margem','Margem','t-right')}${prodOrdTh('embalagem','Embalagem','t-right')}${prodOrdTh('estoque','Estoque','t-right')}<th></th></tr></thead><tbody>
-  ${prods.map(p=>{ const margem=(p.preco-p.custo)/p.preco*100; const crit=p.estoque<=p.estoqueMinimo;
+  ${prods.map(p=>{ const margem=(p.preco-p.custo)/p.preco*100; const crit=!p.servico && p.estoque<=p.estoqueMinimo;
     return `<tr>
     <td><div class="prod-cell"><div class="prod-thumb" style="background:${p.cor}">${esc(p.nome[0])}</div>
       <div><div class="t-strong">${esc(p.nome)}${p.usoConsumo?' <span class="tag" style="font-size:9.5px;background:var(--surface-2);color:var(--muted)">USO/CONSUMO</span>':''}</div><div class="t-mut" style="font-size:12px">${esc(p.marca||'')}</div></div></div></td>
@@ -8556,10 +8566,10 @@ function prodTable(prods){ prods=prodOrdAplicar((prods||[]).slice());
     <td class="t-right tnum t-strong">${BRL(p.preco)}</td>
     <td class="t-right"><span class="tag ${margem>=35?'pos':margem>=20?'warn':'neg'}">${PCT(margem)}</span></td>
     <td class="t-right tnum t-mut">${(p.embalagemVenda&&+p.qtdPorEmbalagem>0)?(fmtQ(p.qtdPorEmbalagem)+' '+esc(p.unidade||'UN')+(p.embalagemTipo?' /'+esc(p.embalagemTipo):'')):'—'}</td>
-    <td class="t-right"><b class="tnum" style="color:${crit?(p.estoque===0?'var(--neg)':'var(--amber-d)'):'var(--ink)'}">${fmtQ(p.estoque)}</b> <span class="t-mut" style="font-size:11px">${p.unidade}</span>${crit?`<div style="font-size:10.5px;color:var(--amber-d)">mín ${fmtQ(p.estoqueMinimo)}</div>`:''}</td>
+    <td class="t-right">${p.servico?'<span class="tag" style="background:var(--blue-soft);color:var(--blue)">SERVIÇO</span>':`<b class="tnum" style="color:${crit?(p.estoque===0?'var(--neg)':'var(--amber-d)'):'var(--ink)'}">${fmtQ(p.estoque)}</b>`} <span class="t-mut" style="font-size:11px">${p.unidade}</span>${crit?`<div style="font-size:10.5px;color:var(--amber-d)">mín ${fmtQ(p.estoqueMinimo)}</div>`:''}</td>
     <td class="t-right" style="white-space:nowrap"><button class="btn-icon btn-ghost" onclick="estoqueForm('${p.id}')" title="Movimentar estoque">${ico('box')}</button>
       <button class="btn-icon btn-ghost" onclick="prodForm('${p.id}')" title="Editar">${ico('edit')}</button>
-      ${p.estoque<=0 && (p.situacao||'ativo')!=='inativo' ? `<button class="btn btn-ghost btn-sm" onclick="prodInativarRapido('${p.id}')" title="Inativar produto (sem precisar editar)" style="color:var(--amber-d);padding:2px 8px">Inativar</button>` : ''}
+      ${p.estoque<=0 && !p.servico && (p.situacao||'ativo')!=='inativo' ? `<button class="btn btn-ghost btn-sm" onclick="prodInativarRapido('${p.id}')" title="Inativar produto (sem precisar editar)" style="color:var(--amber-d);padding:2px 8px">Inativar</button>` : ''}
       ${(p.situacao||'ativo')==='inativo' ? `<button class="btn btn-ghost btn-sm" onclick="prodReativarRapido('${p.id}')" title="Reativar produto" style="color:var(--pos);padding:2px 8px">Reativar</button>` : ''}
       <button class="btn-icon btn-ghost" onclick="prodExcluir('${p.id}')" title="Excluir produto" style="color:var(--neg)">${ico('trash')}</button></td>
   </tr>`;}).join('')}
@@ -18025,7 +18035,7 @@ function finPgDataToggle(pref){ const st=(document.getElementById(pref+'-status'
   const baixado=(st==='pago'||st==='recebido') && w.getAttribute('data-baixado')==='1'; w.style.display=baixado?'':'none'; }
 
 /* =================== LIXEIRA (30 dias) =================== */
-const LIXEIRA_COLS=['listasEscolares','clientes','fornecedores','produtos','vendas','financeiro','compras','orcamentos','servicos','funcionarios','vendedores','transportadoras','veiculos','maquinas','contratosAluguel','cheques','notasFiscais'];
+const LIXEIRA_COLS=['gruposVariacao','listasEscolares','clientes','fornecedores','produtos','vendas','financeiro','compras','orcamentos','servicos','funcionarios','vendedores','transportadoras','veiculos','maquinas','contratosAluguel','cheques','notasFiscais'];
 const LIXEIRA_LABEL={clientes:'Cliente',fornecedores:'Fornecedor',produtos:'Produto',vendas:'Venda',financeiro:'Lançamento financeiro',compras:'Compra/Entrada',orcamentos:'Orçamento',servicos:'Serviço',funcionarios:'Funcionário',vendedores:'Vendedor',transportadoras:'Transportadora',veiculos:'Veículo',maquinas:'Máquina',contratosAluguel:'Contrato de aluguel',cheques:'Cheque',notasFiscais:'Nota fiscal'};
 function lixeiraPurge(){ try{ const d=DB._load(); if(!Array.isArray(d.lixeira)||!d.lixeira.length) return;
   const corte=Date.now()-30*864e5; const antes=d.lixeira.length;
@@ -21245,7 +21255,7 @@ function renderOrcResults(){
     const startPrice=p.preco; const startDisc=0;
     return `<div class="orc-row ${active?'active':''}" data-pid="${p.id}" onclick="orcActivate('${p.id}')">
       <div style="flex:1;min-width:0"><div class="orc-rn">${esc(p.nome)} ${promo?`<span class="tag pos" style="font-size:10px">PROMO -${promoPct}%</span>`:''}</div>
-        <div class="orc-rs">SKU: ${esc(p.sku)} • Est: ${NUM(p.estoque)} ${esc(un)}${emb?` • ${esc(p.embalagemTipo||'Caixa')} de ${NUM(p.qtdPorEmbalagem,2)} ${esc(un)}`:''}</div></div>
+        <div class="orc-rs">SKU: ${esc(p.sku)} • ${p.servico?'<b style="color:var(--blue)">Serviço</b>':`Est: ${NUM(p.estoque)} ${esc(un)}`}${emb?` • ${esc(p.embalagemTipo||'Caixa')} de ${NUM(p.qtdPorEmbalagem,2)} ${esc(un)}`:''}</div></div>
       <div class="orc-rp">${promo?`<span style="text-decoration:line-through;opacity:.55;font-size:11px">${BRL(p.preco)}</span> <b style="color:var(--pos)">${BRL(promo)}</b>`:BRL(p.preco)}</div>
       ${active?`<div class="orc-inl" onclick="event.stopPropagation()">
         <label>${emb?'Qtd ('+esc(un)+'):':'Qtd:'}</label><input id="orc-rq" type="number" min="0" step="any" value="${ORC.qtyPrefix||1}" onkeydown="orcRowKey(event)">
@@ -21442,7 +21452,7 @@ function servCriarPadrao(){ const ja=new Set(servLista().map(p=>normTxt(p.nome))
 function servConverter(id){ const p=DB.get('produtos',id); if(!p) return;
   if(!confirm('Marcar "'+p.nome+'" como SERVIÇO?\n\n• Sai do controle de estoque (não baixa mais nas vendas, não entra na contagem)\n• Passa para a categoria SERVIÇOS\n• O histórico de vendas continua igual')) return;
   try{ catRegistrar('SERVIÇOS','produto'); }catch(e){}
-  DB.update('produtos',id,{servico:true, servicoAtalho:true, categoria:'SERVIÇOS', grupo:'SERVIÇOS', subgrupo:'', estoqueMinimo:0, faixasPreco:(p.faixasPreco&&p.faixasPreco.length)?p.faixasPreco:[{ate:0,preco:+p.preco||0}]});
+  DB.update('produtos',id,{servico:true, servicoAtalho:true, categoria:'SERVIÇOS', grupo:'SERVIÇOS', subgrupo:'', estoque:0, estoqueMinimo:0, faixasPreco:(p.faixasPreco&&p.faixasPreco.length)?p.faixasPreco:[{ate:0,preco:+p.preco||0}]});
   try{ logAcao('Produto marcado como serviço', p.nome||''); }catch(e){} try{ nuvemPushJa(); }catch(e){}
   toast('"'+p.nome+'" agora é serviço','ok'); viewServPap(); }
 function servAtalhoToggle(id){ const p=DB.get('produtos',id); if(!p) return; DB.update('produtos',id,{servicoAtalho:p.servicoAtalho===false}); try{ nuvemPushJa(); }catch(e){} viewServPap(); }
@@ -21539,9 +21549,20 @@ function listaParseLinha(l){ let s=(''+(l||'')).replace(/^[\s•\-–*·>]+|[\s.
   else if((m=s.match(/^(.+?)\s+(\d{1,3})\s*(?:un\.?|und\.?|unid\.?|unidades?)$/i))){ q=+m[2]; s=m[1]; }
   s=s.replace(/^(de|do|da|dos|das)\s+/i,'').trim(); if(!s) return null; return {desc:s.toUpperCase(), qtd:Math.max(1,q||1)}; }
 function listaAnoPadrao(){ const d=new Date(); return d.getMonth()>=8 ? d.getFullYear()+1 : d.getFullYear(); }
-function listaTotais(L){ let e=0,m=0,falta=0; (L.itens||[]).forEach(it=>{ const pe=it.econ?DB.get('produtos',it.econ):null, pm=it.marca?DB.get('produtos',it.marca):null;
-    const q=+it.qtd||1; if(!pe&&!pm){ falta++; return; } e+=q*(+((pe||pm).preco)||0); m+=q*(+((pm||pe).preco)||0); });
-  return {econ:Math.round(e*100)/100, marca:Math.round(m*100)/100, falta}; }
+/* Opções de um item: [0]=econômica, [1]=marca, [2..]=outras. sel = índice da que vai para o orçamento.
+   (Listas antigas só tinham econ/marca — são lidas do mesmo jeito.) */
+function listaOpc(it){ let o=Array.isArray(it&&it.opcoes)?it.opcoes.slice():[(it&&it.econ)||null,(it&&it.marca)||null];
+  while(o.length<2) o.push(null); let sel=(it&&it.sel!=null)?(+it.sel||0):0; if(sel>=o.length) sel=0;
+  if(!o[sel]){ const k=o.findIndex(Boolean); if(k>=0) sel=k; } return {opcoes:o, sel}; }
+function listaPidDe(it, modo){ const {opcoes:o, sel}=listaOpc(it);
+  if(modo==='econ') return o[0]||o.find(Boolean)||null;
+  if(modo==='marca') return o[1]||o[0]||o.find(Boolean)||null;
+  return o[sel]||o.find(Boolean)||null; }
+function listaTotais(L){ let e=0,m=0,sl=0,falta=0; (L.itens||[]).forEach(it=>{ const q=+it.qtd||1;
+    const pe=listaPidDe(it,'econ'), pm=listaPidDe(it,'marca'), ps=listaPidDe(it,'sel');
+    if(!pe&&!pm&&!ps){ falta++; return; } const pr=id=>{ const x=id?DB.get('produtos',id):null; return x?(+x.preco||0):0; };
+    e+=q*pr(pe); m+=q*pr(pm); sl+=q*pr(ps); });
+  return {econ:Math.round(e*100)/100, marca:Math.round(m*100)/100, sel:Math.round(sl*100)/100, falta}; }
 function listaPedidos(id){ return DB.all('orcamentos').filter(o=>o && o.listaEscolar && (!id || o.listaEscolar.id===id)); }
 function viewListas(){ const tabs=[['listas','Listas'],['pedidos','Pedidos das listas'],['mais','Mais vendidos']];
   document.getElementById('view').innerHTML=`
@@ -21556,15 +21577,15 @@ function listaListasHTML(){ const q=listaNorm(LISTA_Q||'');
   const L=DB.all('listasEscolares').filter(l=>l && (!q || listaNorm((l.escola||'')+' '+(l.serie||'')+' '+(l.ano||'')).indexOf(q)>=0))
     .sort((a,b)=>((b.ano||0)-(a.ano||0)) || (a.escola||'').localeCompare(b.escola||'','pt-BR') || (a.serie||'').localeCompare(b.serie||'','pt-BR',{numeric:true}));
   return `<div class="field" style="max-width:380px;margin:0 0 10px"><input placeholder="Buscar escola ou série…" value="${esc(LISTA_Q||'')}" oninput="LISTA_Q=this.value;clearTimeout(window._lqT);window._lqT=setTimeout(()=>{const b=document.getElementById('lista-body'); if(b) b.innerHTML=listaListasHTML(); const i=document.querySelector('#lista-body input'); if(i){ i.focus(); i.setSelectionRange(i.value.length,i.value.length);} },250)"></div>
-   <div class="card"><div class="tbl-wrap"><table><thead><tr><th>Escola</th><th>Série</th><th>Ano</th><th class="t-right">Itens</th><th class="t-right">Econômica</th><th class="t-right">Marca</th><th class="t-right">Pedidos</th><th style="width:190px"></th></tr></thead><tbody>
+   <div class="card"><div class="tbl-wrap"><table><thead><tr><th>Escola</th><th>Série</th><th>Ano</th><th class="t-right">Itens</th><th class="t-right">Selecionados</th><th class="t-right">Econômica</th><th class="t-right">Marca</th><th class="t-right">Pedidos</th><th style="width:190px"></th></tr></thead><tbody>
    ${L.length?L.map(l=>{ const t=listaTotais(l); const np=listaPedidos(l.id).length; return `<tr><td><b>${esc(l.escola||'—')}</b></td><td>${esc(l.serie||'')}</td><td class="tnum">${esc(''+(l.ano||''))}</td>
       <td class="t-right tnum">${NUM((l.itens||[]).length)}${t.falta?` <span class="tag warn" title="Itens sem produto escolhido">${t.falta} sem produto</span>`:''}</td>
-      <td class="t-right tnum">${BRL(t.econ)}</td><td class="t-right tnum">${BRL(t.marca)}</td><td class="t-right tnum">${NUM(np)}</td>
+      <td class="t-right tnum" style="color:#15803d;font-weight:700">${BRL(t.sel)}</td><td class="t-right tnum">${BRL(t.econ)}</td><td class="t-right tnum">${BRL(t.marca)}</td><td class="t-right tnum">${NUM(np)}</td>
       <td class="t-right" style="white-space:nowrap"><button class="btn btn-amber btn-sm" onclick="listaMontar('${l.id}')">${ico('quote')} Orçamento</button>
         <button class="btn-icon btn-ghost" onclick="listaForm('${l.id}')" title="Editar">${ico('edit')}</button>
         <button class="btn-icon btn-ghost" onclick="listaCopiarAno('${l.id}')" title="Copiar para o próximo ano">${ico('layers')}</button>
         <button class="btn-icon btn-ghost" style="color:var(--neg)" onclick="listaExcluir('${l.id}')" title="Excluir">${ico('trash')}</button></td></tr>`; }).join('')
-   :`<tr><td colspan="8"><div class="empty" style="padding:30px">${ico('doc')}<h4>Nenhuma lista cadastrada</h4><p class="t-mut">Clique em <b>Nova lista de escola</b> e cole o texto da lista.</p></div></td></tr>`}
+   :`<tr><td colspan="9"><div class="empty" style="padding:30px">${ico('doc')}<h4>Nenhuma lista cadastrada</h4><p class="t-mut">Clique em <b>Nova lista de escola</b> e cole o texto da lista.</p></div></td></tr>`}
    </tbody></table></div></div>`; }
 const LISTA_SEP={'':'—', separando:'Separando', pronto:'Pronto p/ retirar', entregue:'Entregue'};
 function listaStatusDoc(o){ try{ const v=DB.all('vendas').find(x=>x && x.fromOrcId===o.id && x.status!=='cancelada');
@@ -21574,7 +21595,7 @@ function listaPedidosHTML(){ const L=listaPedidos().sort((a,b)=>((b.criadoEm||b.
   return `<div class="card"><div class="tbl-wrap"><table><thead><tr><th>Nº</th><th>Data</th><th>Cliente</th><th>Lista</th><th class="t-right">Total</th><th>Situação</th><th>Separação</th><th style="width:220px"></th></tr></thead><tbody>
    ${L.length?L.map(o=>{ const st=listaStatusDoc(o); const sep=o.listaSep||''; const le=o.listaEscolar||{}; return `<tr>
      <td class="tnum">${esc(''+(o.numero||''))}</td><td class="tnum">${fDate(o.data)}</td><td><b>${esc(o.clienteNome||'Consumidor')}</b></td>
-     <td style="font-size:12px">${esc(le.escola||'Lista avulsa')}${le.serie?(' · '+esc(le.serie)):''}${le.opcao?` <span class="t-mut">(${le.opcao==='marca'?'marca':'econômica'})</span>`:''}</td>
+     <td style="font-size:12px">${esc(le.escola||'Lista avulsa')}${le.serie?(' · '+esc(le.serie)):''}${le.opcao?` <span class="t-mut">(${le.opcao==='marca'?'marca':(le.opcao==='econ'?'econômica':'selecionados')})</span>`:''}</td>
      <td class="t-right tnum">${BRL(+o.total||0)}</td><td><span class="tag ${st.cls}">${esc(st.txt)}</span></td>
      <td><select onchange="listaSepSet('${o.id}',this.value)" style="padding:4px 6px">${Object.keys(LISTA_SEP).map(k=>`<option value="${k}" ${sep===k?'selected':''}>${LISTA_SEP[k]}</option>`).join('')}</select></td>
      <td class="t-right" style="white-space:nowrap">${sep==='pronto'?`<button class="btn btn-ghost btn-sm" style="color:#15803d;border:1px solid #86efac" onclick="listaAvisarWa('${o.id}')">WhatsApp</button>`:''}
@@ -21606,18 +21627,71 @@ function listaMaisHTML(){ const ano=listaAnoPadrao(); const por={}; let docs=0;
 /* ---- editor da lista ---- */
 function listaForm(id, avulsa){ const l=id?DB.get('listasEscolares',id):null;
   LISTAF={ id:l?l.id:null, avulsa:!!avulsa, escola:l?(l.escola||''):'', serie:l?(l.serie||''):'', ano:l?(l.ano||listaAnoPadrao()):listaAnoPadrao(), obs:l?(l.obs||''):'',
-    itens:l?(l.itens||[]).map(it=>({desc:it.desc||'',qtd:+it.qtd||1,econ:it.econ||null,marca:it.marca||null})):[], texto:'' };
-  openModal(listaFormHTML(), true); }
+    itens:l?(l.itens||[]).map(it=>{ const o=listaOpc(it); return {desc:it.desc||'',qtd:+it.qtd||1,opcoes:o.opcoes,sel:o.sel}; }):[], texto:'' };
+  openModal(listaFormHTML(), 'xwide'); }
 function listaProdOpt(pid){ const p=pid?DB.get('produtos',pid):null; return p?`${esc(p.nome)} — ${BRL(+p.preco||0)}${(+p.estoque||0)<=0?' (sem estoque)':''}`:'—'; }
-function listaSelHTML(i, campo){ const it=LISTAF.itens[i]; const cur=it[campo]; const C=listaCandidatos(it.desc,10); if(cur && !C.some(p=>p.id===cur)){ const p=DB.get('produtos',cur); if(p) C.unshift(p); }
-  return `<select style="width:100%;max-width:260px;font-size:12px" onchange="LISTAF.itens[${i}].${campo}=this.value||null;listaFormTotais()"><option value="">— nenhum —</option>${C.map(p=>`<option value="${p.id}" ${p.id===cur?'selected':''}>${listaProdOpt(p.id)}</option>`).join('')}</select>`; }
+/* Campo de produto com BUSCA DIGITANDO (nome, SKU ou código de barras), igual às outras buscas do
+   sistema. Vazio/ao focar: mostra os produtos sugeridos para o item da lista. */
+/* Campo de produto com BUSCA DIGITANDO (nome, SKU ou código de barras), igual às outras buscas do
+   sistema. Vazio/ao focar: mostra os produtos sugeridos para o item da lista. */
+function listaOpcRotulo(k){ return k===0?'Econômica':(k===1?'Marca':('Opção '+(k+1))); }
+function listaSelHTML(i, k){ const it=LISTAF.itens[i]; const pid=it.opcoes[k]; const p=pid?DB.get('produtos',pid):null; const marcado=(it.sel===k);
+  return `<div style="display:flex;gap:4px;align-items:center;margin:2px 0;${marcado?'background:#ecfdf5;border-radius:7px':''}">
+    <label title="Este é o produto que vai para o orçamento" style="display:flex;align-items:center;gap:4px;font-size:11px;min-width:86px;cursor:pointer;color:${marcado?'#15803d':'var(--muted)'};font-weight:${marcado?'700':'500'}">
+      <input type="radio" name="la-sel-${i}" ${marcado?'checked':''} onchange="LISTAF.itens[${i}].sel=${k};listaFormItensRefresh()"> ${listaOpcRotulo(k)}</label>
+    <div style="position:relative;flex:1;min-width:200px">
+      <input id="la-${i}-${k}" value="${p?esc(p.nome):''}" placeholder="Digite nome, SKU ou código…" autocomplete="off" title="${p?esc(p.nome+' — '+BRL(+p.preco||0)):''}"
+        style="width:100%;font-size:12px;padding:5px 7px;${p?'':'border-color:var(--amber)'}"
+        onfocus="this.select();listaAcBuscar(${i},${k},'')" oninput="listaAcDeb(${i},${k},this.value)" onkeydown="listaAcKey(event,${i},${k})" onblur="setTimeout(()=>listaAcFechar(${i},${k}),200)">
+      <div id="la-dd-${i}-${k}" style="display:none;position:fixed;width:min(440px,90vw);z-index:9999"></div></div>
+    <span class="tnum" style="font-size:11.5px;min-width:64px;text-align:right">${p?BRL(+p.preco||0):''}</span>
+    ${(p||k>=2)?`<button class="btn-icon btn-ghost" style="padding:2px" title="${k>=2?'Remover esta opção':'Tirar o produto'}" onmousedown="event.preventDefault();listaOpcTirar(${i},${k})">${ico('x')}</button>`:'<span style="width:26px"></span>'}</div>`; }
+/* Descrição digitada/alterada: busca sozinho a opção econômica e a de marca (só preenche o que
+   ainda está vazio ou o que foi preenchido automaticamente — escolha feita à mão não é trocada). */
+function listaDescMudou(i, v){ const it=LISTAF.itens[i]; if(!it) return; const novo=(v||'').trim().toUpperCase(); const mudou=novo!==it.desc; it.desc=novo;
+  if(!novo || !mudou) return; const s=listaSugerir(novo); it._auto=it._auto||{};
+  [0,1].forEach(k=>{ const sug=k===0?s.econ:s.marca; if(!it.opcoes[k] || it._auto[k]){ it.opcoes[k]=sug||null; it._auto[k]=!!sug; } });
+  listaFormItensRefresh();
+  if(!s.econ && !s.marca) toast('Nenhum produto encontrado para "'+novo+'" — digite no campo para buscar','info'); }
+function listaOpcTirar(i,k){ const it=LISTAF.itens[i]; if(!it) return;
+  if(k>=2){ it.opcoes.splice(k,1); if(it.sel===k) it.sel=0; else if(it.sel>k) it.sel--; } else it.opcoes[k]=null;
+  listaFormItensRefresh(); }
+function listaOpcMais(i){ const it=LISTAF.itens[i]; if(!it) return; it.opcoes.push(null); const k=it.opcoes.length-1; listaFormItensRefresh();
+  setTimeout(()=>{ const el=document.getElementById('la-'+i+'-'+k); if(el) el.focus(); },30); }
+let _laT=null, LISTA_AC={i:-1,campo:'',res:[],sel:0};
+function listaAcDeb(i,campo,q){ clearTimeout(_laT); _laT=setTimeout(()=>listaAcBuscar(i,campo,q),140); }
+function listaAcBuscar(i, k, q){ const it=LISTAF.itens[i]; if(!it) return; q=(q||'').trim(); let res;
+  if(!q){ res=listaCandidatos(it.desc,15); }
+  else { const dig=q.replace(/\D/g,'');
+    let base=DB.all('produtos').filter(p=>p && !p.usoConsumo && !p.servico && (p.situacao||'ativo')!=='inativo');
+    const exato=(dig.length>=4 && dig===q.replace(/\s/g,'')) ? base.filter(p=>(''+p.sku)===q || (''+(p.codigoBarras||'')).replace(/\D/g,'')===dig || (p.codigosBarrasAdic||[]).some(c=>(''+c).replace(/\D/g,'')===dig)) : [];
+    res=exato.length?exato:prodSearchSort(base.filter(p=>matchTokens((p.nome||'')+' '+(p.sku||'')+' '+(p.codigoBarras||'')+' '+(p.marca||''),q)),q).slice(0,25); }
+  LISTA_AC={i,campo:k,res,sel:0}; listaAcRender(); }
+function listaAcRender(){ const A=LISTA_AC; const dd=document.getElementById('la-dd-'+A.i+'-'+A.campo); if(!dd) return;
+  try{ const r=document.getElementById('la-'+A.i+'-'+A.campo).getBoundingClientRect(); const w=Math.min(440, window.innerWidth*0.9);
+    dd.style.left=Math.max(8, Math.min(r.left, window.innerWidth-w-8))+'px';
+    const abaixo=window.innerHeight-r.bottom; if(abaixo<300 && r.top>abaixo){ dd.style.top=''; dd.style.bottom=(window.innerHeight-r.top+2)+'px'; } else { dd.style.bottom=''; dd.style.top=(r.bottom+2)+'px'; } }catch(e){}
+  dd.style.display='block';
+  dd.innerHTML=`<div class="wiz-assoc-dd" style="max-height:280px;overflow:auto">${A.res.length?A.res.map((p,k)=>`<div class="wiz-opt" style="${k===A.sel?'background:var(--amber-soft)':''}" onmousedown="event.preventDefault();listaAcPegar(${A.i},${A.campo},'${p.id}')">
+      <b>${esc(p.nome)}</b><div class="t-mut" style="font-size:11px">SKU ${esc(p.sku||'—')}${p.codigoBarras?(' · '+esc(p.codigoBarras)):''} · <b style="color:var(--ink)">${BRL(+p.preco||0)}</b> · estoque ${NUM(+p.estoque||0)}</div></div>`).join('')
+    :`<div class="t-mut" style="padding:10px;font-size:12px">Nenhum produto encontrado</div>`}</div>`; }
+function listaAcFechar(i,campo){ const dd=document.getElementById('la-dd-'+i+'-'+campo); if(dd) dd.style.display='none';
+  const inp=document.getElementById('la-'+i+'-'+campo); const it=LISTAF&&LISTAF.itens[i]; if(inp && it){ const pid=(it.opcoes||[])[campo]; const p=pid?DB.get('produtos',pid):null; inp.value=p?p.nome:''; } }
+function listaAcKey(e,i,campo){ const A=LISTA_AC; if(A.i!==i||A.campo!==campo) return;
+  if(e.key==='ArrowDown'){ e.preventDefault(); A.sel=Math.min(A.res.length-1,A.sel+1); listaAcRender(); }
+  else if(e.key==='ArrowUp'){ e.preventDefault(); A.sel=Math.max(0,A.sel-1); listaAcRender(); }
+  else if(e.key==='Enter'){ e.preventDefault(); const p=A.res[A.sel]; if(p) listaAcPegar(i,campo,p.id); }
+  else if(e.key==='Escape'){ e.preventDefault(); listaAcFechar(i,campo); e.target.blur(); } }
+function listaAcPegar(i,k,pid){ const it=LISTAF.itens[i]; if(!it) return; it.opcoes[k]=pid||null; if(it._auto) it._auto[k]=false; LISTA_AC={i:-1,campo:'',res:[],sel:0}; listaFormItensRefresh();
+  if(pid){ const nxt=document.getElementById('la-'+i+'-'+(k+1)) || document.getElementById('la-'+(i+1)+'-0'); if(nxt) setTimeout(()=>{ try{ nxt.focus(); }catch(e){} },30); } }
 function listaFormItensHTML(){ const I=LISTAF.itens;
   if(!I.length) return `<div class="t-mut" style="font-size:12.5px;padding:10px 0">Nenhum item. Cole a lista acima e clique em <b>Encontrar produtos</b>, ou adicione item por item.</div>`;
-  return `<table><thead><tr><th style="width:60px">Qtd</th><th>Item da lista</th><th>Opção econômica</th><th>Opção de marca</th><th></th></tr></thead><tbody>
-   ${I.map((it,i)=>`<tr style="${(!it.econ&&!it.marca)?'background:#fff7ed':''}"><td><input type="number" min="1" step="1" value="${it.qtd}" style="width:56px" onchange="LISTAF.itens[${i}].qtd=Math.max(1,+this.value||1);listaFormTotais()"></td>
-     <td><input value="${esc(it.desc)}" style="width:100%;min-width:180px;text-transform:uppercase" onchange="LISTAF.itens[${i}].desc=this.value.toUpperCase()"></td>
-     <td>${listaSelHTML(i,'econ')}</td><td>${listaSelHTML(i,'marca')}</td>
-     <td style="white-space:nowrap"><button class="btn-icon btn-ghost" title="Procurar outro produto" onclick="listaBuscarItem(${i})">${ico('search')}</button><button class="btn-icon btn-ghost" title="Remover" onclick="LISTAF.itens.splice(${i},1);listaFormItensRefresh()">${ico('x')}</button></td></tr>`).join('')}
+  return `<table><thead><tr><th style="width:60px">Qtd</th><th style="width:26%">Item da lista</th><th>Produtos <span class="t-mut" style="font-weight:400;text-transform:none">— digite para buscar · marque <b style="color:#15803d">●</b> o que vai para o orçamento</span></th><th style="width:40px"></th></tr></thead><tbody>
+   ${I.map((it,i)=>{ const vazio=!it.opcoes.some(Boolean); return `<tr style="${vazio?'background:#fff7ed':''};vertical-align:top"><td><input type="number" min="1" step="1" value="${it.qtd}" style="width:56px" onchange="LISTAF.itens[${i}].qtd=Math.max(1,+this.value||1);listaFormTotais()"></td>
+     <td><input id="la-desc-${i}" value="${esc(it.desc)}" placeholder="Descreva o item (ex.: BORRACHA BRANCA)" style="width:100%;min-width:150px;text-transform:uppercase" onchange="listaDescMudou(${i},this.value)" onkeydown="if(event.key==='Enter'){event.preventDefault();this.blur();}"></td>
+     <td>${it.opcoes.map((_,k)=>listaSelHTML(i,k)).join('')}
+       <button class="btn btn-ghost btn-sm" style="margin-top:2px;padding:2px 9px;font-size:11.5px" onclick="listaOpcMais(${i})">${ico('plus')} Mais uma opção</button></td>
+     <td><button class="btn-icon btn-ghost" title="Remover o item" onclick="LISTAF.itens.splice(${i},1);listaFormItensRefresh()">${ico('trash')}</button></td></tr>`; }).join('')}
    </tbody></table>`; }
 function listaFormHTML(){ const F=LISTAF; const escolas=[...new Set(DB.all('listasEscolares').map(l=>l.escola).filter(Boolean))].sort();
   return `<div class="modal-head"><h3>${ico('doc')} ${F.avulsa?'Lista trazida pelo cliente':(F.id?'Editar lista escolar':'Nova lista escolar')}</h3><button class="btn-icon btn-ghost" onclick="closeModal()">${ico('x')}</button></div>
@@ -21627,8 +21701,8 @@ function listaFormHTML(){ const F=LISTAF; const escolas=[...new Set(DB.all('list
        <div class="field"><label>Série / turma${F.avulsa?'':' *'}</label><input value="${esc(F.serie)}" oninput="LISTAF.serie=this.value" placeholder="Ex.: 3º ano"></div>
        <div class="field" style="max-width:110px"><label>Ano</label><input type="number" value="${F.ano}" oninput="LISTAF.ano=+this.value||LISTAF.ano"></div></div>
      <div class="field"><label>Colar a lista (um item por linha)</label><textarea id="lista-texto" rows="5" placeholder="2 cadernos universitários 10 matérias&#10;1 caixa de lápis de cor 24 cores&#10;3 lápis preto nº 2&#10;1 cola branca 90g" oninput="LISTAF.texto=this.value">${esc(F.texto||'')}</textarea>
-       <div style="display:flex;gap:8px;margin-top:6px;flex-wrap:wrap"><button class="btn btn-amber btn-sm" onclick="listaInterpretar()">${ico('search')} Encontrar produtos</button><button class="btn btn-ghost btn-sm" onclick="LISTAF.itens.push({desc:'',qtd:1,econ:null,marca:null});listaFormItensRefresh()">${ico('plus')} Item</button>
-       <span class="t-mut" style="font-size:11.5px;align-self:center">Itens em laranja ficaram sem produto: troque a descrição ou use a lupa.</span></div></div>
+       <div style="display:flex;gap:8px;margin-top:6px;flex-wrap:wrap"><button class="btn btn-amber btn-sm" onclick="listaInterpretar()">${ico('search')} Encontrar produtos</button><button class="btn btn-ghost btn-sm" onclick="LISTAF.itens.push({desc:'',qtd:1,opcoes:[null,null],sel:0,_auto:{}});listaFormItensRefresh();setTimeout(()=>{ const el=document.getElementById('la-desc-'+(LISTAF.itens.length-1)); if(el){ el.focus(); el.scrollIntoView({block:'center'}); } },40)">${ico('plus')} Item</button>
+       <span class="t-mut" style="font-size:11.5px;align-self:center">Itens em laranja ficaram sem produto: digite no campo para buscar. Use <b>Mais uma opção</b> para oferecer outros produtos e marque qual vai para o orçamento.</span></div></div>
      <div id="lista-itens">${listaFormItensHTML()}</div>
      <div id="lista-tot" style="margin-top:10px">${listaFormTotaisHTML()}</div>
      <div class="field" style="margin-top:8px"><label>Observações</label><input value="${esc(F.obs)}" oninput="LISTAF.obs=this.value" placeholder="Ex.: material entregue na 1ª semana de aula"></div>
@@ -21637,23 +21711,16 @@ function listaFormHTML(){ const F=LISTAF; const escolas=[...new Set(DB.all('list
      ${F.avulsa?`<label style="display:flex;align-items:center;gap:6px;font-size:12.5px"><input type="checkbox" id="lista-salvar-av"> Salvar a lista</label>`:`<button class="btn btn-ghost" onclick="listaSalvar(false)">${ico('check')} Salvar lista</button>`}
      <button class="btn btn-amber" onclick="listaSalvar(true)">${ico('quote')} ${F.avulsa?'Montar orçamento':'Salvar e montar orçamento'}</button></div>`; }
 function listaFormTotaisHTML(){ const t=listaTotais(LISTAF);
-  return `<div style="display:flex;gap:16px;flex-wrap:wrap;font-size:13px"><span>Econômica: <b class="tnum">${BRL(t.econ)}</b></span><span>Marca: <b class="tnum">${BRL(t.marca)}</b></span>${t.falta?`<span style="color:var(--amber-d)">${t.falta} item(ns) sem produto</span>`:''}</div>`; }
+  return `<div style="display:flex;gap:16px;flex-wrap:wrap;font-size:13px"><span style="color:#15803d">Selecionados: <b class="tnum">${BRL(t.sel)}</b></span><span>Toda econômica: <b class="tnum">${BRL(t.econ)}</b></span><span>Toda de marca: <b class="tnum">${BRL(t.marca)}</b></span>${t.falta?`<span style="color:var(--amber-d)">${t.falta} item(ns) sem produto</span>`:''}</div>`; }
 function listaFormTotais(){ const el=document.getElementById('lista-tot'); if(el) el.innerHTML=listaFormTotaisHTML(); }
+try{ document.addEventListener('scroll',function(e){ try{ if(LISTA_AC && LISTA_AC.i>=0 && e.target && e.target.classList && e.target.classList.contains('modal-body')) listaAcFechar(LISTA_AC.i, LISTA_AC.campo); }catch(_){} }, true); }catch(e){}
 function listaFormItensRefresh(){ const el=document.getElementById('lista-itens'); if(el) el.innerHTML=listaFormItensHTML(); listaFormTotais(); }
 function listaInterpretar(){ const txt=(document.getElementById('lista-texto')||{}).value||LISTAF.texto||''; LISTAF.texto=txt;
   const linhas=txt.split(/\r?\n|;/).map(listaParseLinha).filter(Boolean); if(!linhas.length){ toast('Cole a lista no campo (um item por linha)','err'); return; }
-  let achou=0; linhas.forEach(x=>{ const s=listaSugerir(x.desc); if(s.econ||s.marca) achou++; LISTAF.itens.push({desc:x.desc, qtd:x.qtd, econ:s.econ, marca:s.marca}); });
+  let achou=0; linhas.forEach(x=>{ const s=listaSugerir(x.desc); if(s.econ||s.marca) achou++; LISTAF.itens.push({desc:x.desc, qtd:x.qtd, opcoes:[s.econ||null, s.marca||null], sel:0, _auto:{0:!!s.econ,1:!!s.marca}}); });
   LISTAF.texto=''; const ta=document.getElementById('lista-texto'); if(ta) ta.value='';
   listaFormItensRefresh(); toast(linhas.length+' item(ns) lidos · '+achou+' com produto encontrado'+(linhas.length-achou?(' · '+(linhas.length-achou)+' para conferir'):''), achou===linhas.length?'ok':'info'); }
-function listaBuscarItem(i){ const it=LISTAF.itens[i]; const q=prompt('Procurar produto para "'+it.desc+'"\n(digite parte do nome, SKU ou código de barras)', it.desc); if(q===null) return;
-  const qq=q.trim(); let p=null;
-  if(/^\d{4,}$/.test(qq)) p=DB.all('produtos').find(x=>x && ((''+x.sku)===qq || (''+(x.codigoBarras||'')).replace(/\D/g,'')===qq));
-  if(p){ it.econ=p.id; listaFormItensRefresh(); return; }
-  const C=listaCandidatos(qq,12); if(!C.length){ toast('Nenhum produto encontrado com "'+qq+'"','err'); return; }
-  it.desc=it.desc||qq.toUpperCase(); const porPreco=C.slice(0,8).sort((a,b)=>(+a.preco||0)-(+b.preco||0));
-  it.econ=porPreco[0].id; it.marca=porPreco.length>1?porPreco[porPreco.length-1].id:null;
-  it._q=qq; listaFormItensRefresh(); toast('Produtos atualizados — confira nas duas opções','ok'); }
-function listaSalvar(montar){ const F=LISTAF; if(!F) return; const itens=F.itens.filter(it=>(it.desc||'').trim()).map(it=>({desc:it.desc.trim().toUpperCase(),qtd:+it.qtd||1,econ:it.econ||null,marca:it.marca||null}));
+function listaSalvar(montar){ const F=LISTAF; if(!F) return; const itens=F.itens.filter(it=>(it.desc||'').trim()).map(it=>{ const o=listaOpc(it); return {desc:it.desc.trim().toUpperCase(),qtd:+it.qtd||1,opcoes:o.opcoes,sel:o.sel,econ:o.opcoes[0]||null,marca:o.opcoes[1]||null}; });
   if(!itens.length){ toast('A lista está vazia','err'); return; }
   const salvar = !F.avulsa || ((document.getElementById('lista-salvar-av')||{}).checked);
   if(salvar && !F.avulsa && (!(F.escola||'').trim() || !(F.serie||'').trim())){ toast('Informe a escola e a série','err'); return; }
@@ -21670,29 +21737,200 @@ function listaExcluir(id){ const l=DB.get('listasEscolares',id); if(!l) return; 
   DB.remove('listasEscolares',id); try{ nuvemPushJa(); }catch(e){} viewListas(); }
 function listaMontar(id){ const l=DB.get('listasEscolares',id); if(l) listaMontarDe(l); }
 /* Pergunta a opção (econômica / marca) e abre o ORÇAMENTO já com os itens. */
+/* Pergunta qual produto de cada item vai (o marcado, todos econômicos ou todos de marca) e abre o ORÇAMENTO. */
 function listaMontarDe(l){ window.__listaMontar=l; const t=listaTotais(l);
   openModal(`<div class="modal-head"><h3>${ico('quote')} Montar orçamento da lista</h3><button class="btn-icon btn-ghost" onclick="closeModal()">${ico('x')}</button></div>
    <div class="modal-body"><p style="margin:0 0 10px;font-size:13px">${esc(l.escola||'Lista do cliente')}${l.serie?(' · '+esc(l.serie)):''} — ${NUM((l.itens||[]).length)} item(ns)</p>
      <div style="display:flex;flex-direction:column;gap:8px">
-       <button class="btn btn-ghost" style="justify-content:space-between" onclick="listaAbrirOrc('econ')"><span><b>Opção econômica</b> — o mais em conta de cada item</span><b class="tnum">${BRL(t.econ)}</b></button>
-       <button class="btn btn-ghost" style="justify-content:space-between" onclick="listaAbrirOrc('marca')"><span><b>Opção de marca</b> — produtos de linha superior</span><b class="tnum">${BRL(t.marca)}</b></button></div>
+       <button class="btn btn-amber" style="justify-content:space-between" onclick="listaAbrirOrc('sel')"><span><b>Produtos selecionados</b> — o marcado em cada item</span><b class="tnum">${BRL(t.sel)}</b></button>
+       <button class="btn btn-ghost" style="justify-content:space-between" onclick="listaAbrirOrc('econ')"><span><b>Toda econômica</b> — a 1ª opção de cada item</span><b class="tnum">${BRL(t.econ)}</b></button>
+       <button class="btn btn-ghost" style="justify-content:space-between" onclick="listaAbrirOrc('marca')"><span><b>Toda de marca</b> — a opção de marca de cada item</span><b class="tnum">${BRL(t.marca)}</b></button></div>
      ${t.falta?`<p class="t-mut" style="font-size:12px;margin-top:10px;color:var(--amber-d)">${t.falta} item(ns) sem produto vão para as observações do orçamento para você lançar à mão.</p>`:''}
-     <p class="t-mut" style="font-size:11.5px;margin-top:8px">No orçamento dá para trocar item por item (ex.: caderno de marca e o resto econômico).</p></div>`, true); }
+     <p class="t-mut" style="font-size:11.5px;margin-top:8px">Para escolher produto por produto, edite a lista e marque a opção de cada item.</p></div>`, true); }
 function listaAbrirOrc(opcao){ const l=window.__listaMontar; if(!l) return; closeModal();
   const itens=[], semProd=[];
-  (l.itens||[]).forEach(it=>{ const pid=(opcao==='marca'?(it.marca||it.econ):(it.econ||it.marca)); const p=pid?DB.get('produtos',pid):null;
+  (l.itens||[]).forEach(it=>{ const pid=listaPidDe(it, opcao); const p=pid?DB.get('produtos',pid):null;
     if(!p){ semProd.push((it.qtd>1?it.qtd+'× ':'')+it.desc); return; }
     const ex=itens.find(x=>x.produtoId===p.id); if(ex){ ex.qtd+=(+it.qtd||1); return; }
     itens.push({produtoId:p.id,nome:p.nome,qtd:+it.qtd||1,preco:+p.preco||0,precoLista:+p.preco||0,custo:+p.custo||0,unidade:p.unidade||'UN'}); });
   go('orc'); setTimeout(()=>{ try{
     orcEditor(null,'orcamento');
     ORC.itens=itens; ORC.listaEscolar={id:l.id||null, escola:l.escola||'', serie:l.serie||'', ano:l.ano||'', opcao};
-    ORC.obs=('Lista escolar: '+(l.escola||'lista do cliente')+(l.serie?(' — '+l.serie):'')+(l.ano?(' ('+l.ano+')'):'')+(opcao==='marca'?' · opção de marca':' · opção econômica')
+    ORC.obs=('Lista escolar: '+(l.escola||'lista do cliente')+(l.serie?(' — '+l.serie):'')+(l.ano?(' ('+l.ano+')'):'')+(opcao==='marca'?' · toda de marca':(opcao==='econ'?' · toda econômica':' · produtos selecionados'))
       +(semProd.length?('\nITENS SEM PRODUTO (lançar à mão): '+semProd.join('; ')):''));
     const ob=document.getElementById('orc-obs'); if(ob) ob.value=ORC.obs;
     orcRefreshItens(); orcTotals();
     toast(itens.length+' item(ns) no orçamento'+(semProd.length?(' · '+semProd.length+' sem produto (nas observações)'):'')+' — escolha cliente, vendedor e pagamento e salve','ok');
   }catch(e){ console.error('lista → orçamento',e); toast('Não foi possível montar o orçamento: '+((e&&e.message)||e),'err'); } }, 60); }
+
+/* =====================================================================================
+   PRODUTOS COM VARIAÇÕES (cor, tamanho, modelo)
+   Cada variação continua sendo um PRODUTO de verdade (SKU, código de barras, estoque, preço,
+   nota fiscal — nada disso muda). O grupo só junta as variações: coleção gruposVariacao =
+   {nome, atributo, itens:[{pid, valor}]}. Assim criar/editar grupos sobe poucos registros à
+   nuvem (o grupo), sem regravar milhares de produtos.
+   No PDV a busca mostra o grupo numa linha só ("BARB ECOBRASIL 1KG — 12 cores") e abre a
+   escolha da variação; bipar o código de barras / digitar o SKU vai direto na variação.
+===================================================================================== */
+let _varIdx=null, _varIdxRev=-1;
+function varIdx(){ const rev=DB._rev||0; if(_varIdx && _varIdxRev===rev) return _varIdx; const m=new Map();
+  DB.all('gruposVariacao').forEach(g=>{ if(!g) return; (g.itens||[]).forEach(it=>{ if(it && it.pid && !m.has(it.pid)) m.set(it.pid,{g, valor:it.valor||''}); }); });
+  _varIdx=m; _varIdxRev=rev; return m; }
+function varDoProduto(pid){ return varIdx().get(pid)||null; }
+function varItensVivos(g){ return (g.itens||[]).map(it=>({it, p:DB.get('produtos',it.pid)})).filter(x=>x.p && (x.p.situacao||'ativo')!=='inativo'); }
+function varAtribPlural(a){ return ({Cor:'cores',Tamanho:'tamanhos',Modelo:'modelos'})[a]||'variações'; }
+const VAR_CORES='AZUL|PRETO|PRETA|BRANCO|BRANCA|VERMELHO|VERMELHA|ROSA|VERDE|AMARELO|AMARELA|ROXO|ROXA|LILAS|LARANJA|MARROM|CINZA|BEGE|DOURADO|DOURADA|PRATA|PRATEADO|PRATEADA|PINK|NUDE|VINHO|CORAL|TURQUESA|SALMAO|CREME|MARFIM|GRAFITE|MARINHO|NEON|BEBE|CLARO|CLARA|ESCURO|ESCURA|PASTEL|FUCSIA|COBRE|CHUMBO|CARAMELO|TABACO|PETROLEO|MOSTARDA|OCRE|LIMAO|CANDY|ROSE|MENTA|LAVANDA|TIFFANY|BORDO|CAQUI|AREIA|CHOCOLATE|CAFE|NATURAL|TRANSPARENTE|TRANSP|COLORIDO|COLORIDA|SORTIDO|SORTIDA|SORTIDAS|SORTIDOS|METALICO|METALIZADO|FLUOR|PASTEL|CEREJA|UVA|CANARIO|ANIL|JADE|BANDEIRA|ABACATE|MUSGO|OLIVA';
+const VAR_RX_COR=new RegExp('^(.*?)((?:\\s+\\d{1,3})?(?:\\s+(?:'+VAR_CORES+')\\b[\\s/-]*)+)$');
+function varAtribDe(valores){ const v=valores.join(' ').toUpperCase(); const nrm=normTxt(v).toUpperCase();
+  if(new RegExp('\\b(COR|'+VAR_CORES+')\\b').test(nrm)) return 'Cor';
+  if(/\b\d+([.,]\d+)?\s*(ML|G|GR|KG|M|CM|MM|L|FLS|F)\b/.test(nrm)) return 'Tamanho'; return 'Variação'; }
+/* Sugestões de grupos a partir dos nomes: "BASE - VALOR" (3+ produtos com a mesma base) e
+   "BASE COR" (2+ produtos que só mudam a cor no fim do nome). Só produtos ativos e fora de grupo. */
+function varDetectar(){ const idx=varIdx(); const prods=DB.all('produtos').filter(p=>p && (p.situacao||'ativo')!=='inativo' && !p.servico && !p.usoConsumo && !idx.has(p.id));
+  const porBase=new Map(); const usados=new Set();
+  prods.forEach(p=>{ const n=(p.nome||'').trim(); const i=n.indexOf(' - '); if(i<4) return; const base=n.slice(0,i).trim(); const valor=n.slice(i+3).trim(); if(!valor) return;
+    const k=normTxt(base); if(!porBase.has(k)) porBase.set(k,{nome:base, itens:[]}); porBase.get(k).itens.push({pid:p.id, valor}); });
+  const out=[]; porBase.forEach(g=>{ if(g.itens.length>=3){ g.itens.forEach(x=>usados.add(x.pid)); out.push(g); } });
+  const porCor=new Map();
+  prods.forEach(p=>{ if(usados.has(p.id)) return; const n=normTxt((p.nome||'').trim()).toUpperCase(); const m=n.match(VAR_RX_COR); if(!m) return;
+    const base=m[1].replace(/[\s-]+$/,'').trim(); if(base.length<6) return; const valor=m[2].replace(/^[\s-]+/,'').trim();
+    const k=base; if(!porCor.has(k)) porCor.set(k,{nome:(p.nome||'').slice(0,base.length).replace(/[\s-]+$/,'').trim(), itens:[]}); porCor.get(k).itens.push({pid:p.id, valor}); });
+  porCor.forEach(g=>{ if(g.itens.length>=2) out.push(g); });
+  out.forEach(g=>{ g.atributo=varAtribDe(g.itens.map(x=>x.valor)); g.itens.sort((a,b)=>a.valor.localeCompare(b.valor,'pt-BR',{numeric:true})); });
+  return out.sort((a,b)=>b.itens.length-a.itens.length || a.nome.localeCompare(b.nome,'pt-BR')); }
+/* Vendido por produto nos últimos N dias (vendas faturadas). */
+function varVendidoMap(dias){ const lim=daysAgo(dias||90); const m={};
+  DB.all('vendas').forEach(v=>{ if(!v || v.status==='cancelada' || (v.data||'')<lim) return; try{ if(pedidoStatusInfo(v).k!=='faturado') return; }catch(e){}
+    (v.itens||[]).forEach(i=>{ const id=i.produtoId||i.id; if(id) m[id]=(m[id]||0)+(+i.qtd||0); }); });
+  return m; }
+let VAR_TAB='grupos', VAR_Q='', VAR_SUG=null, VAR_SEL=new Set();
+function viewVariacoes(){ const tabs=[['grupos','Grupos'],['sugestoes','Sugestões automáticas']];
+  document.getElementById('view').innerHTML=`
+   <div class="bi-banner" style="margin-bottom:16px"><div>${ico('layers')}</div>
+     <div><b>Produtos com variações</b><p>Junte o mesmo produto em várias <b>cores, tamanhos ou modelos</b>. Cada variação continua com o seu SKU, código de barras, estoque e preço. No <b>PDV</b> a busca mostra o produto uma vez só e você escolhe a variação; o código de barras continua indo direto na variação certa. Aqui você vê estoque e vendas por variação.</p></div></div>
+   <div class="toolbar"><div class="seg">${tabs.map(([k,l])=>`<button class="${VAR_TAB===k?'on':''}" onclick="VAR_TAB='${k}';viewVariacoes()">${l}</button>`).join('')}</div>
+     <div class="spacer"></div><button class="btn btn-amber btn-sm" onclick="varForm()">${ico('plus')} Novo grupo</button></div>
+   <div id="var-body">${VAR_TAB==='sugestoes'?varSugestoesHTML():varGruposHTML()}</div>`; }
+function varGruposHTML(){ const q=normTxt(VAR_Q||''); const vend=varVendidoMap(90);
+  const G=DB.all('gruposVariacao').filter(g=>g && (!q || normTxt(g.nome||'').includes(q))).sort((a,b)=>(a.nome||'').localeCompare(b.nome||'','pt-BR'));
+  return `<div class="field" style="max-width:380px;margin:0 0 10px"><input placeholder="Buscar grupo…" value="${esc(VAR_Q||'')}" oninput="VAR_Q=this.value;clearTimeout(window._vqT);window._vqT=setTimeout(()=>{ const b=document.getElementById('var-body'); if(b) b.innerHTML=varGruposHTML(); const i=document.querySelector('#var-body input'); if(i){ i.focus(); i.setSelectionRange(i.value.length,i.value.length);} },250)"></div>
+   <div class="card"><div class="tbl-wrap"><table><thead><tr><th>Produto</th><th>Tipo</th><th class="t-right">Variações</th><th class="t-right">Estoque total</th><th class="t-right">Vendido 90 dias</th><th class="t-right">Sem estoque</th><th style="width:110px"></th></tr></thead><tbody>
+   ${G.length?G.slice(0,400).map(g=>{ const V=varItensVivos(g); const est=V.reduce((s,x)=>s+(+x.p.estoque||0),0); const vd=V.reduce((s,x)=>s+(vend[x.p.id]||0),0); const zer=V.filter(x=>(+x.p.estoque||0)<=0).length;
+      return `<tr><td><b>${esc(g.nome)}</b></td><td>${esc(g.atributo||'Variação')}</td><td class="t-right tnum">${NUM(V.length)}</td><td class="t-right tnum">${NUM(est)}</td><td class="t-right tnum">${NUM(vd)}</td>
+        <td class="t-right tnum">${zer?`<span style="color:var(--neg)">${NUM(zer)}</span>`:'0'}</td>
+        <td class="t-right" style="white-space:nowrap"><button class="btn btn-ghost btn-sm" onclick="varForm('${g.id}')">${ico('edit')} Abrir</button></td></tr>`; }).join('')
+    :`<tr><td colspan="7"><div class="empty" style="padding:30px">${ico('layers')}<h4>Nenhum grupo criado</h4><p class="t-mut">Veja a aba <b>Sugestões automáticas</b>: o sistema encontra os produtos que só mudam a cor/tamanho no nome.</p></div></td></tr>`}
+   </tbody></table></div></div>${G.length>400?`<p class="t-mut" style="font-size:12px">Mostrando 400 de ${NUM(G.length)} — use a busca.</p>`:''}`; }
+function varSugestoesHTML(){ if(!VAR_SUG) VAR_SUG=varDetectar(); const S=VAR_SUG;
+  if(!S.length) return `<div class="empty" style="padding:30px">${ico('check')}<h4>Nenhuma sugestão</h4><p class="t-mut">Todos os produtos com variação no nome já estão em grupos (ou não há padrões repetidos).</p></div>`;
+  const tot=S.reduce((s,g)=>s+g.itens.length,0);
+  return `<div class="card card-pad" style="margin-bottom:10px;display:flex;gap:10px;align-items:center;flex-wrap:wrap">
+      <span style="font-size:13px"><b>${NUM(S.length)}</b> grupo(s) sugerido(s) com <b>${NUM(tot)}</b> produtos. Confira, desmarque o que não for variação e crie.</span><div class="spacer"></div>
+      <button class="btn btn-ghost btn-sm" onclick="VAR_SEL=new Set(VAR_SUG.map((_,i)=>i));varSugRefresh()">Marcar todos</button>
+      <button class="btn btn-ghost btn-sm" onclick="VAR_SEL=new Set();varSugRefresh()">Desmarcar</button>
+      <button class="btn btn-amber btn-sm" onclick="varSugCriar()">${ico('check')} Criar ${NUM(VAR_SEL.size)} marcado(s)</button></div>
+   <div class="card"><div class="tbl-wrap" style="max-height:62vh;overflow:auto"><table><thead><tr><th style="width:34px"></th><th>Produto (base)</th><th>Tipo</th><th class="t-right">Qtd</th><th>Variações (exemplos)</th></tr></thead><tbody>
+   ${S.map((g,i)=>`<tr><td><input type="checkbox" ${VAR_SEL.has(i)?'checked':''} onchange="if(this.checked)VAR_SEL.add(${i});else VAR_SEL.delete(${i});varSugBtn()"></td>
+     <td><b>${esc(g.nome)}</b></td><td><select style="padding:3px 6px" onchange="VAR_SUG[${i}].atributo=this.value">${['Cor','Tamanho','Modelo','Variação'].map(a=>`<option ${g.atributo===a?'selected':''}>${a}</option>`).join('')}</select></td>
+     <td class="t-right tnum">${NUM(g.itens.length)}</td><td class="t-mut" style="font-size:11.5px">${g.itens.slice(0,6).map(x=>esc(x.valor)).join(' · ')}${g.itens.length>6?' …':''}</td></tr>`).join('')}
+   </tbody></table></div></div>`; }
+function varSugRefresh(){ const b=document.getElementById('var-body'); if(b) b.innerHTML=varSugestoesHTML(); }
+function varSugBtn(){ const b=[...document.querySelectorAll('#var-body button')].find(x=>/marcado\(s\)/.test(x.textContent)); if(b) b.innerHTML=ico('check')+' Criar '+NUM(VAR_SEL.size)+' marcado(s)'; }
+function varSugCriar(){ const L=[...VAR_SEL].map(i=>VAR_SUG[i]).filter(Boolean); if(!L.length){ toast('Marque pelo menos um grupo','err'); return; }
+  if(!confirm('Criar '+L.length+' grupo(s) de variação com '+L.reduce((s,g)=>s+g.itens.length,0)+' produtos?\n\nOs produtos não mudam (SKU, código, estoque e preço continuam iguais) — só passam a aparecer juntos.')) return;
+  const idx=varIdx(); let n=0;
+  DB.bulk(()=>{ L.forEach(g=>{ const itens=g.itens.filter(x=>!idx.has(x.pid)); if(itens.length<2) return; DB.insert('gruposVariacao',{nome:g.nome.toUpperCase(), atributo:g.atributo||'Variação', itens}); n++; }); });
+  try{ logAcao('Grupos de variação criados', n+' grupo(s)'); }catch(e){} try{ nuvemPushJa(); }catch(e){}
+  VAR_SUG=null; VAR_SEL=new Set(); toast(n+' grupo(s) criados','ok'); VAR_TAB='grupos'; viewVariacoes(); }
+/* ---- editor do grupo ---- */
+let VARF=null;
+function varForm(id){ const g=id?DB.get('gruposVariacao',id):null;
+  VARF={ id:g?g.id:null, nome:g?(g.nome||''):'', atributo:g?(g.atributo||'Variação'):'Cor', itens:g?(g.itens||[]).map(x=>({pid:x.pid, valor:x.valor||''})):[] };
+  openModal(varFormHTML(), 'xwide'); }
+function varFormHTML(){ const F=VARF; const vend90=varVendidoMap(90), vend30=varVendidoMap(30);
+  const V=F.itens.map((x,i)=>({x,i,p:DB.get('produtos',x.pid)})).filter(y=>y.p);
+  const tEst=V.reduce((s,y)=>s+(+y.p.estoque||0),0), tV=V.reduce((s,y)=>s+(vend90[y.p.id]||0),0);
+  return `<div class="modal-head"><h3>${ico('layers')} ${F.id?'Produto com variações':'Novo grupo de variações'}</h3><button class="btn-icon btn-ghost" onclick="closeModal()">${ico('x')}</button></div>
+   <div class="modal-body" style="max-height:74vh;overflow:auto">
+     <div class="field-row"><div class="field"><label>Nome do produto (sem a variação) *</label><input class="cad-upper" value="${esc(F.nome)}" oninput="VARF.nome=this.value" placeholder="Ex.: BARB ECOBRASIL 1KG"></div>
+       <div class="field" style="max-width:180px"><label>Tipo de variação</label><select onchange="VARF.atributo=this.value">${['Cor','Tamanho','Modelo','Variação'].map(a=>`<option ${F.atributo===a?'selected':''}>${a}</option>`).join('')}</select></div></div>
+     <div style="display:flex;gap:16px;flex-wrap:wrap;font-size:13px;margin:4px 0 8px"><span>${NUM(V.length)} variação(ões)</span><span>Estoque total: <b>${NUM(tEst)}</b></span><span>Vendido 90 dias: <b>${NUM(tV)}</b></span></div>
+     <table><thead><tr><th>${esc(F.atributo||'Variação')}</th><th>Produto</th><th>SKU / código</th><th class="t-right">Preço</th><th class="t-right">Estoque</th><th class="t-right">Vend. 30d</th><th class="t-right">Vend. 90d</th><th class="t-right" title="Para cobrir ~30 dias de venda (média dos últimos 90)">Comprar</th><th></th></tr></thead><tbody>
+     ${V.length?V.map(y=>{ const p=y.p; const v90=vend90[p.id]||0; const sug=Math.max(0, Math.ceil(v90/3-(+p.estoque||0)));
+       return `<tr><td><input value="${esc(y.x.valor)}" style="width:150px;text-transform:uppercase" onchange="VARF.itens[${y.i}].valor=this.value.toUpperCase()"></td>
+        <td style="font-size:12px">${esc(p.nome)}</td><td class="t-mut" style="font-size:11.5px">${esc(p.sku||'—')}${p.codigoBarras?('<br>'+esc(p.codigoBarras)):''}</td>
+        <td class="t-right tnum">${BRL(+p.preco||0)}</td><td class="t-right tnum" style="${(+p.estoque||0)<=0?'color:var(--neg);font-weight:700':''}">${NUM(+p.estoque||0)}</td>
+        <td class="t-right tnum">${NUM(vend30[p.id]||0)}</td><td class="t-right tnum">${NUM(v90)}</td><td class="t-right tnum" style="${sug?'color:var(--amber-d);font-weight:700':''}">${sug?NUM(sug):'—'}</td>
+        <td><button class="btn-icon btn-ghost" title="Tirar do grupo (o produto continua cadastrado)" onclick="VARF.itens.splice(${y.i},1);varFormRedesenhar()">${ico('x')}</button></td></tr>`; }).join('')
+      :`<tr><td colspan="9" class="t-mut" style="padding:14px">Nenhuma variação. Busque abaixo e adicione os produtos.</td></tr>`}
+     </tbody></table>
+     <div style="position:relative;margin-top:10px;max-width:520px"><input id="var-add" placeholder="Adicionar variação: digite nome, SKU ou código de barras…" autocomplete="off" style="width:100%" oninput="clearTimeout(window._vaT);window._vaT=setTimeout(()=>varAddBuscar(this.value),150)" onblur="setTimeout(()=>{ const d=document.getElementById('var-add-dd'); if(d) d.style.display='none'; },200)">
+       <div id="var-add-dd" style="display:none;position:absolute;left:0;right:0;top:100%;z-index:60"></div></div>
+   </div>
+   <div class="modal-foot">${F.id?`<button class="btn btn-ghost" style="color:var(--neg)" onclick="varDesfazer('${F.id}')">${ico('trash')} Desfazer grupo</button>`:''}<button class="btn btn-ghost" onclick="varCsv()">${ico('dl')} CSV</button><div style="flex:1"></div>
+     <button class="btn btn-ghost" onclick="closeModal()">Cancelar</button><button class="btn btn-amber" onclick="varSalvar()">${ico('check')} Salvar</button></div>`; }
+function varFormRedesenhar(){ try{ openModal(varFormHTML(),'xwide'); }catch(e){} }
+function varAddBuscar(q){ const dd=document.getElementById('var-add-dd'); if(!dd) return; q=(q||'').trim(); if(q.length<2){ dd.style.display='none'; return; }
+  const idx=varIdx(); const ja=new Set(VARF.itens.map(x=>x.pid));
+  const res=prodSearchSort(DB.all('produtos').filter(p=>p && (p.situacao||'ativo')!=='inativo' && !ja.has(p.id) && matchTokens((p.nome||'')+' '+(p.sku||'')+' '+(p.codigoBarras||''),q)),q).slice(0,20);
+  dd.style.display='block';
+  dd.innerHTML=`<div class="wiz-assoc-dd" style="max-height:260px;overflow:auto">${res.length?res.map(p=>{ const em=idx.get(p.id); const outro=em&&em.g.id!==VARF.id;
+      return `<div class="wiz-opt" onmousedown="event.preventDefault();varAdd('${p.id}')"><b>${esc(p.nome)}</b><div class="t-mut" style="font-size:11px">SKU ${esc(p.sku||'—')} · ${BRL(+p.preco||0)} · estoque ${NUM(+p.estoque||0)}${outro?` · <span style="color:var(--amber-d)">está no grupo ${esc(em.g.nome)} (vai mudar para este)</span>`:''}</div></div>`; }).join('')
+    :`<div class="t-mut" style="padding:10px;font-size:12px">Nenhum produto</div>`}</div>`; }
+function varAdd(pid){ const p=DB.get('produtos',pid); if(!p) return; let valor=(p.nome||'');
+  const base=(VARF.nome||'').trim().toUpperCase(); if(base && normTxt(valor).toUpperCase().startsWith(normTxt(base).toUpperCase())) valor=valor.slice(base.length).replace(/^[\s-]+/,'');
+  if(!VARF.nome) VARF.nome=p.nome; VARF.itens.push({pid, valor:(valor||p.nome).toUpperCase()}); varFormRedesenhar();
+  setTimeout(()=>{ const el=document.getElementById('var-add'); if(el) el.focus(); },40); }
+function varSalvar(){ const F=VARF; if(!F) return; const nome=(F.nome||'').trim().toUpperCase(); if(!nome){ toast('Informe o nome do produto','err'); return; }
+  const itens=F.itens.filter(x=>DB.get('produtos',x.pid)); if(itens.length<2){ toast('Um grupo precisa de pelo menos 2 variações','err'); return; }
+  // produto que estava em OUTRO grupo sai de lá (cada produto fica em um grupo só)
+  const meus=new Set(itens.map(x=>x.pid));
+  DB.all('gruposVariacao').forEach(g=>{ if(!g || g.id===F.id) return; const rest=(g.itens||[]).filter(x=>!meus.has(x.pid)); if(rest.length!==(g.itens||[]).length){ if(rest.length<2) DB.remove('gruposVariacao',g.id); else DB.update('gruposVariacao',g.id,{itens:rest}); } });
+  const dados={nome, atributo:F.atributo||'Variação', itens};
+  if(F.id) DB.update('gruposVariacao',F.id,dados); else DB.insert('gruposVariacao',dados);
+  try{ nuvemPushJa(); }catch(e){} VAR_SUG=null; closeModal(); toast('Grupo salvo','ok'); viewVariacoes(); }
+function varDesfazer(id){ const g=DB.get('gruposVariacao',id); if(!g) return; if(!confirm('Desfazer o grupo "'+g.nome+'"?\n\nOs produtos continuam cadastrados, só deixam de aparecer juntos.')) return;
+  DB.remove('gruposVariacao',id); try{ nuvemPushJa(); }catch(e){} VAR_SUG=null; closeModal(); viewVariacoes(); }
+function varCsv(){ const F=VARF; const v90=varVendidoMap(90), v30=varVendidoMap(30);
+  const q=v=>{ v=(v==null?'':''+v); return /[;"\n]/.test(v)?'"'+v.replace(/"/g,'""')+'"':v; };
+  const L=[['grupo','variacao','produto','sku','codigo de barras','preco','estoque','vendido 30d','vendido 90d','comprar']];
+  F.itens.forEach(x=>{ const p=DB.get('produtos',x.pid); if(!p) return; const a=v90[p.id]||0; L.push([F.nome,x.valor,p.nome,p.sku,p.codigoBarras,(''+(+p.preco||0)).replace('.',','),+p.estoque||0,v30[p.id]||0,a,Math.max(0,Math.ceil(a/3-(+p.estoque||0)))]); });
+  _baixarArquivoTxt('variacoes-'+((F.nome||'grupo').replace(/[^\w]+/g,'-').toLowerCase())+'.csv','﻿'+L.map(r=>r.map(q).join(';')).join('\r\n'),'text/csv'); }
+/* ---- PDV: agrupa as variações na lista de resultados ---- */
+function varAgruparResultados(res, q){ try{ const idx=varIdx(); if(!idx.size || !res.length) return res;
+    const qd=(q||'').replace(/\D/g,''); const exato=p=>((''+(p.sku||'')).toLowerCase()===(q||'').toLowerCase()) || (qd.length>=6 && ((''+(p.codigoBarras||'')).replace(/\D/g,'')===qd || (p.codigosBarrasAdic||[]).some(c=>(''+c).replace(/\D/g,'')===qd)));
+    if(res.some(exato)) return res;   // bipou o código / digitou o SKU: vai direto na variação
+    const out=[], vistos=new Map();
+    res.forEach(p=>{ const v=idx.get(p.id); if(!v){ out.push(p); return; }
+      if(vistos.has(v.g.id)) return; const V=varItensVivos(v.g).filter(x=>prodVendavel(x.p)); if(V.length<2){ out.push(p); return; }
+      const precos=V.map(x=>+x.p.preco||0); const pm=Math.min(...precos), pM=Math.max(...precos);
+      const pseudo={ id:'vg:'+v.g.id, _varG:v.g.id, nome:v.g.nome+' — '+V.length+' '+varAtribPlural(v.g.atributo), sku:'', estoque:V.reduce((s,x)=>s+(+x.p.estoque||0),0), preco:pm, _precoMax:pM, unidade:p.unidade };
+      vistos.set(v.g.id,pseudo); out.push(pseudo); });
+    return out; }catch(e){ return res; } }
+function varPickerAbrir(gid){ const g=DB.get('gruposVariacao',gid); if(!g) return; const V=varItensVivos(g).filter(x=>prodVendavel(x.p));
+  window.__varPick={gid, sel:0, lista:V};
+  openModal(`<div class="modal-head"><h3>${ico('layers')} ${esc(g.nome)} — escolha ${g.atributo==='Cor'?'a cor':(g.atributo==='Tamanho'?'o tamanho':'a variação')}</h3><button class="btn-icon btn-ghost" onclick="closeModal();varPickerVoltar()">${ico('x')}</button></div>
+   <div class="modal-body" style="max-height:66vh;overflow:auto">
+     <input id="var-pick-q" placeholder="Filtrar ${esc((g.atributo||'variação').toLowerCase())}… (setas + Enter)" autocomplete="off" style="width:100%;margin-bottom:8px" oninput="varPickerFiltrar(this.value)" onkeydown="varPickerKey(event)">
+     <div id="var-pick-list">${varPickerListaHTML()}</div></div>`, true);
+  setTimeout(()=>{ const i=document.getElementById('var-pick-q'); if(i) i.focus(); },60); }
+function varPickerListaHTML(){ const P=window.__varPick; if(!P) return ''; const L=P.lista;
+  if(!L.length) return `<div class="t-mut" style="padding:10px">Nenhuma variação</div>`;
+  return L.map((x,k)=>{ const p=x.p; const sem=(+p.estoque||0)<=0; return `<div class="orc-row ${k===P.sel?'active':''}" style="cursor:pointer" onclick="varPickerEscolher('${p.id}')">
+     <div style="flex:1;min-width:0"><div class="orc-rn">${esc(x.it.valor||p.nome)}</div><div class="orc-rs">SKU: ${esc(p.sku||'—')} • Est: ${NUM(+p.estoque||0)}${sem?' • <span style="color:var(--neg)">sem estoque</span>':''}</div></div>
+     <div class="orc-rp">${BRL(+p.preco||0)}</div></div>`; }).join(''); }
+function varPickerFiltrar(q){ const P=window.__varPick; if(!P) return; const g=DB.get('gruposVariacao',P.gid); const V=varItensVivos(g).filter(x=>prodVendavel(x.p));
+  P.lista=q?V.filter(x=>matchTokens((x.it.valor||'')+' '+(x.p.nome||'')+' '+(x.p.sku||''),q)):V; P.sel=0; const el=document.getElementById('var-pick-list'); if(el) el.innerHTML=varPickerListaHTML(); }
+function varPickerKey(e){ const P=window.__varPick; if(!P) return;
+  if(e.key==='ArrowDown'){ e.preventDefault(); P.sel=Math.min(P.lista.length-1,P.sel+1); }
+  else if(e.key==='ArrowUp'){ e.preventDefault(); P.sel=Math.max(0,P.sel-1); }
+  else if(e.key==='Enter'){ e.preventDefault(); const x=P.lista[P.sel]; if(x) varPickerEscolher(x.p.id); return; }
+  else if(e.key==='Escape'){ e.preventDefault(); closeModal(); varPickerVoltar(); return; } else return;
+  const el=document.getElementById('var-pick-list'); if(el){ el.innerHTML=varPickerListaHTML(); const a=el.querySelector('.orc-row.active'); if(a) a.scrollIntoView({block:'nearest'}); } }
+function varPickerVoltar(){ setTimeout(()=>{ const i=document.getElementById('pdv-q'); if(i) i.focus(); },40); }
+/* Escolheu a variação: ela vira a linha ativa da busca do PDV (quantidade, preço e desconto como sempre). */
+function varPickerEscolher(pid){ const p=DB.get('produtos',pid); if(!p) return; closeModal(); window.__varPick=null;
+  PDVS.results=[p]; PDVS.activePid=p.id; renderPdvResults(); pdvActivate(p.id); }
 
 function viewKits(){ const kits=DB.all('kitsPromo');
   document.getElementById('view').innerHTML=`
@@ -25092,7 +25330,7 @@ async function nuvemAppSessao(){
    Requer ter rodado o SQL de segurança e criado a conta da loja em Authentication. Para desligar, ponha false. */
 const NUVEM_SECURE = (CFG_E.nuvemSegura !== false);
 /* coleções (listas de registros com id) que são mescladas registro-a-registro entre aparelhos */
-const NUVEM_COLS = ['produtos','clientes','fornecedores','vendedores','transportadoras','funcionarios','servicos','contasBancarias','centroCustos','planoContas','gruposCP','vendas','financeiro','movEstoque','compras','cotacoes','servicosContratados','servicosPrestados','devolucoes','creditos','creditoMovs','orcamentos','categorias','indicadores','tarefas','caixaSessoes','caixaMovs','maquinas','contratosAluguel','notasFiscais','beneficiosFiscais','recebimentos','pedidosOnline','ordensCompra','cotacaoRespostas','clientesSaaS','mensalidades','cheques','conciliacaoTx','veiculos','abastecimentos','manutencoes','chamados','contratos','licencas','implantacoes','leads','gruposProd','subgruposProd','cfopContrapartida','kitsPromo','crmDeals','crmRespostas','prospecEmpresas','calcObraServicos','listaPedidos','produtosFalta','marcas','notasRecebidas','transferencias','lixeira','ofxImportacoes','folha','dispositivos','listasEscolares'];
+const NUVEM_COLS = ['produtos','clientes','fornecedores','vendedores','transportadoras','funcionarios','servicos','contasBancarias','centroCustos','planoContas','gruposCP','vendas','financeiro','movEstoque','compras','cotacoes','servicosContratados','servicosPrestados','devolucoes','creditos','creditoMovs','orcamentos','categorias','indicadores','tarefas','caixaSessoes','caixaMovs','maquinas','contratosAluguel','notasFiscais','beneficiosFiscais','recebimentos','pedidosOnline','ordensCompra','cotacaoRespostas','clientesSaaS','mensalidades','cheques','conciliacaoTx','veiculos','abastecimentos','manutencoes','chamados','contratos','licencas','implantacoes','leads','gruposProd','subgruposProd','cfopContrapartida','kitsPromo','crmDeals','crmRespostas','prospecEmpresas','calcObraServicos','listaPedidos','produtosFalta','marcas','notasRecebidas','transferencias','lixeira','ofxImportacoes','folha','dispositivos','listasEscolares','gruposVariacao'];
 let NUVEM_SB=null, NUVEM_SB_URL=null, NUVEM_LOADING=false, _nuvemTimer=null, NUVEM_AUTH_USER=null, _nuvemOffline=false;
 let NUVEM_RT=null, NUVEM_RT_TENANT=null, _nuvemLastPushTs='', _nuvemPendingPush=false, _nuvemPendingApply=false, _nuvemRtTick=null, _nuvemReautAviso=false;
 function nuvemCfg(){ let c={}; try{ c=JSON.parse(localStorage.getItem(NUVEM_CFG_KEY)||'{}')||{}; }catch(e){ c={}; }
@@ -29505,7 +29743,7 @@ function importProdArquivo(file, opts){ opts=opts||{}; if(!file) return; const r
       // nome quando a linha não tem SKU ou quando o produto existente ainda não tem SKU.
       const _pn=byNome.get(nome.toLowerCase());
       const existe=(data.sku && bySku.get(data.sku.toLowerCase())) || ((!data.sku || !(_pn&&_pn.sku) || (_pn&&(''+_pn.sku).toLowerCase()===data.sku.toLowerCase()))?_pn:null);
-      if(existe){ Object.assign(existe, data); existe._mod=agora(); atual++; }
+      if(existe){ if(existe.servico) data.estoque=0; Object.assign(existe, data); existe._mod=agora(); atual++; }
       else { if(!data.sku) data.sku='P'+Math.floor(1000+Math.random()*9000); if(!data.situacao)data.situacao='ativo'; data.id=uid(); data._mod=agora();
         prods.push(data); if(data.sku) bySku.set(data.sku.toLowerCase(), data); byNome.set(nome.toLowerCase(), data); novos++; }
     }
@@ -30110,7 +30348,7 @@ function contImportarLinhas(rows, nomeArq){
   const heads=rows[0].map(h=>{ const k=impProdKey(h); return (k==='nome'||k==='sku'||k==='codigoBarras'||k==='codigosBarrasAdic'||k==='estoque')?k:null; });
   if(!heads.includes('estoque')){ toast('Não encontrei a coluna de ESTOQUE (quantidade) na planilha','err'); return null; }
   if(!heads.includes('codigoBarras') && !heads.includes('nome') && !heads.includes('sku')){ toast('A planilha precisa ter código de barras, descrição ou SKU','err'); return null; }
-  const prods=DB.all('produtos').filter(p=>p);
+  const prods=DB.all('produtos').filter(p=>p && !p.servico);   // serviço não tem estoque: fica fora da contagem
   const bySku=new Map(), byBar=new Map(), byNome=new Map();
   const push=(m,k,p)=>{ if(!k) return; const a=m.get(k)||[]; if(a.indexOf(p)<0) a.push(p); m.set(k,a); };
   prods.forEach(p=>{ const sk=(''+(p.sku||'')).trim().toLowerCase(); if(sk && !bySku.has(sk)) bySku.set(sk,p);
@@ -30158,7 +30396,7 @@ function contImpBaixarNaoAch(){ const r=window.__contImpRel; if(!r) return;
   const csv=['sku;produto;codigo de barras;estoque'].concat(r.naoAch.map(x=>[x.sku,x.nome,x.barras,(''+x.qtd).replace('.',',')].map(q).join(';'))).join('\r\n');
   _baixarArquivoTxt('estoque-nao-encontrados-'+today()+'.csv', '\ufeff'+csv, 'text/csv'); }
 function contAplicar(){ const ks=Object.keys(CONT.cont).filter(k=>CONT.cont[k]!=null&&CONT.cont[k]!==''); 
-  const ajustes=ks.map(k=>{ const p=DB.get('produtos',k); if(!p) return null; const novo=+CONT.cont[k]; const div=novo-(+p.estoque||0); return div===0?null:{p,novo,div}; }).filter(Boolean);
+  const ajustes=ks.map(k=>{ const p=DB.get('produtos',k); if(!p || p.servico) return null; const novo=+CONT.cont[k]; const div=novo-(+p.estoque||0); return div===0?null:{p,novo,div}; }).filter(Boolean);
   if(!ajustes.length){ toast('Nenhuma divergência para ajustar','err'); return; }
   if(!confirm(`Aplicar ${ajustes.length} ajuste(s) de estoque? Isso atualiza o saldo e registra a movimentação.`)) return;
   // Grava TUDO de uma vez (DB.bulk): antes cada item salvava a base inteira duas vezes —
