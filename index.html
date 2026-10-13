@@ -48,7 +48,7 @@ const CONFIG_EMPRESA = {
      Aparece no topo do menu e no rodapé das Configurações. Troque a cada publicação.
      MANTENHA O FORMATO 'vDD/MM-X' — é ele que o sistema usa para comparar as máquinas
      da loja e avisar quando alguma ficou para trás.                                  */
-  versao: 'v13/10-B',
+  versao: 'v13/10-C',
 
   /* 4) NUVEM (Supabase)  ------------------------------------------------------------
      Cole aqui a Project URL e a chave PUBLISHABLE do projeto Supabase DESTA empresa
@@ -25889,8 +25889,10 @@ async function nuvemV3PushExec(){
     if(linhas.length>tam) nuvemProgresso('Enviando o que foi lançado neste computador… '+NUM(Math.min(i+tam,linhas.length))+' de '+NUM(linhas.length));
     const lote=grupo.map(l=>({ tenant, col:l.col, id:l.id, dados:l.del?l.dados:nuvemLimparRegistro(l.dados), del:l.del, mod:l.mod }));
     const r=await nuvemV3UpsertLote(sb, lote);
-    if(!r.ok && r.rede && !(typeof navigator!=='undefined' && navigator.onLine===false) && _reduz<3 && _v3LoteAtual>5){
-      _reduz++; _v3LoteAtual=Math.max(5, Math.floor(_v3LoteAtual/2));
+    // v13/10-C: desce até 1 registro. Com "Failed to fetch" o servidor derruba a conexão sem dizer o motivo —
+    // se for UM cadastro grande demais (foto colada), só isolando ele o envio volta a andar (o registro é pulado).
+    if(!r.ok && r.rede && !(typeof navigator!=='undefined' && navigator.onLine===false) && _reduz<8 && _v3LoteAtual>1){
+      _reduz++; _v3LoteAtual=Math.max(1, Math.floor(_v3LoteAtual/2));
       await new Promise(rs=>setTimeout(rs, 1200)); continue; }   // mesmo ponto, lote menor
     if(!r.ok){   // rede/offline: retoma depois (nada se perde — é retomável pela marca)
       if(String(maiorMod)!==String(cfg.envio)) nuvemCfgSalvar({ v3Envio:maiorMod });
@@ -26265,6 +26267,21 @@ function nuvemLeituraRegistra(r){ try{
     if(/^sem nuvem$/i.test(m)) return;
     nuvemFalhaRegistra('leitura', m);
   }catch(e){} }
+/* SONDA: o servidor da nuvem responde a uma leitura simples? Separa "sem internet / Supabase fora do ar"
+   de "o servidor responde mas o ENVIO está sendo barrado neste computador". Resultado vale por 2 min. */
+async function nuvemSondaRede(){ try{
+    const ag=Date.now(); const c=window._nuvemSonda; if(c && ag-c.t<120000) return c;
+    const cfg=nuvemCfg()||{}; if(!cfg.url||!cfg.key) return {t:ag, ok:false, motivo:'nuvem não configurada'};
+    const ctl=(typeof AbortController!=='undefined')?new AbortController():null; const tm=setTimeout(()=>{ try{ ctl&&ctl.abort(); }catch(e){} }, 8000);
+    let r=null; try{ r=await fetch(String(cfg.url).replace(/\/+$/,'')+'/rest/v1/', {method:'GET', headers:{apikey:cfg.key}, signal:ctl?ctl.signal:undefined, cache:'no-store'}); }
+    catch(e){ clearTimeout(tm); window._nuvemSonda={t:ag, ok:false, motivo:(e&&e.message)||''+e}; return window._nuvemSonda; }
+    clearTimeout(tm); window._nuvemSonda={t:ag, ok:true, status:r.status}; return window._nuvemSonda;
+  }catch(e){ return {t:Date.now(), ok:false, motivo:(e&&e.message)||''+e}; } }
+function nuvemDicaFalha(motivo, sonda){ const m=(''+(motivo||'')).toLowerCase();
+  if(!/failed to fetch|networkerror|network error|load failed|timeout/.test(m)) return '';
+  if(sonda && sonda.ok===false) return 'O servidor da nuvem NÃO respondeu nem a uma leitura simples: confira a internet deste computador e, no painel do Supabase, se o projeto está pausado ou "Unhealthy" (use Restart project).';
+  if(sonda && sonda.ok) return 'O servidor da nuvem responde, mas o ENVIO está sendo barrado neste computador: desative bloqueador de anúncios/antivírus/firewall para este site ou teste em outro navegador. O sistema também está isolando cadastros grandes demais — se for isso, o envio volta a andar sozinho.';
+  return ''; }
 function nuvemAvisoDesatualizadoTexto(){
   const f=window._nuvemFalha||{}; const hh=iso=>{ try{ return new Date(iso).toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'}); }catch(e){ return ''; } };
   const p=[];
@@ -26280,10 +26297,15 @@ function nuvemAvisoDesatualizado(){ try{
       el.style.cssText='position:fixed;left:0;right:0;top:0;z-index:9001;background:#991b1b;color:#fff;font-size:13px;padding:8px 14px;display:flex;gap:10px;align-items:center;justify-content:center;flex-wrap:wrap;box-shadow:0 2px 8px rgba(0,0,0,.3)';
       document.body.appendChild(el); }
     const t=nuvemAvisoDesatualizadoTexto();
-    el.innerHTML='<span>'+(typeof ico==='function'?ico('alert'):'⚠')+' '+t.html+(t.motivo?(' <span style="opacity:.85;font-size:11.5px">Motivo: '+esc(String(t.motivo).slice(0,140))+'</span>'):'')+'</span>'
+    const _dica=nuvemDicaFalha(t.motivo, window._nuvemSonda);
+    el.innerHTML='<span>'+(typeof ico==='function'?ico('alert'):'⚠')+' '+t.html+(t.motivo?(' <span style="opacity:.85;font-size:11.5px">Motivo: '+esc(String(t.motivo).slice(0,140))+'</span>'):'')+(_dica?('<div style="font-size:11.5px;margin-top:3px;opacity:.95">'+esc(_dica)+'</div>'):'')+'</span>'
       +'<button class="btn btn-sm" style="background:#fff;color:#991b1b;border:0" onclick="nuvemTentarAgora()">Tentar agora</button>'
+      +'<button class="btn btn-sm" style="background:transparent;color:#fff;border:1px solid #fff9" onclick="nuvemDiagnostico()">Diagnóstico</button>'
+      +'<button class="btn btn-sm" style="background:transparent;color:#fff;border:1px solid #fff9" onclick="nuvemVerPulados()">Não enviados</button>'
       +'<button class="btn btn-sm" style="background:transparent;color:#fff;border:1px solid #fff9" onclick="nuvemAvisoDesatualizadoOcultar()">Ocultar 20 min</button>';
     el.style.display='flex';
+    // sonda em segundo plano: quando responder, redesenha o aviso com a dica certa
+    try{ if(!window._nuvemSonda || Date.now()-window._nuvemSonda.t>=120000){ nuvemSondaRede().then(()=>{ try{ if(nuvemDesatualizado()) nuvemAvisoDesatualizado(); }catch(e){} }); } }catch(e){}
   }catch(e){} }
 function nuvemAvisoDesatualizadoLimpar(){ try{ const el=document.getElementById('nuvem-desatualizado'); if(el) el.style.display='none'; }catch(e){} }
 function nuvemAvisoDesatualizadoOcultar(){ window._nuvemAvisoOculto=Date.now()+20*60000; nuvemAvisoDesatualizadoLimpar(); }
@@ -27902,9 +27924,19 @@ async function nuvemDiagnostico(){ const sb=nuvemClient(); if(!sb){ toast('Conex
   try{ const { error }=await sb.from('acervo').select('tenant').limit(1);
     L.push(error ? ('✗ LEITURA negada: '+error.message) : '✓ Leitura da nuvem OK'); }
   catch(e){ L.push('✗ Leitura falhou: '+((e&&e.message)||e)); }
-  try{ const tenant=nuvemTenant(); const { error }=await sb.from('acervo').upsert({ tenant, dados: DB._load(), atualizado:new Date().toISOString() });
-    L.push(error ? ('✗ GRAVAÇÃO negada: '+error.message) : '✓ Gravação na nuvem OK'); }
+  const _v3=(typeof nuvemV3On==='function' && nuvemV3On());
+  try{ const tenant=nuvemTenant();
+    // v3: grava UM registro pequeno de teste (antes subia a base inteira na tabela antiga — pesado e sem relação com o envio real)
+    const { error }=_v3
+      ? await nuvemComTimeout(sb.from('acervo_reg').upsert([{ tenant, col:'__diag', id:'__diag', dados:{ quando:new Date().toISOString(), de:(typeof dispEste==='function'?dispEste().nome:'') }, del:false, mod:new Date().toISOString() }], { onConflict:'tenant,col,id' }), 15000)
+      : await sb.from('acervo').upsert({ tenant, dados: DB._load(), atualizado:new Date().toISOString() });
+    L.push(error ? ('✗ GRAVAÇÃO negada: '+error.message) : '✓ Gravação na nuvem OK'+(_v3?' (registro de teste)':'')); }
   catch(e){ L.push('✗ Gravação falhou: '+((e&&e.message)||e)); }
+  try{ const sd=await nuvemSondaRede(); L.push(sd.ok ? '✓ Servidor da nuvem responde (leitura simples OK)' : ('✗ Servidor da nuvem NÃO respondeu à leitura simples: '+(sd.motivo||'')));
+    const ult=window._nuvemUltimoErroEnvio||''; if(ult) L.push('• Último erro de envio: '+ult.slice(0,120));
+    const dc=nuvemDicaFalha(ult||(sd.ok?'':'failed to fetch'), sd); if(dc) L.push('→ '+dc);
+    if(_v3){ const n=(typeof dispPendentes==='function')?dispPendentes(true):0; L.push('• Lançamentos deste computador ainda não enviados: '+NUM(n)); const pul=(window._v3PuladosInfo||[]).length; if(pul) L.push('• Registros pulados por conteúdo inválido/grande: '+NUM(pul)+' (veja "Registros não enviados")'); }
+  }catch(e){}
   let dica='';
   if(L.some(x=>/SEM sessão/.test(x))) dica='Faça o login da nuvem (botão "Liberar acesso à nuvem"). Se o login falhar, confirme o e-mail do usuário no Supabase.';
   else if(L.some(x=>/negad|row-level|violat/i.test(x))) dica='A sessão existe, mas o banco recusou. Rode novamente o SQL de segurança (limpa políticas e concede acesso ao papel autenticado) — está logo abaixo nesta tela.';
