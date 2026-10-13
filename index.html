@@ -48,7 +48,7 @@ const CONFIG_EMPRESA = {
      Aparece no topo do menu e no rodapé das Configurações. Troque a cada publicação.
      MANTENHA O FORMATO 'vDD/MM-X' — é ele que o sistema usa para comparar as máquinas
      da loja e avisar quando alguma ficou para trás.                                  */
-  versao: 'v09/10-K',
+  versao: 'v13/10-A',
 
   /* 4) NUVEM (Supabase)  ------------------------------------------------------------
      Cole aqui a Project URL e a chave PUBLISHABLE do projeto Supabase DESTA empresa
@@ -8931,7 +8931,7 @@ function prodForm(id, prefill){ const p=id?DB.get('produtos',id):(prefill||{});
          <div class="field"><label>CEST</label><input id="f-cest" value="${esc(p.cest||'')}"></div></div>
        <div class="field-row"><div class="field"><label>CFOP venda (mesmo estado)</label><input id="f-cfop" value="${esc(p.cfop||'5102')}" placeholder="5102"></div>
          <div class="field"><label>CFOP venda (outro estado)</label><input id="f-cfop-inter" value="${esc(p.cfopInter||'6102')}" placeholder="6102"></div></div>
-       <div class="field-row"><div class="field"><label>Origem</label><select id="f-orig"><option value="0" ${p.origem==='0'?'selected':''}>0 - Nacional</option><option value="1" ${p.origem==='1'?'selected':''}>1 - Importação direta</option><option value="2" ${p.origem==='2'?'selected':''}>2 - Mercado interno</option></select></div></div>
+       <div class="field-row"><div class="field"><label>Origem</label><select id="f-orig">${[['0','Nacional'],['1','Estrangeira — importação direta'],['2','Estrangeira — adquirida no mercado interno'],['3','Nacional, conteúdo de importação > 40% e ≤ 70%'],['4','Nacional, processos produtivos básicos'],['5','Nacional, conteúdo de importação ≤ 40%'],['6','Estrangeira direta, sem similar nacional (CAMEX)'],['7','Estrangeira mercado interno, sem similar (CAMEX)'],['8','Nacional, conteúdo de importação > 70%']].map(o=>`<option value="${o[0]}" ${(''+(p.origem||'0'))===o[0]?'selected':''}>${o[0]} - ${o[1]}</option>`).join('')}</select></div></div>
        <div class="field"><label>CST / CSOSN</label>${cstSelect('f-cst',p.cst||'')}</div>
        <div class="t-mut" style="font-size:11.5px">Dados usados na emissão de NF-e. Confirme com seu contador. O CST de venda pode ser preenchido automaticamente pela <b>Contrapartida de CFOP</b> ao importar a NF-e de entrada.</div>
      </div>
@@ -11018,13 +11018,13 @@ function catUnificarDuplicadas(){ const dups=catDuplicadas(); if(!dups.length){ 
    Acontece quando a planilha foi importada por uma versão antiga, quando os produtos vieram da
    nuvem antes das listas, ou quando o produto foi salvo com um grupo digitado. Roda ao abrir
    Categorias de Produtos, o cadastro do produto e no fim da importação. */
-function gruposSincronizarDosProdutos(){ let g=0, sg=0; try{
+function gruposSincronizarDosProdutos(){ let g=0, sg=0; try{ DB.bulk(()=>{   // grava UMA vez (antes: uma gravação por grupo novo — 25 s numa importação grande)
     const temG=new Set(DB.all('gruposProd').map(x=>normTxt((x.categoria||'')+'|'+(x.nome||''))));
     const temS=new Set(DB.all('subgruposProd').map(x=>normTxt((x.categoria||'')+'|'+(x.grupo||'')+'|'+(x.nome||''))));
     DB.all('produtos').forEach(p=>{ if(!p) return; const cat=(p.categoria||'').trim(), gr=(p.grupo||'').trim(), sb=(p.subgrupo||'').trim(); if(!cat) return;
       if(gr && normTxt(gr)!==normTxt(cat)){ const k=normTxt(cat+'|'+gr); if(!temG.has(k)){ temG.add(k); DB.insert('gruposProd',{nome:gr,categoria:cat}); g++; } }
       if(sb && gr){ const k=normTxt(cat+'|'+gr+'|'+sb); if(!temS.has(k)){ temS.add(k); DB.insert('subgruposProd',{nome:sb,categoria:cat,grupo:gr}); sg++; } } });
-  }catch(e){} return {grupos:g, subgrupos:sg}; }
+  }); }catch(e){} return {grupos:g, subgrupos:sg}; }
 function categoriasImportarDeProdutos(){
   { const r=gruposSincronizarDosProdutos(); if(r.grupos||r.subgrupos) toast(NUM(r.grupos)+' grupo(s) e '+NUM(r.subgrupos)+' sub-grupo(s) registrados a partir dos produtos','ok'); }
   const prods=DB.all('produtos');
@@ -29170,15 +29170,17 @@ function viewCfg(){
       <div class="card">
         <div class="card-head"><h3>${ico('up')} Importar produtos (Excel / CSV)</h3></div>
         <div class="card-body">
-          <p class="t-mut" style="font-size:13px;margin-bottom:12px;line-height:1.5">Importe uma planilha <b>.xlsx</b>, <b>.xls</b> ou <b>.csv</b> com seus produtos. A primeira linha deve conter os títulos das colunas. Colunas reconhecidas (qualquer ordem): <b>nome</b> (obrigatório), <b>sku/codigo</b>, <b>codigo de barras</b>, <b>categoria</b>, <b>unidade</b>, <b>custo</b>, <b>preco/venda</b>, <b>estoque</b>, <b>estoque minimo</b>, <b>ncm</b>, <b>status</b>, <b>CFOP_VENDA_ES</b>, <b>CFOP_VENDA_OUTRO_ESTADO</b>, <b>CSOSN_PADRAO</b>, <b>marca</b>.</p>
+          <p class="t-mut" style="font-size:13px;margin-bottom:12px;line-height:1.5">Importe uma planilha <b>.xlsx</b>, <b>.xls</b> ou <b>.csv</b> com seus produtos. A primeira linha deve conter os títulos das colunas. Colunas reconhecidas (qualquer ordem): <b>nome</b> (obrigatório), <b>sku/codigo</b>, <b>codigo de barras</b>, <b>categoria</b>, <b>unidade</b>, <b>custo</b>, <b>preco/venda</b>, <b>estoque</b>, <b>estoque minimo</b>, <b>ncm</b>, <b>cest</b>, <b>status</b>, <b>CFOP_VENDA_ES</b>, <b>CFOP_VENDA_OUTRO_ESTADO</b>, <b>CSOSN_PADRAO</b>, <b>origem</b>, <b>CST ICMS</b>, <b>aliq ICMS %</b>, <b>CST PIS</b>, <b>aliq PIS %</b>, <b>CST COFINS</b>, <b>aliq COFINS %</b>, <b>aliq IPI %</b>, <b>cBenef</b>, <b>GTIN tributável</b>, <b>marca</b>.</p>
           <div style="display:flex;gap:10px;flex-wrap:wrap">
             <button class="btn btn-primary" onclick="document.getElementById('imp-prod-file-inc').click()">${ico('plus')} Inclusão de novos produtos</button>
             <button class="btn btn-amber" onclick="document.getElementById('imp-prod-file').click()">${ico('up')} Escolher planilha</button>
+            <button class="btn btn-ghost" style="border:1px solid var(--line)" title="Produtos que já existem recebem só os dados fiscais (e o SKU da planilha); os que não existem são incluídos completos. Nome, categoria, preço e estoque não mudam." onclick="document.getElementById('imp-prod-file-fis').click()">${ico('check')} Atualizar fiscais e incluir novos</button>
             <button class="btn btn-ghost" onclick="importProdModelo()">${ico('dl')} Baixar modelo (.csv)</button>
+            <input type="file" id="imp-prod-file-fis" accept=".xlsx,.xls,.csv" style="display:none" onchange="importProdArquivo(this.files[0],{modo:'fiscal'});this.value=''">
             <input type="file" id="imp-prod-file" accept=".xlsx,.xls,.csv" style="display:none" onchange="importProdArquivo(this.files[0])">
             <input type="file" id="imp-prod-file-inc" accept=".xlsx,.xls,.csv" style="display:none" onchange="importProdArquivo(this.files[0],{inclusao:true});this.value=''">
           </div>
-          <p class="t-mut" style="font-size:12px;margin-top:8px;line-height:1.5"><b>Inclusão de novos produtos:</b> importa a planilha <b>adicionando</b> ao catálogo (atualiza por SKU os que já existem e cria os novos) — <b>nunca apaga</b> os produtos cadastrados. Use "Escolher planilha" se quiser a opção de substituir todo o catálogo.</p>
+          <p class="t-mut" style="font-size:12px;margin-top:8px;line-height:1.5"><b>Inclusão de novos produtos:</b> importa a planilha <b>adicionando</b> ao catálogo (atualiza por SKU os que já existem e cria os novos) — <b>nunca apaga</b> os produtos cadastrados. <b>Atualizar fiscais e incluir novos:</b> os que já existem recebem só os dados fiscais (e o SKU da planilha) — nome, categoria, preço e estoque ficam como estão; os novos entram completos. Use "Escolher planilha" se quiser a opção de substituir todo o catálogo.</p>
           <div id="imp-prod-res" style="margin-top:12px"></div>
           <p class="t-mut" style="font-size:11.5px;margin-top:8px">PDF não é importado de forma confiável sem um servidor de OCR/leitura estruturada — use Excel/CSV (se tiver um PDF, exporte/cole os dados em uma planilha primeiro).</p>
         </div>
@@ -29319,7 +29321,20 @@ function importProdModelo(){ const linhas=[['nome','sku','codigo de barras','cod
   const blob=new Blob(['\ufeff'+csv],{type:'text/csv;charset=utf-8'}); const url=URL.createObjectURL(blob);
   const a=document.createElement('a'); a.href=url; a.download='modelo_produtos.csv'; document.body.appendChild(a); a.click(); a.remove(); setTimeout(()=>URL.revokeObjectURL(url),1000); }
 function impProdNum(v){ if(v==null) return 0; if(typeof v==='number') return v; let s=String(v).trim().replace(/[R$\s]/g,''); if(s.indexOf(',')>-1 && s.indexOf('.')>-1) s=s.replace(/\./g,'').replace(',','.'); else if(s.indexOf(',')>-1) s=s.replace(',','.'); const n=parseFloat(s); return isNaN(n)?0:n; }
-function impProdKey(h){ h=(h||'').toString().toLowerCase().trim().replace(/[áàâ]/g,'a').replace(/[éê]/g,'e').replace(/í/g,'i').replace(/[óô]/g,'o').replace(/ú/g,'u').replace(/ç/g,'c');
+function impProdKey(h){ h=(h||'').toString().toLowerCase().trim().replace(/[áàâã]/g,'a').replace(/[éê]/g,'e').replace(/í/g,'i').replace(/[óôõ]/g,'o').replace(/ú/g,'u').replace(/ç/g,'c');
+  // campos fiscais completos (v13/10-A)
+  if(/atualizar.*existent|modo.*importa/.test(h)) return 'modoImport';
+  if(/(gtin|ean).*trib|trib.*(gtin|ean)/.test(h)) return 'gtinTrib';
+  if(/cbenef|beneficio fiscal/.test(h)) return 'cBenef';
+  if(/cst.*pis|pis.*cst/.test(h)) return 'cstPis';
+  if(/cst.*cofins|cofins.*cst/.test(h)) return 'cstCofins';
+  if(/cst.*icms|icms.*cst/.test(h)) return 'cstIcms';
+  if(/\bicms\b/.test(h) && !/csosn/.test(h)) return 'icmsPct';
+  if(/\bpis\b/.test(h)) return 'pisPct';
+  if(/cofins/.test(h)) return 'cofinsPct';
+  if(/\bipi\b/.test(h)) return 'ipiPct';
+  if(/\bfcp\b/.test(h)) return 'fcpPct';
+  if(/^origem|origem da mercadoria|origem fiscal/.test(h)) return 'origem';
   if(/ncm/.test(h)) return 'ncm';
   if(/cest/.test(h)) return 'cest';
   if(/csosn/.test(h)) return 'cst';
@@ -29946,6 +29961,119 @@ function importCliArquivo(file, opts){ opts=opts||{}; if(!file) return; const re
    leitor próprio (impCsvLinhas), que entrega o texto como está e deixa impProdNum
    converter no padrão brasileiro. Planilhas .xlsx/.xls continuam no XLSX, onde o número
    já vem numérico de verdade. */
+/* ===== IMPORTAÇÃO: CAMPOS FISCAIS + MODO "SÓ FISCAIS" (v13/10-A) =====
+   Campos fiscais que a planilha pode trazer. Valor VAZIO na planilha nunca apaga o que
+   já está no cadastro. */
+function impProdTxt(v){ return (v==null?'':(''+v)).replace(/\.0$/,'').trim(); }
+function impProdCst2(v){ const t=impProdTxt(v); return /^\d$/.test(t)?('0'+t):t; }
+function impProdFiscal(obj){ const f={}, t=impProdTxt;
+  if(t(obj.ncm)) f.ncm=t(obj.ncm);
+  if(t(obj.cest)) f.cest=t(obj.cest);
+  if(t(obj.cfop)) f.cfop=t(obj.cfop);
+  if(t(obj.cfopInter)) f.cfopInter=t(obj.cfopInter);
+  if(t(obj.cst)) f.cst=t(obj.cst);
+  if(t(obj.origem)) f.origem=t(obj.origem).replace(/\D/g,'').slice(0,1)||'0';
+  if(t(obj.cstIcms)) f.cstIcms=impProdCst2(obj.cstIcms);
+  if(t(obj.cstPis)) f.cstPis=impProdCst2(obj.cstPis);
+  if(t(obj.cstCofins)) f.cstCofins=impProdCst2(obj.cstCofins);
+  if(t(obj.cBenef)) f.cBenef=t(obj.cBenef).toUpperCase();
+  if(t(obj.gtinTrib)) f.gtinTrib=t(obj.gtinTrib);
+  ['icmsPct','pisPct','cofinsPct','ipiPct','fcpPct'].forEach(k=>{ if(t(obj[k])!=='') f[k]=impProdNum(obj[k]); });
+  return f; }
+function impProdNomeNorm(s){ return normTxt(s).replace(/[^a-z0-9]+/g,' ').replace(/\s+/g,' ').trim(); }
+/* Semelhança de nomes (0..1) — distingue "PINCEL ESCOLAR 471-4" x "PINCEL ESCOLAR CONDOR 471-4"
+   (mesmo produto) de "TRINCHA 711 2" x "RENDA BORD..." (SKU reaproveitado pelo sistema antigo). */
+function impProdSimil(a,b){ a=impProdNomeNorm(a); b=impProdNomeNorm(b); if(!a||!b) return 0; if(a===b) return 1;
+  if(a.length>5 && b.length>5 && (a.indexOf(b)>=0 || b.indexOf(a)>=0)) return 0.9;
+  const bg=s=>{ const m=new Map(); for(let i=0;i<s.length-1;i++){ const g=s.substr(i,2); m.set(g,(m.get(g)||0)+1); } return m; };
+  const A=bg(a), B=bg(b); let inter=0; A.forEach((n,g)=>{ const m=B.get(g); if(m) inter+=Math.min(n,m); });
+  return 2*inter/Math.max(1,(a.length-1)+(b.length-1)); }
+function impProdCodigos(obj){ const out=[]; const add=v=>{ const d=impProdTxt(v).replace(/\D/g,''); if(d.length>=6 && out.indexOf(d)<0) out.push(d); };
+  add(obj.codigoBarras); ((obj.codigosBarrasAdic==null?'':obj.codigosBarrasAdic)+'').split(/[,;|\/\s]+/).forEach(add); return out; }
+/* Dados de um produto NOVO a partir da linha (mesma regra da importação comum + fiscais). */
+function impProdDadosNovo(obj, heads){
+  const nome=(obj.nome||'').toString().trim();
+  const data={ nome, sku:(obj.sku||'').toString().trim(), codigoBarras:impProdTxt(obj.codigoBarras),
+    categoria:(obj.categoria||'Outros').toString().trim().toUpperCase()||'OUTROS', unidade:((obj.unidade||'UN').toString().trim()||'UN').toUpperCase(),
+    custo:impProdNum(obj.custo), preco:impProdNum(obj.preco), estoque:impProdNum(obj.estoque), estoqueMinimo:impProdNum(obj.estoqueMinimo),
+    ncm:impProdTxt(obj.ncm), cest:impProdTxt(obj.cest), marca:marcaCanon((obj.marca||'').toString().trim()) };
+  if(heads.includes('codigosBarrasAdic')){ const prin=(data.codigoBarras||'').replace(/\D/g,'');
+    data.codigosBarrasAdic=[...new Set(((obj.codigosBarrasAdic==null?'':obj.codigosBarrasAdic)+'').split(/[,;|\/\s]+/).map(x=>x.replace(/\.0$/,'').trim()).filter(x=>x && x.replace(/\D/g,'')!==prin))]; }
+  Object.assign(data, impProdFiscal(obj));
+  if(obj.situacao!=null && (''+obj.situacao).trim()) data.situacao=/inativ|desativ|nao|0/i.test((''+obj.situacao).trim())?'inativo':'ativo';
+  data.grupo=((obj.grupo==null?'':obj.grupo)+'').trim()||data.categoria; data.subgrupo=((obj.subgrupo==null?'':obj.subgrupo)+'').trim();
+  data.cor=colorFor(data.categoria);
+  return data; }
+/* MODO "SÓ FISCAIS + INCLUIR NOVOS"
+   Produto que JÁ EXISTE: recebe só os dados fiscais (NCM, CEST, CFOP, CSOSN, origem, alíquotas,
+   CST PIS/COFINS...) e passa a usar o SKU da planilha. Nome, categoria/grupo, preço, custo e
+   ESTOQUE (a contagem) ficam como estão. Códigos de barras da planilha que o produto não tem são
+   ACRESCENTADOS (nunca removidos).
+   Produto que NÃO existe: é incluído com todos os dados da planilha.
+   Como achar o produto: 1) mesmo SKU com nome parecido; 2) código de barras; 3) nome igual.
+   (O sistema antigo reaproveitou SKUs — o mesmo número pode ser outro produto.) */
+function impProdFiscalExec(rows, heads, res, t0){
+  const d=DB._load(); const prods=d.produtos=d.produtos||[]; const agora=new Date().toISOString();
+  const bySku=new Map(), byCb=new Map(), byNome=new Map();
+  const pushM=(m,k,p)=>{ if(!k) return; const a=m.get(k); if(a){ if(a.indexOf(p)<0) a.push(p); } else m.set(k,[p]); };
+  prods.forEach(p=>{ if(!p) return; if(p.sku) pushM(bySku,(''+p.sku).trim().toLowerCase(),p);
+    [p.codigoBarras].concat(p.codigosBarrasAdic||[]).forEach(c=>{ const dd=impProdTxt(c).replace(/\D/g,''); if(dd.length>=6) pushM(byCb,dd,p); });
+    pushM(byNome, impProdNomeNorm(p.nome), p); });
+  const usados=new Set(); const plano=[]; let ambiguos=0, pulados=0;
+  for(let i=1;i<rows.length;i++){ const row=rows[i]; const obj={};
+    heads.forEach((k,ci)=>{ if(k && obj[k]===undefined) obj[k]=row[ci]; });
+    const nome=(obj.nome||'').toString().trim(); if(!nome){ pulados++; continue; }
+    const sku=impProdTxt(obj.sku); const cods=impProdCodigos(obj); let alvo=null, porNome=false;
+    // 1) mesmo SKU e nome parecido (ou mesmo código de barras)
+    (bySku.get(sku.toLowerCase())||[]).some(p=>{ if(usados.has(p)) return false;
+      const temCb=cods.some(c=>[p.codigoBarras].concat(p.codigosBarrasAdic||[]).some(x=>impProdTxt(x).replace(/\D/g,'')===c));
+      if(temCb || impProdSimil(p.nome,nome)>=0.6){ alvo=p; return true; } return false; });
+    // 2) código de barras
+    if(!alvo) cods.some(c=>{ const l=(byCb.get(c)||[]).filter(p=>!usados.has(p)); if(!l.length) return false;
+      if(l.length===1){ alvo=l[0]; return true; }
+      const m=l.map(p=>({p,s:impProdSimil(p.nome,nome)})).sort((a,b)=>b.s-a.s); if(m[0].s>=0.6){ alvo=m[0].p; return true; } return false; });
+    // 3) nome igual
+    if(!alvo){ const l=(byNome.get(impProdNomeNorm(nome))||[]).filter(p=>!usados.has(p)); if(l.length){ alvo=l[0]; porNome=true; if(l.length>1){ alvo._impAmb=1; ambiguos++; } } }
+    if(alvo) usados.add(alvo);
+    plano.push({obj, sku, nome, cods, alvo, trocaSku: !!(alvo && sku && !(alvo._impAmb) && (''+(alvo.sku||'')).trim()!==sku)});
+    if(alvo) delete alvo._impAmb; }
+  // código de barras já usado por OUTRO produto não é acrescentado (evita leitura ambígua no PDV)
+  let atual=0, skuTroc=0, novos=0, cbAdd=0; const trocas=[];
+  DB.bulk(()=>{
+    plano.forEach(pl=>{ if(!pl.alvo) return; const p=pl.alvo;
+      Object.assign(p, impProdFiscal(pl.obj));
+      if(pl.trocaSku){ trocas.push({nome:p.nome, de:p.sku||'', para:pl.sku}); p.sku=pl.sku; skuTroc++; }
+      pl.cods.forEach(c=>{ const dono=byCb.get(c)||[]; if(dono.length && dono.some(x=>x!==p)) return; if(dono.indexOf(p)>=0) return;
+        if(!impProdTxt(p.codigoBarras)) p.codigoBarras=c; else { p.codigosBarrasAdic=(p.codigosBarrasAdic||[]).slice(); if(p.codigosBarrasAdic.indexOf(c)<0) p.codigosBarrasAdic.push(c); }
+        pushM(byCb,c,p); cbAdd++; });
+      p._mod=agora; atual++; });
+    // nomes de categoria/grupo/sub-grupo já usados na loja (para "Papelaria e Escritório" não virar outra categoria em maiúsculas)
+    const canon={c:new Map(), g:new Map(), s:new Map()}; const cAdd=(m,v)=>{ v=(v||'').trim(); if(v){ const k=normTxt(v); if(!m.has(k)) m.set(k,v); } };
+    (d.categorias||[]).forEach(c=>cAdd(canon.c,c&&c.nome)); prods.forEach(p=>{ if(!p) return; cAdd(canon.c,p.categoria); cAdd(canon.g,p.grupo); cAdd(canon.s,p.subgrupo); });
+    plano.forEach(pl=>{ if(pl.alvo) return; const data=impProdDadosNovo(pl.obj, heads);
+      data.categoria=canon.c.get(normTxt(data.categoria))||data.categoria; data.grupo=canon.g.get(normTxt(data.grupo))||data.grupo; data.subgrupo=canon.s.get(normTxt(data.subgrupo))||data.subgrupo; data.cor=colorFor(data.categoria);
+      if(!data.sku) data.sku='P'+Math.floor(1000+Math.random()*9000); if(!data.situacao) data.situacao='ativo';
+      data.id=uid(); data._mod=agora; prods.push(data); novos++; });
+  });
+  // SKU repetido depois da troca (produto do sistema que não está na planilha e ficou com o mesmo SKU de outro)
+  const cont=new Map(); prods.forEach(p=>{ const k=(''+(p&&p.sku||'')).trim().toLowerCase(); if(k) cont.set(k,(cont.get(k)||0)+1); });
+  const repetidos=[]; cont.forEach((n,k)=>{ if(n>1) repetidos.push(k); });
+  // categorias novas
+  d.categorias=d.categorias||[]; const ex=new Set(d.categorias.map(c=>(c.nome||'').trim().toLowerCase())); let catsNovas=0;
+  prods.forEach(p=>{ const c=(p.categoria||'').trim(); if(!c) return; const k=c.toLowerCase(); if(!ex.has(k)){ d.categorias.push({id:uid(), nome:c, cor:colorFor(c)}); ex.add(k); catsNovas++; } });
+  DB._persist();
+  let _gs={grupos:0,subgrupos:0}; try{ _gs=gruposSincronizarDosProdutos()||_gs; }catch(e){}
+  try{ logAcao('Importação de produtos (só fiscais + novos)', atual+' atualizado(s) (fiscal), '+skuTroc+' SKU(s) trocado(s), '+novos+' novo(s)'); }catch(e){}
+  try{ if((typeof nuvemCfg==='function') && nuvemCfg().url && nuvemCfg().key && !(typeof _nuvemOffline!=='undefined'&&_nuvemOffline) && typeof nuvemSalvar==='function') nuvemSalvar(); }catch(e){}
+  window.__impTrocasSku=trocas;
+  if(res) res.innerHTML=`<div class="card card-pad" style="background:var(--amber-soft)"><b>Importação concluída (só fiscais + novos):</b> ${NUM(atual)} produto(s) já cadastrados receberam os dados fiscais, ${NUM(novos)} produto(s) novo(s) incluído(s)${skuTroc?`, ${NUM(skuTroc)} SKU(s) atualizado(s) para o da planilha`:''}${cbAdd?`, ${NUM(cbAdd)} código(s) de barras acrescentado(s)`:''}${catsNovas?`, ${catsNovas} categoria(s) cadastrada(s)`:''}${pulados?`, ${pulados} linha(s) sem nome ignorada(s)`:''} — em ${((Date.now()-t0)/1000).toFixed(1)}s.
+    <div class="t-mut" style="font-size:12px;margin-top:6px;line-height:1.5">Nome, categoria, preço, custo e estoque dos produtos já cadastrados <b>não foram alterados</b>.${ambiguos?` ${NUM(ambiguos)} produto(s) com nome repetido no cadastro foram localizados pelo nome e mantiveram o SKU.`:''}${repetidos.length?` <b>Atenção:</b> ${NUM(repetidos.length)} SKU(s) ficaram repetidos (produto que não está na planilha usa o mesmo número): ${esc(repetidos.slice(0,12).join(', '))}${repetidos.length>12?'…':''}.`:''}${skuTroc?` <a href="javascript:void(0)" onclick="impTrocasSkuBaixar()">Baixar a lista de SKUs trocados</a>.`:''}</div></div>`;
+  toast(`Produtos: ${atual} com fiscais atualizados, ${novos} novos`,'ok'); try{ buildNav(); }catch(e){}
+}
+function impTrocasSkuBaixar(){ const L=window.__impTrocasSku||[]; if(!L.length) return;
+  const csv=[['produto','sku anterior','sku novo']].concat(L.map(x=>[x.nome,x.de,x.para])).map(l=>l.map(c=>/[;\n"]/.test(''+c)?'"'+String(c).replace(/"/g,'""')+'"':c).join(';')).join('\r\n');
+  const blob=new Blob(['﻿'+csv],{type:'text/csv;charset=utf-8'}); const url=URL.createObjectURL(blob);
+  const a=document.createElement('a'); a.href=url; a.download='skus-trocados.csv'; document.body.appendChild(a); a.click(); a.remove(); setTimeout(()=>URL.revokeObjectURL(url),1000); }
 function importProdArquivo(file, opts){ opts=opts||{}; if(!file) return; const res=document.getElementById('imp-prod-res');
   const ehTexto=/\.(csv|txt)$/i.test(file.name||'');
   if(!ehTexto && typeof XLSX==='undefined'){ if(res) res.innerHTML=`<span style="color:var(--neg)">Biblioteca de planilha não carregada. Verifique a conexão e recarregue.</span>`; return; }
@@ -29957,6 +30085,10 @@ function importProdArquivo(file, opts){ opts=opts||{}; if(!file) return; const r
                return XLSX.utils.sheet_to_json(ws,{header:1,defval:''}).filter(r=>r.some(c=>String(c).trim()!=='')); })();
     if(rows.length<2){ if(res) res.innerHTML=`<span style="color:var(--neg)">Planilha vazia ou sem dados.</span>`; return; }
     const heads=rows[0].map(impProdKey); if(!heads.includes('nome')){ if(res) res.innerHTML=`<span style="color:var(--neg)">Não encontrei a coluna <b>nome</b>. Confira os títulos na primeira linha.</span>`; return; }
+    const _mi=heads.indexOf('modoImport');
+    const _modoFiscal = opts.modo==='fiscal' || (_mi>=0 && rows.slice(1,30).some(r=>/fiscal/i.test(''+(r[_mi]||''))));
+    if(_modoFiscal){ if(res) res.innerHTML=`<div class="card card-pad t-mut">Atualizando os dados fiscais e incluindo os novos (${NUM(rows.length-1)} linha(s))... aguarde.</div>`;
+      const _t0=Date.now(); setTimeout(()=>{ try{ impProdFiscalExec(rows, heads, res, _t0); }catch(err){ if(res) res.innerHTML=`<span style="color:var(--neg)">Erro ao importar: ${esc(err.message||String(err))}</span>`; } }, 30); return; }
     const substituir = opts.inclusao ? false : confirm('Importar '+(rows.length-1)+' produto(s).\n\nDeseja SUBSTITUIR todo o catálogo por esta planilha?\n\n• OK = apaga os produtos atuais e importa tudo (recomendado para corrigir preços e dados fiscais).\n• Cancelar = apenas ATUALIZA/mescla por SKU.');
     if(substituir){ const d=DB._load(); d.produtos=[]; }
     if(res) res.innerHTML=`<div class="card card-pad t-mut">Importando ${rows.length-1} linha(s)... aguarde.</div>`;
@@ -29978,6 +30110,7 @@ function importProdArquivo(file, opts){ opts=opts||{}; if(!file) return; const r
       if(obj.cfop!=null && obj.cfop!=='') data.cfop=(''+obj.cfop).replace(/\.0$/,'').trim();
       if(obj.cfopInter!=null && obj.cfopInter!=='') data.cfopInter=(''+obj.cfopInter).replace(/\.0$/,'').trim();
       if(obj.cst!=null && obj.cst!=='') data.cst=(''+obj.cst).replace(/\.0$/,'').trim();
+      try{ const _fx=impProdFiscal(obj); ['origem','cstIcms','cstPis','cstCofins','cBenef','gtinTrib','icmsPct','pisPct','cofinsPct','ipiPct','fcpPct'].forEach(k=>{ if(_fx[k]!==undefined) data[k]=_fx[k]; }); }catch(e){}
       if(obj.situacao!=null && (''+obj.situacao).trim()) data.situacao=/inativ|desativ|nao|0/i.test((''+obj.situacao).trim())?'inativo':'ativo';
       // grupo e sub-grupo vêm das colunas próprias; sem coluna de grupo, o grupo repete a categoria (como antes)
       data.grupo=((obj.grupo==null?'':obj.grupo)+'').trim()||data.categoria; data.subgrupo=((obj.subgrupo==null?'':obj.subgrupo)+'').trim();
