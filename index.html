@@ -48,7 +48,7 @@ const CONFIG_EMPRESA = {
      Aparece no topo do menu e no rodapé das Configurações. Troque a cada publicação.
      MANTENHA O FORMATO 'vDD/MM-X' — é ele que o sistema usa para comparar as máquinas
      da loja e avisar quando alguma ficou para trás.                                  */
-  versao: 'v13/10-A',
+  versao: 'v13/10-B',
 
   /* 4) NUVEM (Supabase)  ------------------------------------------------------------
      Cole aqui a Project URL e a chave PUBLISHABLE do projeto Supabase DESTA empresa
@@ -1487,6 +1487,10 @@ function marcaDatalistFill(id,q){ const dl=document.getElementById(id); if(!dl) 
   if(out.length<50){ const prods=DB.all('produtos'); for(let i=0;i<prods.length && out.length<50;i++) push(prods[i]&&prods[i].marca); }
   dl.innerHTML=out.join(''); }
 const esc = s => (s==null?'':String(s)).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+/* Texto dentro de um onclick="fn('...')": escapa para o JavaScript (\ e ') E para o HTML. Antes, um nome com
+   apóstrofo (SANT'ANA, L'ORÉAL, D'ÁGUA) quebrava o botão: esc() virava &#39;, o navegador devolvia a aspa e o
+   JavaScript do botão ficava inválido — o clique não fazia nada. */
+const jsq = s => esc(String(s==null?'':s).replace(/\\/g,'\\\\').replace(/'/g,"\\'").replace(/\r?\n/g,' '));
 const daysAgo = n => { const d=new Date(); d.setHours(12,0,0,0); d.setDate(d.getDate()-n); return ymd(d); };
 const between = (d,a,b) => d>=a && d<=b;
 const palette = ['#2563eb','#f59e0b','#0d9488','#7c3aed','#dc2626','#15803d','#db2777','#0891b2','#65a30d','#ea580c'];
@@ -3556,8 +3560,8 @@ function dashDebCard(tipo){
         <td class="t-right"><span class="tag ${g.dias>=60?'neg':'warn'}">${NUM(g.dias)}d</span></td>
         <td class="t-right tnum t-strong">${BRL(g.total)}</td>
         <td class="t-right" style="white-space:nowrap;padding-left:0">
-          <button class="btn-icon btn-ghost" onclick="dashDebCliente('${esc(g.key)}')" title="Ver TODOS os débitos em aberto deste cliente">${ico('eye')}</button>
-          <button class="btn-icon btn-ghost" onclick="dashDebRelatorioCliente('${esc(g.key)}')" title="Imprimir os débitos deste cliente">${ico('print')}</button>
+          <button class="btn-icon btn-ghost" onclick="dashDebCliente('${jsq(g.key)}')" title="Ver TODOS os débitos em aberto deste cliente">${ico('eye')}</button>
+          <button class="btn-icon btn-ghost" onclick="dashDebRelatorioCliente('${jsq(g.key)}')" title="Imprimir os débitos deste cliente">${ico('print')}</button>
         </td></tr>`).join('')}
       <tr style="border-top:2px solid var(--line)"><td colspan="2" class="t-right t-strong">Total</td>
         <td class="t-right t-strong tnum">${BRL(total)}</td><td></td></tr>
@@ -3584,7 +3588,7 @@ function dashDebCliente(key){
         <span class="tag neg" style="font-weight:700">Total: ${BRL(total)}</span>
         ${(function(){ const pg=Math.round(arr.reduce((s,f)=>s+finParcialInfo(f).pago,0)*100)/100; return pg>0.004?`<span class="tag warn" style="font-weight:700" title="Valor já recebido, em pagamentos parciais, dos títulos que continuam em aberto">${ico('money')} já pagou ${BRL(pg)} (parcial)</span>`:''; })()}
         <div style="flex:1"></div>
-        <button class="btn btn-ghost btn-sm" onclick="dashDebRelatorioCliente('${esc(key)}')">${ico('print')} Imprimir</button>
+        <button class="btn btn-ghost btn-sm" onclick="dashDebRelatorioCliente('${jsq(key)}')">${ico('print')} Imprimir</button>
       </div>
       ${dashDebCliBoxHTML({id:(dashDebCliRec(arr[0])||{}).id||'', nome:nome})}
       <p class="t-mut" style="font-size:12px;margin:0 0 8px">Receba aqui mesmo: <b>Normal</b> gera financeiro e caixa · <b>Correção</b> quita sem gerar financeiro (pagamento já feito no sistema antigo).</p>
@@ -3605,7 +3609,7 @@ function dashDebCliente(key){
       </tbody></table></div>
     </div>
     <div class="modal-foot"><button class="btn btn-ghost" onclick="closeModal()">Fechar</button>
-      <button class="btn btn-amber" onclick="dashDebAbrirCR('${esc(key)}')">${ico('money')} Abrir Contas a Receber deste cliente</button></div>`, true);
+      <button class="btn btn-amber" onclick="dashDebAbrirCR('${jsq(key)}')">${ico('money')} Abrir Contas a Receber deste cliente</button></div>`, true);
 }
 /* Redesenha a janela de débitos do MESMO cliente depois de uma baixa — o
    operador continua no cliente, sem ter de procurá-lo de novo. */
@@ -9370,7 +9374,7 @@ function cliDupBody(grupos){
       ${g.docsDiferentes?`<div style="background:var(--neg-soft);color:var(--neg);border-radius:8px;padding:8px;font-size:11.5px;margin:8px 0"><b>${ico('alert')} CPF/CNPJ diferentes:</b> ${g.docs.map(d=>esc(d)).join(' · ')}. Podem ser pessoas distintas com o mesmo nome — confira antes de unir.</div>`:''}
       <table class="tbl" style="margin-top:8px"><thead><tr><th style="width:34px"></th><th>Cadastro</th><th>CPF/CNPJ</th><th>Contato</th><th>Cidade</th><th class="t-right">Histórico</th></tr></thead><tbody>
       ${g.clientes.map(c=>`<tr${c.id===escolhido?' style="background:var(--pos-soft)"':''}>
-        <td><input type="radio" name="cd-${esc(g.chave).replace(/[^A-Za-z0-9]/g,'')}" ${c.id===escolhido?'checked':''} onchange="CDUP.sel['${esc(g.chave).replace(/'/g,"\\'")}']='${c.id}';document.getElementById('cdup-body').innerHTML=cliDupBody()"></td>
+        <td><input type="radio" name="cd-${esc(g.chave).replace(/[^A-Za-z0-9]/g,'')}" ${c.id===escolhido?'checked':''} onchange="CDUP.sel['${jsq(g.chave)}']='${c.id}';document.getElementById('cdup-body').innerHTML=cliDupBody()"></td>
         <td><div class="t-strong">${esc(c.nome)}</div><div class="t-mut" style="font-size:11px">${c.cadastroRapido?'cadastro rápido · ':''}${(c.situacao||'ativo')==='ativo'?'ativo':'inativo'}</div></td>
         <td class="t-mut">${esc(c.doc||'—')}</td>
         <td class="t-mut" style="font-size:11.5px">${esc(c.celular||c.telefone||c.email||'—')}</td>
@@ -9378,8 +9382,8 @@ function cliDupBody(grupos){
         <td class="t-right tnum">${NUM(cliRefsCount(c.id))}</td></tr>`).join('')}
       </tbody></table>
       <div style="display:flex;justify-content:flex-end;gap:8px;margin-top:10px">
-        <button class="btn btn-ghost btn-sm" onclick="cliDupPreview('${esc(g.chave).replace(/'/g,"\\'")}')">Ver o que será unido</button>
-        <button class="btn btn-amber btn-sm" onclick="cliDupUnir('${esc(g.chave).replace(/'/g,"\\'")}')">${ico('check')} Unir em um cadastro</button>
+        <button class="btn btn-ghost btn-sm" onclick="cliDupPreview('${jsq(g.chave)}')">Ver o que será unido</button>
+        <button class="btn btn-amber btn-sm" onclick="cliDupUnir('${jsq(g.chave)}')">${ico('check')} Unir em um cadastro</button>
       </div></div>`; }).join('');
 }
 function cliDupGrupo(chave){ return clientesDuplicados().find(g=>g.chave===chave); }
@@ -9963,7 +9967,7 @@ function ffFuncoesExtrasHTML(){
   const principal=(document.getElementById('ff-cargo')||{}).value||FF.cargoAplicado||'';
   const sel=FF.funcoesExtras||(FF.funcoesExtras=new Set());
   return CARGOS_LOJA.filter(c=>c!==principal).map(c=>{ const on=sel.has(c);
-    return `<button type="button" class="btn btn-xs ${on?'btn-amber':'btn-ghost'}" style="font-size:11.5px;padding:4px 10px" onclick="ffFuncExtraToggle('${esc(c).replace(/'/g,"\\'")}')">${on?'✓ ':''}${esc(c)}</button>`; }).join('');
+    return `<button type="button" class="btn btn-xs ${on?'btn-amber':'btn-ghost'}" style="font-size:11.5px;padding:4px 10px" onclick="ffFuncExtraToggle('${jsq(c)}')">${on?'✓ ':''}${esc(c)}</button>`; }).join('');
 }
 function ffFuncExtraRender(){ const box=document.getElementById('ff-funcextra-box'); if(box) box.innerHTML=ffFuncoesExtrasHTML(); }
 function ffFuncExtraToggle(cargo){ const sel=FF.funcoesExtras||(FF.funcoesExtras=new Set());
@@ -11137,7 +11141,7 @@ function marcasDupAviso(){ const dups=marcasDuplicadas(); if(!dups.length) retur
       <td>${g.grafias.map(x=>`<span class="chip" style="margin:1px 3px 1px 0">${esc(x.nome)}${x.prods?` <b class="tnum">·${NUM(x.prods)}</b>`:''}</span>`).join('')}</td>
       <td class="t-right tnum">${NUM(g.grafias.reduce((a,x)=>a+x.prods,0))}</td>
       <td class="t-right t-strong">${esc(g.canon)}</td>
-      <td class="t-right"><button class="btn btn-ghost btn-sm" onclick="marcasUnificarUm('${esc(g.chave).replace(/'/g,"\\'")}')">Unificar</button></td>
+      <td class="t-right"><button class="btn btn-ghost btn-sm" onclick="marcasUnificarUm('${jsq(g.chave)}')">Unificar</button></td>
     </tr>`).join('')}
     </tbody></table></div></div>`; }
 function marcasUnificarTodas(){ const dups=marcasDuplicadas(); if(!dups.length){ toast('Nenhuma marca duplicada','ok'); return; }
@@ -11154,7 +11158,7 @@ function marcasUnificarUm(chave){ const g=marcasDuplicadas().find(x=>x.chave===c
        <span class="t-mut tnum" style="font-size:12px">${NUM(x.prods)} produto(s)</span></label>`).join('')}
    </div>
    <div class="modal-foot"><div style="flex:1"></div><button class="btn btn-ghost" onclick="closeModal()">Cancelar</button>
-     <button class="btn btn-amber" onclick="marcasUnificarUmExec('${esc(chave).replace(/'/g,"\\'")}')">${ico('check')} Unificar</button></div>`); }
+     <button class="btn btn-amber" onclick="marcasUnificarUmExec('${jsq(chave)}')">${ico('check')} Unificar</button></div>`); }
 function marcasUnificarUmExec(chave){ const sel=document.querySelector('input[name=mcu]:checked'); const canon=sel?sel.value:'';
   if(!canon){ toast('Escolha a grafia que fica','err'); return; }
   const r=marcasUnificarExec(chave, canon);
@@ -11169,7 +11173,7 @@ function marcaTable(){ const marcas=marcaListaTodas(); const prods=DB.all('produ
       <td class="t-right" style="white-space:nowrap">
         ${r?`<button class="btn-icon btn-ghost" onclick="marcaForm('${r.id}')" title="Renomear">${ico('edit')}</button>
              <button class="btn-icon btn-ghost" onclick="marcaDel('${r.id}')" style="color:var(--neg)" title="Excluir">${ico('trash')}</button>`
-           :`<button class="btn btn-ghost btn-sm" onclick="marcaRegistrar('${esc(nome).replace(/'/g,"\\'")}');viewCat()">${ico('plus')} Cadastrar</button>`}</td></tr>`;}).join('')}
+           :`<button class="btn btn-ghost btn-sm" onclick="marcaRegistrar('${jsq(nome)}');viewCat()">${ico('plus')} Cadastrar</button>`}</td></tr>`;}).join('')}
   </tbody></table>`; }
 function marcaForm(id){ const m=id?DB.get('marcas',id):{};
   openModal(`<div class="modal-head"><h3>${id?'Editar':'Nova'} marca</h3><button class="btn-icon btn-ghost" onclick="closeModal()">${ico('x')}</button></div>
@@ -11780,7 +11784,7 @@ function waRenderChat(){ const c=WA.conv; const box=document.getElementById('wa-
          <span class="t-mut">·</span>${waDealHTML(c)}
          <div class="seg wa-seg-sm">${[['aberto','Aberta'],['aguardando','Aguardando'],['resolvido','Resolvida']].map(([k,l])=>`<button class="${(c.status||'aberto')===k?'on':''}" onclick="waSetStatus('${c.id}','${k}')">${l}</button>`).join('')}</div>
        </div>
-       <div class="wa-tags" style="margin-top:4px">${(c.etiquetas||[]).map(t=>`<span class="tag" style="background:#e0e7ff;color:#3730a3">${esc(t)} <a style="cursor:pointer;margin-left:3px" onclick="waEtiqueta('${c.id}','${esc(t)}',false)">×</a></span>`).join('')}<button class="btn btn-ghost btn-sm" onclick="waEtiquetaAdd('${c.id}')" style="padding:1px 7px">+ etiqueta</button></div>
+       <div class="wa-tags" style="margin-top:4px">${(c.etiquetas||[]).map(t=>`<span class="tag" style="background:#e0e7ff;color:#3730a3">${esc(t)} <a style="cursor:pointer;margin-left:3px" onclick="waEtiqueta('${c.id}','${jsq(t)}',false)">×</a></span>`).join('')}<button class="btn btn-ghost btn-sm" onclick="waEtiquetaAdd('${c.id}')" style="padding:1px 7px">+ etiqueta</button></div>
      </div>
      <div style="display:flex;gap:6px"><button class="btn btn-ghost btn-sm" onclick="crmNovoOrcDe('${c.id}')" title="Abrir um orçamento para este cliente">${ico('quote')} Orçamento</button></div>
    </div>
@@ -11850,7 +11854,7 @@ async function waEtiqueta(id,t,add){ const c=WA.lista.find(x=>x.id===id); if(!c)
     waRenderChat(); waRenderLista(); }catch(e){ toast(e.message,'err'); } }
 function waEtiquetaAdd(id){ const c=WA.lista.find(x=>x.id===id); if(!c) return; const todas=crmEtqTodas().filter(t=>!(c.etiquetas||[]).some(x=>normTxt(x)===normTxt(t)));
   openModal(`<div class="modal-head"><h3>${ico('tag')} Etiquetar conversa</h3><button class="btn-icon btn-ghost" onclick="closeModal()">${ico('x')}</button></div>
-    <div class="modal-body"><div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px">${todas.length?todas.map(t=>`<span class="tag" onclick="closeModal();waEtiqueta('${id}','${esc(t)}',true)" style="cursor:pointer;text-transform:none;background:${crmEtqCor(t)}22;color:${crmEtqCor(t)};border:1px solid ${crmEtqCor(t)}">${esc(t)}</span>`).join(''):'<span class="t-mut" style="font-size:12px">Nenhuma etiqueta cadastrada ainda.</span>'}</div>
+    <div class="modal-body"><div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px">${todas.length?todas.map(t=>`<span class="tag" onclick="closeModal();waEtiqueta('${id}','${jsq(t)}',true)" style="cursor:pointer;text-transform:none;background:${crmEtqCor(t)}22;color:${crmEtqCor(t)};border:1px solid ${crmEtqCor(t)}">${esc(t)}</span>`).join(''):'<span class="t-mut" style="font-size:12px">Nenhuma etiqueta cadastrada ainda.</span>'}</div>
       <div class="field"><label>Ou uma etiqueta nova</label><div style="display:flex;gap:8px"><input id="wa-etq-nova" class="cad-upper" placeholder="Ex.: PISO" style="flex:1" onkeydown="if(event.key==='Enter'){event.preventDefault();waEtiquetaNova('${id}')}"><button class="btn btn-amber btn-sm" onclick="waEtiquetaNova('${id}')">${ico('plus')} Aplicar</button></div><div class="t-mut" style="font-size:11.5px;margin-top:3px">Etiquetas novas entram no cadastro (CRM WhatsApp › Etiquetas) e valem para o relatório e o disparo.</div></div></div>
     <div class="modal-foot"><button class="btn btn-ghost" onclick="closeModal()">Fechar</button><button class="btn btn-ghost" onclick="closeModal();crmEtiquetasModal()">${ico('cfg')} Gerenciar etiquetas</button></div>`); try{ document.getElementById('wa-etq-nova').focus(); }catch(e){} }
 function waEtiquetaNova(id){ const t=((document.getElementById('wa-etq-nova')||{}).value||'').trim().toUpperCase(); if(!t){ toast('Digite a etiqueta','err'); return; } if(!crmEtqAcha(t)) DB.insert('crmEtiquetas',{nome:t,cor:CRM_ETQ_CORES[crmEtiquetas().length%CRM_ETQ_CORES.length]}); closeModal(); waEtiqueta(id,t,true); }
@@ -12210,7 +12214,7 @@ function crmEtqExcluir(id){ const e=DB.get('crmEtiquetas',id); if(!e) return; co
   DB.remove('crmEtiquetas',id); CRM_ETQ.editId=null; crmEtiquetasModal(); }
 /* chips de escolha (formulário da negociação) */
 let CRMF_ETQ=[];
-function crmEtqPickerHTML(){ const todas=crmEtqTodas(); return `<div id="crm-etq-pick" style="display:flex;gap:6px;flex-wrap:wrap;align-items:center">${todas.length?todas.map(t=>{ const on=CRMF_ETQ.some(x=>normTxt(x)===normTxt(t)); const cor=crmEtqCor(t); return `<span class="tag" onclick="crmEtqToggle('${esc(t)}')" style="cursor:pointer;text-transform:none;background:${on?cor:cor+'22'};color:${on?'#fff':cor};border:1px solid ${cor}">${on?'✓ ':''}${esc(t)}</span>`; }).join(''):'<span class="t-mut" style="font-size:12px">Nenhuma etiqueta cadastrada.</span>'}<a class="t-mut" style="font-size:12px;cursor:pointer;text-decoration:underline" onclick="crmEtiquetasModal()">+ cadastrar etiqueta</a></div>`; }
+function crmEtqPickerHTML(){ const todas=crmEtqTodas(); return `<div id="crm-etq-pick" style="display:flex;gap:6px;flex-wrap:wrap;align-items:center">${todas.length?todas.map(t=>{ const on=CRMF_ETQ.some(x=>normTxt(x)===normTxt(t)); const cor=crmEtqCor(t); return `<span class="tag" onclick="crmEtqToggle('${jsq(t)}')" style="cursor:pointer;text-transform:none;background:${on?cor:cor+'22'};color:${on?'#fff':cor};border:1px solid ${cor}">${on?'✓ ':''}${esc(t)}</span>`; }).join(''):'<span class="t-mut" style="font-size:12px">Nenhuma etiqueta cadastrada.</span>'}<a class="t-mut" style="font-size:12px;cursor:pointer;text-decoration:underline" onclick="crmEtiquetasModal()">+ cadastrar etiqueta</a></div>`; }
 function crmEtqToggle(t){ const i=CRMF_ETQ.findIndex(x=>normTxt(x)===normTxt(t)); if(i>=0) CRMF_ETQ.splice(i,1); else CRMF_ETQ.push(t); const box=document.getElementById('crm-etq-pick'); if(box) box.outerHTML=crmEtqPickerHTML(); }
 
 /* ---------- relatório de negociações ---------- */
@@ -17947,8 +17951,8 @@ function cpRender(){
       <td><input type="checkbox" ${FIN.pagSel.has(f.id)?'checked':''} onchange="cpToggle('${f.id}',this.checked)"></td>
       <td class="t-strong cp-forn">${esc(nome)}</td>
       <td class="cp-desc">${esc(f.descricao)}${badges}</td>
-      <td class="cp-gr"><span class="tag gray" title="${esc(f.categoria||'—')}">${esc(f.categoria||'—')}</span><button class="btn-icon btn-ghost" title="Ver todas as despesas deste grupo (com impressão)" onclick="despGrupoRel('${esc((f.categoria||'—')).replace(/'/g,"\\'")}','')" style="color:var(--brand)">${ico('doc')}</button></td>
-      <td class="t-mut cp-gr">${esc(f.centroCusto||'—')}${f.centroCusto?`<button class="btn-icon btn-ghost" title="Ver todas as despesas deste subgrupo (com impressão)" onclick="despGrupoRel('${esc((f.categoria||'—')).replace(/'/g,"\\'")}','${esc((f.centroCusto||'')).replace(/'/g,"\\'")}')" style="color:var(--brand)">${ico('doc')}</button>`:''}</td>
+      <td class="cp-gr"><span class="tag gray" title="${esc(f.categoria||'—')}">${esc(f.categoria||'—')}</span><button class="btn-icon btn-ghost" title="Ver todas as despesas deste grupo (com impressão)" onclick="despGrupoRel('${jsq((f.categoria||'—'))}','')" style="color:var(--brand)">${ico('doc')}</button></td>
+      <td class="t-mut cp-gr">${esc(f.centroCusto||'—')}${f.centroCusto?`<button class="btn-icon btn-ghost" title="Ver todas as despesas deste subgrupo (com impressão)" onclick="despGrupoRel('${jsq((f.categoria||'—'))}','${jsq((f.centroCusto||''))}')" style="color:var(--brand)">${ico('doc')}</button>`:''}</td>
       <td class="t-right tnum t-strong" style="color:var(--neg)">${BRL(f.valor)}</td>
       <td class="t-right">${finAjusteCell(f)}</td>
       <td class="tnum ${venc?'':'t-mut'}" style="${venc?'color:var(--neg);font-weight:600':''}">${fDate(f.vencimento)}${venc?' ⚠':''}</td>
@@ -20083,7 +20087,7 @@ const REPORTS=[
        ${custoSemClass>0?`<div class="t-mut" style="font-size:11.5px;margin-top:7px;color:var(--amber-d)">${ico('alert')} ${BRL(custoSemClass)} em despesas de grupos <b>ainda sem classificação</b> — marque cada grupo como custo fixo ou variável em Cadastros › Grupos de Contas a Pagar.</div>`:''}
      </div>`;
    let despHtml=''; Object.keys(gmap).sort((a,b)=>gmap[b].total-gmap[a].total).forEach(gN=>{
-     const _q=s=>String(s||'').replace(/'/g,"\\'");
+     const _q=s=>jsq(s||'');
      const _per=`'${_q(f.de||'')}','${_q(f.ate||'')}'`;
      despHtml+=`<div style="display:flex;justify-content:space-between;align-items:center;padding:6px 0 2px;border-top:1px dashed var(--line)"><span style="font-weight:600;color:var(--ink-2)">${esc(gN)}<button class="btn-icon btn-ghost no-print" title="Ver e imprimir as despesas deste grupo" onclick="despGrupoRel('${_q(gN)}','',${_per})" style="margin-left:4px;color:var(--brand)">${ico('doc')}</button></span><span class="tnum" style="font-weight:600;color:var(--neg)">${BRL(-gmap[gN].total)}</span></div>`;
      Object.keys(gmap[gN].subs).sort((a,b)=>gmap[gN].subs[b]-gmap[gN].subs[a]).forEach(sN=>{
@@ -20139,7 +20143,7 @@ const REPORTS=[
    const rows=Object.values(m).sort((x,y)=>y.valorCusto-x.valorCusto);
    rows.forEach(r=>{ r.nivel=chave; });
    return {cols:[{k:'chave',label:(f.nivel||'Categoria')},{k:'itens',label:'Produtos',a:'r',f:fN},{k:'estoque',label:'Qtd estoque',a:'r',f:fN},{k:'valorCusto',label:'Valor (custo)',a:'r',f:fM},{k:'valorVenda',label:'Valor (venda)',a:'r',f:fM},
-     {k:'chave',label:'',a:'r',f:(v,r)=>`<button class="btn-icon btn-ghost" title="Ver os produtos desta linha" onclick="relEstoqueItens('${esc(r.nivel)}','${esc(String(v).replace(/'/g,"\\'"))}')">${ico('eye')}</button>`}],
+     {k:'chave',label:'',a:'r',f:(v,r)=>`<button class="btn-icon btn-ghost" title="Ver os produtos desta linha" onclick="relEstoqueItens('${esc(r.nivel)}','${jsq(v)}')">${ico('eye')}</button>`}],
      rows, totals:[{label:'Linhas',val:NUM(rows.length)},{label:'Valor em estoque (custo)',val:BRL(rows.reduce((s,r)=>s+r.valorCusto,0))},{label:'Valor (venda)',val:BRL(rows.reduce((s,r)=>s+r.valorVenda,0))}]}; }},
 
 {id:'rep-giro',cat:'Estoque',titulo:'Giro & Produtos Parados',cor:'#0d9488',icon:'layers',desc:'Identifica itens sem giro — dinheiro parado no estoque.',
