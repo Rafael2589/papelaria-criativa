@@ -48,7 +48,7 @@ const CONFIG_EMPRESA = {
      Aparece no topo do menu e no rodapé das Configurações. Troque a cada publicação.
      MANTENHA O FORMATO 'vDD/MM-X' — é ele que o sistema usa para comparar as máquinas
      da loja e avisar quando alguma ficou para trás.                                  */
-  versao: 'v14/10-I',
+  versao: 'v14/10-K',
 
   /* 4) NUVEM (Supabase)  ------------------------------------------------------------
      Cole aqui a Project URL e a chave PUBLISHABLE do projeto Supabase DESTA empresa
@@ -1868,7 +1868,8 @@ const DB = {
   // durante uma importação em massa, grava UMA vez no final (e não a cada registro)
   bulk(fn){ this._bulk++; try{ return fn(); } finally { this._bulk--; if(!this._bulk) this._persist(); } },
   _persist(){ if(this._bulk) return; this._rev=(this._rev||0)+1;   // nº da revisão: a tela só é redesenhada se isto mudou
-    try{ outboxRegistrarAgendado(); }catch(e){}   // guarda o que ainda não foi confirmado na nuvem (varredura agendada p/ não travar cada save)
+    try{ outboxRegistrarAgendado(); }catch(e){}
+    try{ if(typeof nuvemConfCarimbarAgendado==='function' && !(typeof NUVEM_LOADING!=='undefined' && NUVEM_LOADING)) nuvemConfCarimbarAgendado(); }catch(e){}   // v14/10-J: config alterada recebe carimbo e sobe   // guarda o que ainda não foi confirmado na nuvem (varredura agendada p/ não travar cada save)
     try{ localStorage.setItem(this.K, JSON.stringify(this._localPayload())); try{avisoStorageCheio(false);}catch(_){}}
     catch(e){ try{ localStorage.removeItem(this.K+'_safety'); localStorage.setItem(this.K, JSON.stringify(this._localPayload())); try{avisoStorageCheio(false);}catch(_){}}
       catch(e2){ try{ avisoStorageCheio(true); }catch(_){} try{ bkpAuto('sem espaço para salvar'); }catch(_){} try{ migrarImagensAuto('sem espaço'); }catch(_){}}} },
@@ -4251,7 +4252,16 @@ function pdvRowKey(e){ if(e.key!=='Enter') return; e.preventDefault(); const id=
 function pdvAddActive(){ const p=DB.get('produtos',PDVS.activePid); if(!p){ toast('Selecione um produto','err'); return; }
   if(p.estoque<=0 && !p.servico && !permiteVendaSemEstoque()){ toast('Produto sem estoque','err'); return; }
   const qIn=Math.max(0.001,+(document.getElementById('pdv-rq')||{}).value||1);
-  const unit=Math.round(Math.max(0,+(document.getElementById('pdv-rp')||{}).value||p.preco)*100)/100; const lista=p.preco;
+  let unit=Math.round(Math.max(0,+(document.getElementById('pdv-rp')||{}).value||p.preco)*100)/100; const lista=p.preco;
+  // v14/10-K: no PDV também pergunta se adota o preço PROMOCIONAL (ou de atacado pela quantidade) — igual ao orçamento.
+  try{ if(Math.abs(unit-p.preco)<0.01){ const un=(p.unidade||'UN').toUpperCase();
+    const promo=produtoPromoAtiva(p)?Math.round(p.precoPromo*100)/100:0; const atacMin=+p.atacadoQtdMin||0;
+    const atacado=(p.precoAtacado>0 && atacMin>0 && qIn>=atacMin && p.precoAtacado<p.preco)?Math.round(p.precoAtacado*100)/100:0;
+    const cands=[]; if(promo) cands.push({tipo:'promocional', valor:promo, extra:''}); if(atacado) cands.push({tipo:'de atacado', valor:atacado, extra:' (a partir de '+NUM(atacMin)+' '+un+')'});
+    if(cands.length){ cands.sort((a,b)=>a.valor-b.valor); const best=cands[0]; const pct=Math.round((1-best.valor/p.preco)*100);
+      const outros=cands.length>1?('\n\n(há também o preço '+cands[1].tipo+' de '+BRL(cands[1].valor)+' — será usado o menor)'):'';
+      if(confirm('Este produto tem preço '+best.tipo+' de '+BRL(best.valor)+best.extra+' (desconto de '+pct+'% sobre '+BRL(p.preco)+').'+outros+'\n\nAdotar este valor?\n\nOK = Sim   |   Cancelar = Não')){
+        unit=best.valor; toast('Preço '+best.tipo+' aplicado: '+BRL(best.valor)+' (-'+pct+'%)','ok'); } } } }catch(e){}
   if(ehMadeiraSerrada(p)){                                          // pergunta o tamanho da peça (0,5 em 0,5 m)
     const tam=madeiraTamanhoPrompt(p.nome); if(tam===null) return;
     const precoMetro=unit; const custoMetro=+p.custo||0;
@@ -25917,7 +25927,29 @@ function nuvemV3Pendentes(desdeISO){
 // manter SEMPRE a versão mais recente — nenhuma configuração salva se perde numa atualização.
 function nuvemConfMarcar(){ try{ const d=DB._load(); d._meta=d._meta||{}; const agora=new Date().toISOString(); d._meta.confMod=agora;
     for(let a=0;a<arguments.length;a++){ const o=arguments[a]; if(o && typeof o==='object' && !Array.isArray(o)){ try{ o._mod=agora; }catch(e){} } }
+    try{ nuvemConfCarimbarMudadas(agora); }catch(e){}
   }catch(e){} }
+/* ===== PROTEÇÃO GERAL DAS CONFIGURAÇÕES (v14/10-J) =====
+   Regra: informação salva em qualquer campo de configuração NUNCA se perde — nem numa atualização do
+   sistema, nem quando outro computador sincroniza uma cópia mais velha. Para isso TODO objeto de
+   configuração que mudar recebe o carimbo _mod na hora da gravação (não só os poucos que já eram
+   carimbados à mão). Na junção com a nuvem, objeto com carimbo mais novo sempre vence (nuvemAplicaConfObj).
+   Detecção: a cada gravação compara-se o conteúdo de cada objeto de configuração com o que ele tinha
+   da última vez (sem contar o próprio _mod); o que mudou é carimbado e a config marcada para subir. */
+function nuvemConfAssin(v){ try{ return JSON.stringify(v, (k,x)=>(k==='_mod'?undefined:x)); }catch(e){ return ''; } }
+function nuvemConfAssinaturas(d){ const h={}; for(const k in d){ if(k==='_meta' || nuvemConfLocal(k)) continue; const v=d[k]; if(v && typeof v==='object' && !Array.isArray(v)) h[k]=nuvemConfAssin(v); } return h; }
+function nuvemConfBaseline(){ try{ window._cfgAssin=nuvemConfAssinaturas(DB._load()); }catch(e){} }   // "estado conhecido" — depois de carregar/aplicar a nuvem
+function nuvemConfCarimbarMudadas(agora){ try{ const d=DB._load(); if(!window._cfgAssin){ window._cfgAssin=nuvemConfAssinaturas(d); return 0; }
+    const atual=nuvemConfAssinaturas(d); let n=0; agora=agora||new Date().toISOString();
+    for(const k in atual){ if(atual[k]!==window._cfgAssin[k]){ try{ d[k]._mod=agora; }catch(e){} window._cfgAssin[k]=atual[k]; n++; } }
+    for(const k in window._cfgAssin){ if(!(k in atual)) delete window._cfgAssin[k]; }
+    if(n){ d._meta=d._meta||{}; d._meta.confMod=agora; }
+    return n; }catch(e){ return 0; } }
+/* Gravações que não passam por nuvemConfMarcar (d.xxx=...; DB._persist()) também são cobertas: a cada
+   gravação a verificação roda, com folga de meio segundo para não pesar em salvamentos em rajada. */
+let _cfgCarimboT=null;
+try{ setTimeout(()=>{ try{ if(!window._cfgAssin) nuvemConfBaseline(); }catch(e){} }, 0); }catch(e){}   // estado conhecido logo na abertura
+function nuvemConfCarimbarAgendado(){ if(_cfgCarimboT) return; _cfgCarimboT=setTimeout(()=>{ _cfgCarimboT=null; try{ if(typeof NUVEM_LOADING!=='undefined' && NUVEM_LOADING) return; const n=nuvemConfCarimbarMudadas(); if(n && typeof nuvemSalvarAgendado==='function') nuvemSalvarAgendado(); }catch(e){} }, 500); }
 /* Mescla a config FISCAL vinda da nuvem SEM apagar/regredir o que já está configurado neste
    aparelho. Regra: campo de texto (token do Focus, CSC, URL, certificado, ambiente, série...) que
    chegue VAZIO nunca apaga o valor local; a numeração (proxNFe/proxNFCe) fica sempre com o MAIOR
@@ -25946,7 +25978,8 @@ function nuvemMergeComissao(localC, remoteC){
 // enviado, a nota já emitida VOLTAVA para a tela na próxima sincronização (e vazava entre computadores).
 const NUVEM_CONF_LOCAL={ nfaRascunho:1, nfaErro:1, nfeEntRascunhos:1 };
 function nuvemConfLocal(k){ return !!NUVEM_CONF_LOCAL[k]; }
-function nuvemAplicaConfObj(dest, src, cloudNewer){
+function nuvemAplicaConfObj(dest, src, cloudNewer){ try{ return nuvemAplicaConfObjExec(dest, src, cloudNewer); } finally{ try{ if(dest===DB.cache) nuvemConfBaseline(); }catch(e){} } }
+function nuvemAplicaConfObjExec(dest, src, cloudNewer){
   for(const k in src){ if(k==='_meta' || nuvemConfLocal(k)) continue; const nv=src[k];
     if(Array.isArray(nv)) continue;                          // coleções não vêm no blob de config
     const cur=dest[k];
@@ -27895,6 +27928,7 @@ async function nuvemHidratarCache(){
       n+=r.itens.length; });
     if(n){ NUVEM_LOADING=true; DB._ensure(); DB._persist(); NUVEM_LOADING=false;
       try{ nuvemRefreshUI(); }catch(e){} }
+    try{ nuvemConfBaseline(); }catch(e){}
     window._nuvemHidratado=(window._nuvemHidratado||0)+n;
     return n;
   }catch(e){ return 0; }
