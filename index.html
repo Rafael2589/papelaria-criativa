@@ -48,7 +48,7 @@ const CONFIG_EMPRESA = {
      Aparece no topo do menu e no rodapé das Configurações. Troque a cada publicação.
      MANTENHA O FORMATO 'vDD/MM-X' — é ele que o sistema usa para comparar as máquinas
      da loja e avisar quando alguma ficou para trás.                                  */
-  versao: 'v14/10-D',
+  versao: 'v14/10-E',
 
   /* 4) NUVEM (Supabase)  ------------------------------------------------------------
      Cole aqui a Project URL e a chave PUBLISHABLE do projeto Supabase DESTA empresa
@@ -898,7 +898,8 @@ tr.linha-editada>td:first-child{box-shadow:inset 3px 0 0 var(--amber-d)}
   body.printing-thermal .print-target .tk-row span:first-child{ min-width:0; flex:1 1 auto; }
   body.printing-thermal .print-target .tk-row span:last-child{ flex:0 0 auto; white-space:nowrap; text-align:right; }
   body.printing-thermal .print-target .tk-s{ color:#000; }
-  body.printing-thermal .print-target .tk-sep{ border-top:1px dashed #000; }
+  body.printing-thermal .print-target .tk-sep{ border-top:2px dashed #000; }
+  body.printing-thermal .print-target.thermal-ticket, body.printing-thermal .print-target.thermal-ticket *{ color:#000 !important; font-weight:700 !important; font-family:Arial,Helvetica,sans-serif !important; -webkit-text-stroke:0.25px #000; }
   .zoom-ctrl{ display:flex; align-items:center; gap:0; border:1px solid var(--line); border-radius:9px; overflow:hidden; background:#fff; }
   .zoom-b{ border:none; background:#fff; cursor:pointer; font-size:14px; font-weight:600; color:var(--ink); padding:7px 9px; line-height:1; }
   .zoom-b:hover{ background:#f1f5f9; }
@@ -25320,18 +25321,20 @@ function orcTicketRender(id){ const o=DB.get('orcamentos',id); const el=document
     <div class="tk-c tk-s">Documento nao fiscal</div>
     <div class="tk-c tk-s" style="margin-top:4px">Obrigado pela preferencia!</div>`;
 }
+/* v14/10-E: impressão mais ESCURA na térmica — tudo em preto puro e em negrito, fonte sem serifa e um pouco
+   maior, traço reforçado. A 'Courier New' fina saía cinza/apagada na bobina. */
 const TICKET_CSS=`@page{size:80mm auto;margin:0}
 *{box-sizing:border-box;-webkit-print-color-adjust:exact;print-color-adjust:exact}
 html,body{margin:0;padding:0;background:#fff;color:#000}
 body{width:80mm}
-.thermal-ticket{width:80mm;margin:0;padding:2mm 3mm;font-family:'Courier New',ui-monospace,monospace;font-size:12px;line-height:1.45;color:#000;word-break:break-word;overflow-wrap:anywhere}
-.thermal-ticket *{max-width:100%}
-.tk-c{text-align:center}.tk-b{font-weight:700}.tk-s{font-size:10.5px}
-.tk-sep{border-top:1px dashed #000;margin:6px 0}
+.thermal-ticket{width:80mm;margin:0;padding:2mm 3mm;font-family:Arial,Helvetica,'Liberation Sans',sans-serif;font-size:13px;line-height:1.4;color:#000;font-weight:700;-webkit-text-stroke:0.25px #000;word-break:break-word;overflow-wrap:anywhere}
+.thermal-ticket *{max-width:100%;color:#000!important;opacity:1!important;font-weight:700!important}
+.tk-c{text-align:center}.tk-b{font-weight:900!important}.tk-s{font-size:11.5px}
+.tk-sep{border-top:2px dashed #000;margin:6px 0}
 .tk-row{display:flex;justify-content:space-between;gap:6px;padding:1px 0}
 .tk-row span:first-child{min-width:0;flex:1 1 auto}
 .tk-row span:last-child{flex:0 0 auto;white-space:nowrap;text-align:right}
-.tk-total{font-size:15px;font-weight:700}
+.tk-total{font-size:17px;font-weight:900!important}
 img,canvas{max-width:40mm;height:auto;display:block;margin:4px auto}
 .no-print{display:none!important}`;
 /* Imprime o cupom térmico num iframe ISOLADO: só o cupom + folha 80mm própria.
