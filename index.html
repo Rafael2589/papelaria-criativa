@@ -48,7 +48,7 @@ const CONFIG_EMPRESA = {
      Aparece no topo do menu e no rodapé das Configurações. Troque a cada publicação.
      MANTENHA O FORMATO 'vDD/MM-X' — é ele que o sistema usa para comparar as máquinas
      da loja e avisar quando alguma ficou para trás.                                  */
-  versao: 'v13/10-D',
+  versao: 'v13/10-E',
 
   /* 4) NUVEM (Supabase)  ------------------------------------------------------------
      Cole aqui a Project URL e a chave PUBLISHABLE do projeto Supabase DESTA empresa
@@ -32062,6 +32062,36 @@ async function focusConsultar(ref, modelo, notaId){ const f=focusCfg();
     try{ if(typeof STATE!=='undefined' && STATE.route==='notasemit') viewNotasEmit(); }catch(e){}   // ATUALIZA a lista com a nova situação (senão continuava mostrando "Pendente")
     focusResultModal(refFinal,modelo||(alvo&&alvo.modelo)||'55',f.ambiente,data||{});
   }catch(e){ toast('Falha na consulta: '+e,'err'); } }
+/* CONFERÊNCIA COM O FOCUS (v13/10-E): a palavra final sobre uma nota é a do Focus/SEFAZ. Toda nota que o
+   sistema mostra como AUTORIZADA e que foi transmitida (tem referência no Focus) é conferida lá; se o Focus
+   responder erro/rejeição, a nota volta para PENDENTE com o motivo e a venda fica retida (fora do caixa) até
+   emitir de novo. Roda sozinha ao abrir Notas Emitidas (no máximo a cada 15 min) e pelo botão "Conferir com o Focus". */
+let _nfeConferindo=false;
+async function nfeConferirComFocus(opts){ opts=opts||{}; if(_nfeConferindo) return; const f=focusCfg(); if(!f.url||!focusTemToken()){ if(!opts.silent) toast('Focus NFe não configurado','err'); return; }
+  const dias=+opts.dias||30; const lim=new Date(Date.now()-dias*86400000).toISOString().slice(0,10); const agora=Date.now();
+  const lista=DB.all('notasFiscais').filter(n=>n && n._focusRef && n.status==='autorizada' && (n.data||'')>=lim && (opts.forcar || !n._focusConfEm || (agora-Date.parse(n._focusConfEm))>6*3600000));
+  if(!lista.length){ if(!opts.silent) toast('Nenhuma nota autorizada para conferir no período','ok'); return {conferidas:0, rebaixadas:[]}; }
+  _nfeConferindo=true; const rebaixadas=[];
+  if(!opts.silent) toast('Conferindo '+lista.length+' nota(s) autorizada(s) com o Focus…','ok');
+  try{ for(const n of lista){ try{
+      await focusAplicarConsulta(n._focusRef, n.modelo||'55', n.id);
+      let at=DB.get('notasFiscais',n.id); if(!at) continue;
+      if(!nfeAutorizadaReal(at)){   // o Focus não confirmou nesta referência: pode estar autorizada numa referência anterior
+        for(const r2 of focusRefsAlternativas(at, n._focusRef)){ try{ await focusAplicarConsulta(n._focusRef, n.modelo||'55', n.id, r2); }catch(e){} at=DB.get('notasFiscais',n.id); if(at && nfeAutorizadaReal(at)){ try{ DB.update('notasFiscais',n.id,{_focusRef:r2}); }catch(e){} break; } }
+      }
+      at=DB.get('notasFiscais',n.id);
+      if(at && at.status!=='autorizada'){ rebaixadas.push({numero:at.numero||n.numero, motivo:at._focusUltMsg||''});
+        try{ if(at.vendaId) DB.update('vendas',at.vendaId,{notaEmitida:false}); }catch(e){}
+        try{ logAcao('Nota rebaixada para Pendente após conferência no Focus', 'Nº '+(at.numero||'')+' — '+(at._focusUltMsg||'')); }catch(e){} }
+      try{ DB.update('notasFiscais',n.id,{_focusConfEm:new Date().toISOString()}); }catch(e){}
+    }catch(e){} } }
+  finally{ _nfeConferindo=false; }
+  try{ if(STATE.route==='notasemit') viewNotasEmit(); }catch(e){}
+  if(rebaixadas.length){ const tx=rebaixadas.map(x=>'Nº '+x.numero+(x.motivo?(' — '+x.motivo.slice(0,120)):'')).join('\n');
+    try{ toast(rebaixadas.length+' nota(s) estavam como autorizadas mas o Focus informou ERRO — voltaram para Pendente','err'); }catch(e){}
+    try{ alert('ATENÇÃO: '+rebaixadas.length+' nota(s) apareciam como AUTORIZADAS, mas no Focus NFe constam com ERRO. Elas voltaram para PENDENTE e as vendas ficaram retidas até a reemissão:\n\n'+tx); }catch(e){} }
+  else if(!opts.silent) toast('Conferência concluída: todas as '+lista.length+' nota(s) autorizadas estão confirmadas no Focus','ok');
+  return {conferidas:lista.length, rebaixadas}; }
 /* Consulta automática: atualiza a situação de todas as notas ainda "processando". */
 let _nfeAtualizando=false;
 async function nfeAtualizarProcessando(silent){
@@ -33960,7 +33990,7 @@ function nemitTableHTML(c){ const lista=c.lista;
    ${lista.length?lista.map(n=>`<tr>
      <td class="tnum">${nfeSemNumero(n)?`<span class="t-mut" title="A numeração vem da SEFAZ pelo Focus assim que a nota é autorizada">— <span style="font-size:10px">aguardando SEFAZ</span></span>`:(n.numero+'/'+n.serie)}</td><td><span class="tag">${n.modelo==='65'?'NFC-e':'NF-e'}</span>${n.estorno?' <span class="tag warn" title="Nota de ENTRADA, finalidade 3 (ajuste)">estorno</span>':''}</td><td class="tnum">${fDate(n.data)}</td>
      <td class="t-strong">${esc(n.clienteNome||'Consumidor')}</td><td class="t-right t-strong tnum">${BRL(n.valor)}</td><td class="t-right tnum t-mut">${BRL(n.icms||0)}</td>
-     <td>${n.status==='cancelada'?(n.canceladaSefaz?`<span class="tag err" title="Cancelamento confirmado na SEFAZ${n.protocoloCancelamento?(' · Protocolo '+esc(n.protocoloCancelamento)):''}${n.canceladaEm?(' · '+fDate(n.canceladaEm)):''}">✓ Cancelada na SEFAZ</span>`:`<span class="tag warn" title="Cancelada apenas no sistema — NÃO confirmada na SEFAZ">Cancelada (interna)</span>`):(nfeAutorizadaReal(n)?(n.estornadaPor?`<span class="tag warn" title="Esta nota foi ESTORNADA por uma NF-e de ajuste (999) — a operação foi anulada fiscalmente">Autorizada · estornada${(function(){ const e=DB.get('notasFiscais',n.estornadaPor); return (e&&e.numero)?(' pela nº '+e.numero):''; })()}</span>`:(n.estorno?'<span class="tag pos" title="NF-e de ajuste (finalidade 3) que estorna a nota referenciada">Autorizada · ESTORNO</span>':'<span class="tag pos" title="Autorizada pela SEFAZ">Autorizada</span>')):(n.status==='processando'?'<span class="tag warn">Processando</span>':`<span class="tag warn" title="${esc(n._focusUltMsg||'Ainda NÃO autorizada na SEFAZ — use Transmitir via Focus NFe')}">Pendente</span>`))}${notaCceTag(n)}</td>
+     <td>${n.status==='cancelada'?(n.canceladaSefaz?`<span class="tag err" title="Cancelamento confirmado na SEFAZ${n.protocoloCancelamento?(' · Protocolo '+esc(n.protocoloCancelamento)):''}${n.canceladaEm?(' · '+fDate(n.canceladaEm)):''}">✓ Cancelada na SEFAZ</span>`:`<span class="tag warn" title="Cancelada apenas no sistema — NÃO confirmada na SEFAZ">Cancelada (interna)</span>`):(nfeAutorizadaReal(n)?(n.estornadaPor?`<span class="tag warn" title="Esta nota foi ESTORNADA por uma NF-e de ajuste (999) — a operação foi anulada fiscalmente">Autorizada · estornada${(function(){ const e=DB.get('notasFiscais',n.estornadaPor); return (e&&e.numero)?(' pela nº '+e.numero):''; })()}</span>`:(n.estorno?'<span class="tag pos" title="NF-e de ajuste (finalidade 3) que estorna a nota referenciada">Autorizada · ESTORNO</span>':'<span class="tag pos" title="Autorizada pela SEFAZ">Autorizada</span>')):(n.status==='processando'?'<span class="tag warn">Processando</span>':`<span class="tag warn" title="${esc(n._focusUltMsg||'Ainda NÃO autorizada na SEFAZ — use Transmitir via Focus NFe')}">Pendente</span>${n._focusUltMsg?`<div style="font-size:11px;color:var(--neg);margin-top:3px;max-width:320px;white-space:normal;line-height:1.35">${esc((''+n._focusUltMsg).slice(0,160))}</div>`:''}`))}${notaCceTag(n)}</td>
      <td class="t-right" style="white-space:nowrap">${notaCceBotaoHTML(n)}<button class="btn-icon btn-ghost" onclick="notaView('${n.id}')" title="Ver DANFE">${ico('doc')}</button><button class="btn-icon btn-ghost" onclick="notaBaixarXML('${n.id}')" title="Baixar XML">${ico('dl')}</button>${(!nfeAutorizadaReal(n) && n.status!=='cancelada' && n._focusRef)?`<button class="btn-icon btn-ghost" onclick="focusConsultar('${n._focusRef}','${n.modelo||'55'}','${n.id}')" title="Consultar status no Focus/SEFAZ — se já foi autorizada, atualiza a nota aqui" style="color:#2563eb">${ico('down')}</button>`:''}${(!nfeAutorizadaReal(n) && n.status!=='cancelada' && n.vendaId)?`<button class="btn-icon btn-ghost" onclick="notaReenviar('${n.id}')" title="Reenviar: descarta esta nota pendente e gera uma NOVA nota com os mesmos dados (sem movimentar caixa/estoque do dia — mantém o dia do faturamento)" style="color:#0d9488">${ico('ret')}</button>`:''}${(!nfeAutorizadaReal(n) && n.status!=='cancelada' && n.vendaId)?`<button class="btn-icon btn-ghost" onclick="notaVoltarOrcamento('${n.id}')" title="Retornar para Orçamento (descarta a nota pendente e reverte a venda: estoque, financeiro e caixa)" style="color:#b45309">${ico('back')}</button>`:''}${(nfeAutorizadaReal(n) && (n.modelo||'55')==='55' && !n.estorno && !n.estornadaPor)?`<button class="btn-icon btn-ghost" onclick="notaEstornar('${n.id}')" title="Estorno de nota: emite a NF-e de ajuste (999 - Estorno de NF-e não cancelada no prazo legal) referenciando esta nota — para quando o prazo de cancelamento já passou" style="color:var(--amber-d)">${ico('ret')}</button>`:''}${nfeAutorizadaReal(n)?`<button class="btn-icon btn-ghost" onclick="notaCancelar('${n.id}')" title="Cancelar" style="color:var(--neg)">${ico('x')}</button>`:''}${(!nfeAutorizadaReal(n) && n.status!=='cancelada')?`<button class="btn-icon btn-ghost" onclick="notaDescartar('${n.id}')" title="Excluir nota (pendente/rejeitada — não autorizada na SEFAZ)" style="color:var(--neg)">${ico('trash')}</button>`:''}</td>
    </tr>`).join(''):`<tr><td colspan="8"><div class="empty" style="padding:40px">${ico('check')}<h4>Nenhuma nota emitida no período</h4><p class="t-mut">Emita notas a partir das vendas em "NF-e Saída".</p></div></td></tr>`}
    </tbody></table>`;
@@ -33980,9 +34010,12 @@ function viewNotasEmit(){ try{ nfeCorrigirAutorizadas(); }catch(e){}   // notas 
      <div class="field" style="margin:0;min-width:140px"><label>Situação</label><select onchange="NEMIT.status=this.value;viewNotasEmit()"><option value="">Todas</option><option value="autorizada" ${NEMIT.status==='autorizada'?'selected':''}>Autorizadas</option><option value="pendente" ${NEMIT.status==='pendente'?'selected':''}>Pendentes</option><option value="processando" ${NEMIT.status==='processando'?'selected':''}>Processando (aguardando SEFAZ)</option><option value="rejeitada" ${NEMIT.status==='rejeitada'?'selected':''}>Rejeitadas</option><option value="cancelada" ${NEMIT.status==='cancelada'?'selected':''}>Canceladas</option></select></div>
      <div class="field" style="margin:0;min-width:150px"><label>Tipo de documento</label><select onchange="NEMIT.modelo=this.value;viewNotasEmit()"><option value="">Todos</option><option value="55" ${NEMIT.modelo==='55'?'selected':''}>NF-e (modelo 55)</option><option value="65" ${NEMIT.modelo==='65'?'selected':''}>Cupom Fiscal — NFC-e (modelo 65)</option></select></div>
      <div class="field" style="margin:0;min-width:160px"><label>Forma de pagamento</label><select onchange="NEMIT.forma=this.value;viewNotasEmit()"><option value="">Todas</option>${c.formasOpc.map(f=>`<option value="${esc(f)}" ${NEMIT.forma===f?'selected':''}>${esc(f)}</option>`).join('')}</select></div>
+     <button class="btn btn-ghost btn-sm" onclick="nfeConferirComFocus({forcar:true})" title="Confere no Focus NFe todas as notas autorizadas dos últimos 30 dias. Se o Focus informar erro, a nota volta para Pendente com o motivo." style="white-space:nowrap">${ico('sync')} Conferir com o Focus</button>
      ${(function(){ const _ja=nfeJaAutorizadasPresas().length; return _ja?`<button class="btn btn-amber btn-sm" onclick="nfeRecuperarJaAutorizadas()" style="white-space:nowrap" title="Notas que aparecem como rejeitadas apenas porque o Focus respondeu 'já foi autorizada'. Elas EXISTEM e são válidas — isto busca o número e a chave reais, sem emitir nada de novo.">${ico('check')} Recuperar ${NUM(_ja)} nota(s) já autorizada(s)</button>`:''; })()}${lista.some(n=>(n.status==='processando'||n.status==='pendente') && n._focusRef)?`<button class="btn btn-amber btn-sm" onclick="nfeAtualizarProcessando()">${ico('down')} Atualizar situação (${NUM(lista.filter(n=>(n.status==='processando'||n.status==='pendente') && n._focusRef).length)})</button>`:''}<button class="btn btn-ghost btn-sm" onclick="nfeResgateModal('')" style="white-space:nowrap" title="A nota existe no painel do Focus/SEFAZ mas não aparece aqui? Isto procura na lixeira e resgata a nota pela referência.">${ico('down')} Nota sumiu?</button><button class="btn btn-ghost btn-sm" onclick="devolFiscalAbrir()" style="white-space:nowrap">${ico('ret')} Devolução ao fornecedor</button><button class="btn btn-ghost btn-sm" onclick="go('nfesai')" style="white-space:nowrap">${ico('nfeout')} Emitir nota</button></div>
    <div class="card"><div class="tbl-wrap" id="nemit-table">${nemitTableHTML(c)}</div></div>`;
   if(!_nfeAtualizando && lista.some(n=>n.status==='processando' && n._focusRef)) setTimeout(()=>{ try{ nfeAtualizarProcessando(true); }catch(e){} }, 200);
+  // v13/10-E: confere com o Focus as notas marcadas como autorizadas (a cada 15 min, em silêncio)
+  try{ if(!window._nfeConfT || Date.now()-window._nfeConfT>15*60000){ window._nfeConfT=Date.now(); setTimeout(()=>{ try{ nfeConferirComFocus({silent:true}); }catch(e){} }, 600); } }catch(e){}
 }
 /* QR-Code real do cupom (NFC-e): usa o qrcode_url devolvido pelo Focus após a autorização */
 function nfceQR(n){ const box=document.getElementById('nfce-qr'); if(!box) return;
