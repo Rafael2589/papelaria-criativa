@@ -48,7 +48,7 @@ const CONFIG_EMPRESA = {
      Aparece no topo do menu e no rodapé das Configurações. Troque a cada publicação.
      MANTENHA O FORMATO 'vDD/MM-X' — é ele que o sistema usa para comparar as máquinas
      da loja e avisar quando alguma ficou para trás.                                  */
-  versao: 'v14/10-N',
+  versao: 'v14/10-O',
 
   /* 4) NUVEM (Supabase)  ------------------------------------------------------------
      Cole aqui a Project URL e a chave PUBLISHABLE do projeto Supabase DESTA empresa
@@ -27475,7 +27475,9 @@ async function nuvemV2CarregarTudo(){ const sb=nuvemClient(); if(!sb) return fal
     const rLista=await pegar(()=>sb.from('acervo_col').select('col,atualizado').eq('tenant',tenant));
     const lista=(rLista.data||[]).filter(r=>r.col!=='__meta');
     const base=JSON.parse(JSON.stringify(DB._load()||{})); base._meta=base._meta||{}; base._meta.del=base._meta.del||{};
-    nuvemV2Cols(base).forEach(c=>{ base[c]=[]; base._meta.del[c]={}; });   // coleções virão TODAS da nuvem; config local preservada como fallback
+    // v14/10-O: NÃO esvazia mais as coleções. Cada coleção vira a UNIÃO: o que a nuvem tem (vence no mesmo id)
+    // + o que só este computador tem (fica, e sobe no próximo envio). Só a lápide (exclusão registrada) apaga.
+    // Coleção que a nuvem nem tem (ex.: funcionários) permanece como está aqui.
     let i=0; const total=lista.length;
     for(const it of lista){ const col=it.col; i++;
       nuvemStatus('sync','Baixando da nuvem… ('+i+'/'+total+') — '+col+(/^(produtos|vendas|movEstoque|financeiro|clientes)$/.test(col)?' (pode levar alguns minutos)':''));
@@ -27485,7 +27487,8 @@ async function nuvemV2CarregarTudo(){ const sb=nuvemClient(); if(!sb) return fal
       else { const itens=Array.isArray(dd.itens)?dd.itens:[]; const del=dd.del||{};
         const pres={}; itens.forEach(x=>{ if(x&&x.id!=null) pres[x.id]=1; });
         Object.keys(del).forEach(id=>{ if(pres[id]) delete del[id]; });   // item presente não pode estar "excluído" — limpa marca falsa
-        base[col]=itens; base._meta.del[col]=del; }
+        const loc=Array.isArray(base[col])?base[col]:[]; const extra=loc.filter(x=>x&&x.id!=null&&!pres[x.id]&&!del[x.id]);
+        base[col]=extra.length?itens.concat(extra):itens; base._meta.del[col]=del; }
       _v2RemoteTs[col]=atu; }
     // v14/10-N: GUARDA ANTI-PERDA — a base da nuvem não pode fazer sumir em massa o que este computador tem.
     try{ const _loc=DB._load(); const perigo=nuvemPerdaAnormal(_loc, base);
