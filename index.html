@@ -48,7 +48,7 @@ const CONFIG_EMPRESA = {
      Aparece no topo do menu e no rodapé das Configurações. Troque a cada publicação.
      MANTENHA O FORMATO 'vDD/MM-X' — é ele que o sistema usa para comparar as máquinas
      da loja e avisar quando alguma ficou para trás.                                  */
-  versao: 'v14/10-K',
+  versao: 'v14/10-L',
 
   /* 4) NUVEM (Supabase)  ------------------------------------------------------------
      Cole aqui a Project URL e a chave PUBLISHABLE do projeto Supabase DESTA empresa
@@ -10006,8 +10006,53 @@ function funcVendBoxHTML(){
       ${faltando.length?`<div style="margin-top:6px;color:var(--amber-d)"><b>${NUM(faltando.length)} ainda fora da lista:</b> ${esc(faltando.map(f=>f.nome).join(' · '))} — clique em atualizar.</div>`:''}
     </div>
     <button class="btn btn-ghost btn-sm" onclick="funcVendAtualizar()">${ico('ret')} Atualizar lista de vendedores</button>
+    <button class="btn btn-ghost btn-sm" onclick="cadRecuperarNuvemModal(['funcionarios','vendedores'])" title="Procura na nuvem cadastros de funcionários e vendedores que não estão neste computador (inclusive excluídos) e permite restaurá-los">${ico('dl')} Recuperar da nuvem</button>
   </div>`;
 }
+/* ===== RECUPERAR CADASTROS DA NUVEM (v14/10-L) =====
+   Lê direto da tabela por registro (acervo_reg) tudo que a nuvem tem de uma coleção — inclusive o que
+   está marcado como excluído — e mostra o que NÃO existe neste computador. Restaurar grava o registro
+   aqui, apaga a lápide de exclusão (senão a sincronização o removeria de novo) e reenvia à nuvem como
+   vivo, para os outros computadores também recuperarem. */
+async function cadRecuperarNuvemModal(cols){ cols=cols||['funcionarios'];
+  const sb=(typeof nuvemClient==='function')?nuvemClient():null; if(!sb){ toast('Este computador não está ligado à nuvem','err'); return; }
+  const nomes={funcionarios:'Funcionários', vendedores:'Vendedores', clientes:'Clientes', produtos:'Produtos', fornecedores:'Fornecedores'};
+  toast('Procurando na nuvem…','ok');
+  const tenant=nuvemTenant(); const achados=[];
+  for(const col of cols){ try{
+    let de=0; const passo=1000;
+    while(true){ const { data, error }=await nuvemComTimeout(sb.from('acervo_reg').select('id,dados,del,mod').eq('tenant',tenant).eq('col',col).range(de,de+passo-1), 25000);
+      if(error){ toast('Falha ao ler '+(nomes[col]||col)+': '+error.message,'err'); break; }
+      (data||[]).forEach(r=>{ if(!r||!r.dados) return; const local=DB.get(col, r.id)||DB.all(col).find(x=>x && String(x.id)===String(r.id));
+        if(!local) achados.push({col, id:r.id, dados:r.dados, del:!!r.del, mod:r.mod}); });
+      if(!data || data.length<passo) break; de+=passo; }
+  }catch(e){ toast('Falha ao ler a nuvem: '+((e&&e.message)||e),'err'); } }
+  // lixeira local também conta
+  const lix=DB.all('lixeira').filter(e=>e && cols.indexOf(e.col)>=0 && e.item && !DB.get(e.col,e.item.id));
+  window.__cadRec={achados, lix};
+  const linha=(x,i,orig)=>{ const d=x.dados||x.item||{}; const nome=d.nome||d.username||d.razao||('#'+(x.id||d.id));
+    return `<tr><td><input type="checkbox" class="cadrec-chk" data-i="${i}" data-o="${orig}" ${x.del?'':'checked'}></td><td>${esc(nomes[x.col]||x.col)}</td><td><b>${esc(nome)}</b>${d.username?` <span class="t-mut">· usuário ${esc(d.username)}</span>`:''}${d.funcao||d.cargo?` <span class="t-mut">· ${esc(d.funcao||d.cargo)}</span>`:''}</td><td>${x.del?'<span class="tag err">excluído na nuvem</span>':(orig==='lix'?'<span class="tag warn">na lixeira deste computador</span>':'<span class="tag pos">vivo na nuvem</span>')}</td><td class="t-mut tnum" style="font-size:11px">${x.mod?fDate((''+x.mod).slice(0,10)):''}</td></tr>`; };
+  const rows=achados.map((x,i)=>linha(x,i,'nuvem')).concat(lix.map((x,i)=>linha(x,i,'lix'))).join('');
+  openModal(`<div class="modal-head"><h3>${ico('dl')} Recuperar da nuvem — ${cols.map(c=>nomes[c]||c).join(' e ')}</h3><button class="btn-icon btn-ghost" onclick="closeModal()">${ico('x')}</button></div>
+   <div class="modal-body">
+     ${rows?`<p class="t-mut" style="font-size:12.5px;margin:0 0 10px">${NUM(achados.length+lix.length)} cadastro(s) que a nuvem (ou a lixeira) tem e este computador não. Marque os que devem voltar. Os marcados como <b>excluído na nuvem</b> foram apagados por alguém — restaure só se tiver certeza.</p>
+       <div class="tbl-wrap" style="max-height:50vh;overflow:auto"><table><thead><tr><th></th><th>Tipo</th><th>Cadastro</th><th>Situação</th><th>Alterado</th></tr></thead><tbody>${rows}</tbody></table></div>`
+       :`<div class="empty" style="padding:30px">${ico('check')}<h4>Nada para recuperar</h4><p class="t-mut">A nuvem não tem nenhum cadastro de ${cols.map(c=>nomes[c]||c).join(' / ')} além dos que já estão aqui. Se os cadastros existiam, eles podem estar em outro computador que ainda não sincronizou — abra o sistema lá.</p></div>`}
+   </div>
+   <div class="modal-foot"><button class="btn btn-ghost" onclick="closeModal()">Fechar</button>${rows?`<button class="btn btn-amber" onclick="cadRecuperarNuvemExec()">${ico('check')} Restaurar marcados</button>`:''}</div>`, true);
+}
+function cadRecuperarNuvemExec(){ const R=window.__cadRec||{achados:[],lix:[]}; const chks=[...document.querySelectorAll('.cadrec-chk:checked')]; if(!chks.length){ toast('Marque pelo menos um cadastro','err'); return; }
+  let n=0; const d=DB._load(); d._meta=d._meta||{}; d._meta.del=d._meta.del||{};
+  DB.bulk(()=>{ chks.forEach(c=>{ const i=+c.dataset.i; const x=(c.dataset.o==='lix')?R.lix[i]:R.achados[i]; if(!x) return;
+      const col=x.col; const item=Object.assign({}, x.dados||x.item||{}); if(item.id==null) item.id=x.id;
+      if(DB.get(col,item.id)) return;
+      item._mod=new Date().toISOString();                       // mais novo que a exclusão: a nuvem recebe como VIVO
+      try{ if(d._meta.del[col]) delete d._meta.del[col][item.id]; }catch(e){}   // tira a lápide, senão a sincronização apaga de novo
+      if(!Array.isArray(d[col])) d[col]=[]; d[col].push(item); n++;
+      try{ if(c.dataset.o==='lix'){ const e=R.lix[i]; const k=DB.all('lixeira').findIndex(z=>z===e); if(k>=0) d.lixeira.splice(k,1); } }catch(e){} }); });
+  DB._persist(); try{ logAcao('Cadastros recuperados da nuvem', n+' registro(s)'); }catch(e){}
+  try{ nuvemPushJa(); }catch(e){} try{ buildNav(); }catch(e){}
+  closeModal(); toast(n+' cadastro(s) restaurado(s) — já reenviados à nuvem','ok'); try{ uiRedesenhar(); }catch(e){} }
 function funcVendAtualizar(){ const antes=DB.all('vendedores').filter(funcAtivo).length;
   syncVendedores(); _syncVendTs=Date.now();
   const dep=DB.all('vendedores').filter(funcAtivo).length;
