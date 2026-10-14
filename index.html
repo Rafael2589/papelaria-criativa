@@ -48,7 +48,7 @@ const CONFIG_EMPRESA = {
      Aparece no topo do menu e no rodapé das Configurações. Troque a cada publicação.
      MANTENHA O FORMATO 'vDD/MM-X' — é ele que o sistema usa para comparar as máquinas
      da loja e avisar quando alguma ficou para trás.                                  */
-  versao: 'v13/10-E',
+  versao: 'v14/10-A',
 
   /* 4) NUVEM (Supabase)  ------------------------------------------------------------
      Cole aqui a Project URL e a chave PUBLISHABLE do projeto Supabase DESTA empresa
@@ -5424,7 +5424,58 @@ function fiscalSincronizarNumeracao(modelo,numAut){ const nu=+numAut||0; if(!nu)
   const k=(modelo==='65')?'proxNFCe':'proxNFe'; const cfg=fiscalCfg();
   if((+cfg[k]||1) <= nu){ const patch={}; patch[k]=nu+1; fiscalSaveCfg(patch); } }
 function fiscalDevolverNumero(modelo,num){ try{ const cfg=fiscalCfg(); const k=(modelo==='65')?'proxNFCe':'proxNFe';
+  if(fiscalNumeracaoSistema() && +num>0){ nfeNumLivreGuardar(modelo, +num); return; }   // v14/10-A: número reservado na nuvem fica guardado NESTE computador para a próxima nota (sem buraco na sequência)
   if(cfg[k]===num+1){ const p={}; p[k]=num; fiscalSaveCfg(p); } }catch(e){} }
+/* ===== NUMERAÇÃO ENVIADA PELO SISTEMA (v14/10-A) =====
+   Ligado em Fiscal › Configurações, o SISTEMA passa a mandar o número da nota para o Focus, em vez de
+   deixar o Focus numerar. O número vem do contador central da nuvem (função proximo_numero do
+   seguranca/numeracao.sql), um só para todos os computadores — por isso não colide. O contador nunca
+   fica atrás do "Próx. nº" configurado nem do maior número já emitido. Se a nota for rejeitada e
+   descartada, o número volta para uma reserva deste computador e é usado na próxima — sem buraco. */
+function fiscalNumeracaoSistema(){ try{ return !!fiscalCfg().numeracaoSistema; }catch(e){ return false; } }
+function nfeNumTipo(modelo, serie){ return (modelo==='65'?'nfce':'nfe')+'_s'+(+serie||1); }
+function nfeNumLivresKey(modelo, serie){ return LSK('num_livres_'+nfeNumTipo(modelo,serie)); }
+function nfeNumLivreGuardar(modelo, num, serie){ try{ const cfg=fiscalCfg(); serie=serie||(modelo==='65'?(cfg.serie||1):(cfg.serieNFe||2));
+    const k=nfeNumLivresKey(modelo,serie); const a=JSON.parse(localStorage.getItem(k)||'[]'); if(a.indexOf(num)<0) a.push(num); localStorage.setItem(k, JSON.stringify(a.slice(-50))); }catch(e){} }
+function nfeNumLivrePegar(modelo, serie){ try{ const k=nfeNumLivresKey(modelo,serie); const a=JSON.parse(localStorage.getItem(k)||'[]'); if(!a.length) return 0;
+    a.sort((x,y)=>x-y); const n=a.shift(); localStorage.setItem(k, JSON.stringify(a)); return +n||0; }catch(e){ return 0; } }
+function nfeMaiorEmitido(modelo, serie){ let m=0; try{ DB.all('notasFiscais').forEach(n=>{ if(n && (n.modelo||'55')===modelo && String(n.serie||'')===String(serie) && +n.numero>m) m=+n.numero; }); }catch(e){} return m; }
+/* Garante que a nota tenha um número do sistema antes de ir ao Focus. Devolve {ok, numero, motivo}. */
+async function nfeNumeroCentral(n, modelo){
+  const cfg=fiscalCfg(); const serie=(modelo==='65')?(cfg.serie||1):(cfg.serieNFe||2); const k=(modelo==='65')?'proxNFCe':'proxNFe';
+  if(n && n._numSistema && +n.numero>0) return {ok:true, numero:+n.numero, reaproveitado:true};   // reenvio da mesma nota: mesmo número
+  const minimo=Math.max(+cfg[k]||1, nfeMaiorEmitido(modelo, serie)+1);
+  let numero=nfeNumLivrePegar(modelo, serie); let origem='reserva deste computador';
+  if(numero && numero<minimo){ numero=0; }   // reserva velha (abaixo do mínimo): descarta
+  if(!numero){
+    if(typeof navigator!=='undefined' && navigator.onLine===false) return {ok:false, motivo:'Sem internet: não dá para pegar o número da nota no contador central da nuvem.'};
+    const r=await numeroReservarServidor(nfeNumTipo(modelo,serie), minimo);
+    if(!(r>0)){ const est=numSrvEstado()||{};
+      return {ok:false, semFuncao:est.motivo==='sem_funcao', motivo: est.motivo==='sem_funcao'
+        ? 'A numeração central ainda não foi ativada na nuvem (aplique o SQL em Fiscal › Configurações › Numeração enviada pelo sistema).'
+        : 'O contador central da nuvem não respondeu ('+(est.msg||'sem resposta')+'). Tente de novo em instantes.'}; }
+    numero=r; origem='contador central'; }
+  try{ DB.update('notasFiscais', n.id, {numero, numeroPendente:false, serie, _numSistema:true}); }catch(e){}
+  try{ if((+cfg[k]||1)<=numero){ const p={}; p[k]=numero+1; fiscalSaveCfg(p); } }catch(e){}
+  return {ok:true, numero, origem}; }
+const NUMERACAO_SQL=`-- Contador central de numeração (orçamentos, pedidos, NF-e e NFC-e) — GestãoPro
+create table if not exists public.numeracao (
+  tenant text not null, tipo text not null, ultimo bigint not null default 0,
+  primary key (tenant, tipo));
+alter table public.numeracao enable row level security;
+create or replace function public.proximo_numero(p_tenant text, p_tipo text, p_minimo integer default 1)
+returns bigint language plpgsql security definer set search_path = public as $$
+declare v bigint;
+begin
+  insert into public.numeracao (tenant, tipo, ultimo) values (p_tenant, p_tipo, greatest(coalesce(p_minimo,1),1))
+  on conflict (tenant, tipo) do update
+    set ultimo = greatest(public.numeracao.ultimo + 1, greatest(coalesce(excluded.ultimo,1),1))
+  returning ultimo into v;
+  return v;
+end $$;
+revoke all on function public.proximo_numero(text,text,integer) from public;
+grant execute on function public.proximo_numero(text,text,integer) to authenticated;`;
+function numeracaoSqlCopiar(){ try{ navigator.clipboard.writeText(NUMERACAO_SQL).then(()=>toast('SQL copiado — cole no SQL Editor do Supabase e clique em Run','ok'), ()=>prompt('Copie o SQL:', NUMERACAO_SQL)); }catch(e){ try{ prompt('Copie o SQL:', NUMERACAO_SQL); }catch(_){} } }
 /* Campos do cliente exigidos pela NF-e que estão faltando (para avisar antes de emitir). */
 function nfeClienteFaltando(cli){ if(!cli) return ['Cliente não identificado (Consumidor)'];
   const doc=((cli.doc||cli.cpf_cnpj||cli.cnpj||cli.cpf||cli.documento||'')+'').replace(/\D/g,'');
@@ -5933,10 +5984,12 @@ async function nfeEmitirETransmitir(vendaId, modelo, origem){
     const _atual=+fiscalCfg()[_k]||0;
     const _sug=Math.max(_atual, _numDup?(_numDup+1):((+numUsado||0)+1));
     if(_sug>_atual){ const _p={}; _p[_k]=_sug; fiscalSaveCfg(_p); }
-    const _txt='A SEFAZ já tem uma '+_tipo+(_numDup?(' nº '+_numDup):' com este número')+(_serieDup?(' (série '+_serieDup+')'):'')+'. Quem escolhe o número é o FOCUS NFe, e o contador dele está atrás da SEFAZ.\n\n'
-      +'COMO RESOLVER: no painel do Focus NFe › Empresas › editar a empresa › "Próximo número '+_tipo+'"'+(_serieDup?(' da série '+_serieDup):'')+', coloque '+(_numDup?(_numDup+1):'o próximo número livre')+' (ou o número seguinte à última '+_tipo+' emitida pelo sistema antigo). Depois fature o pedido de novo.';
+    const _txt=fiscalNumeracaoSistema()
+      ? ('A SEFAZ já tem uma '+_tipo+(_numDup?(' nº '+_numDup):' com este número')+(_serieDup?(' (série '+_serieDup+')'):'')+'.\n\nO sistema já avançou o "Próx. nº '+_tipo+'" para '+_sug+' — é só faturar o pedido de novo.')
+      : ('A SEFAZ já tem uma '+_tipo+(_numDup?(' nº '+_numDup):' com este número')+(_serieDup?(' (série '+_serieDup+')'):'')+'. Quem escolhe o número é o FOCUS NFe, e o contador dele está atrás da SEFAZ.\n\n'
+      +'COMO RESOLVER: no painel do Focus NFe › Empresas › editar a empresa › "Próximo número '+_tipo+'"'+(_serieDup?(' da série '+_serieDup):'')+', coloque '+(_numDup?(_numDup+1):'o próximo número livre')+' (ou o número seguinte à última '+_tipo+' emitida pelo sistema antigo). Depois fature o pedido de novo.');
     try{ alert(_txt); }catch(e){}
-    toast('Duplicidade de numeração: ajuste o "Próximo número '+_tipo+'" no painel do Focus'+(_numDup?(' para '+(_numDup+1)):''),'err');
+    toast(fiscalNumeracaoSistema()?('Duplicidade: a numeração avançou para '+_sug+' — fature de novo'):('Duplicidade de numeração: ajuste o "Próximo número '+_tipo+'" no painel do Focus'+(_numDup?(' para '+(_numDup+1)):'')),'err');
   } else {
     fiscalDevolverNumero(modeloUsado, numUsado);   // rejeição antes da autorização: o número pode ser reutilizado
   }
@@ -27720,6 +27773,7 @@ function nuvemUiBusy(){ const mb=document.getElementById('modal-bg'); if(mb && m
   return false; }
 try{ ['pointerdown','keydown','wheel','touchstart'].forEach(ev=>window.addEventListener(ev,function(){ window._uiLastAct=Date.now(); },{passive:true})); }catch(e){}
 function nuvemRefreshUI(){ if(typeof CURRENT_USER==='undefined'||!CURRENT_USER) return;
+  try{ if(typeof nfeSanearAutorizadas==='function') nfeSanearAutorizadas(); }catch(e){}
   try{ if(typeof logoRestaurarSeSumiu==='function') logoRestaurarSeSumiu(); }catch(e){}
   try{ authSyncCurrentUser(); }catch(e){}   // permissão mudada em outro aparelho vale na hora após o sync
   try{ authMigrarTodasSenhas(); }catch(e){}  // cadastro vindo de aparelho antigo com senha em texto
@@ -31764,7 +31818,7 @@ function focusPayload(n){ const emp=DB._load().empresa||{}; const cli=n.clienteI
     items.forEach((it,idx)=>{ let fr=idx===items.length-1?Math.round((frete-acc)*100)/100:Math.round(frete*((+it.valor_bruto||0)/somaBrutoAll)*100)/100; if(fr<0)fr=0; acc=Math.round((acc+fr)*100)/100;
       it.valor_frete=fr; it.frete=fr; });   // no Focus NFe o campo por item é "valor_frete"; mantém "frete" por compatibilidade
     freteRateado=Math.round(acc*100)/100; }
-  const p={ natureza_operacao:n.natureza||'VENDA DE MERCADORIA', numero:undefined /* NÃO enviamos o número: o FOCUS numera de forma central (mesma sequência para os 6 computadores, sem colisão). A série continua sendo enviada. */, serie:(+n.serie||1), data_emissao: nfeDataEmissaoISO(), tipo_documento:1, finalidade_emissao:1,
+  const p={ natureza_operacao:n.natureza||'VENDA DE MERCADORIA', numero:((fiscalNumeracaoSistema() && n._numSistema && +n.numero>0)?+n.numero:undefined) /* Modo padrão: o FOCUS numera (sem colisão entre computadores). Com "Numeração enviada pelo sistema" ligada, vai o número do contador central da nuvem (v14/10-A). */, serie:(+n.serie||1), data_emissao: nfeDataEmissaoISO(), tipo_documento:1, finalidade_emissao:1,
     cnpj_emitente:(emp.cnpj||'').replace(/\D/g,''), presenca_comprador:1, modalidade_frete:frete>0?0:9, items:items };
   if(frete>0) p.valor_frete=freteRateado;          // total do frete = soma exata do frete por item (evita rejeição 535)
   if(descTotal>0) p.valor_desconto=descTotal;      // desconto total (soma do rateio por item)
@@ -31928,6 +31982,9 @@ async function focusEmitir(n, modelo, opts){ opts=opts||{}; if(!n){ toast('Nota 
       try{ alert(_msg); }catch(e){}
       toast('Emissão bloqueada: faltam '+_falta.length+' dado(s) obrigatório(s) — veja o aviso','err');
       return {ok:false, faltaDados:true, motivo:_falta.join(' · ')}; } }
+  if(fiscalNumeracaoSistema()){ const nc=await nfeNumeroCentral(n, md);
+    if(!nc.ok){ try{ alert('Nota NÃO transmitida.\n\n'+nc.motivo); }catch(e){} toast(nc.motivo,'err'); return {ok:false, semNumero:true, motivo:nc.motivo}; }
+    n=DB.get('notasFiscais',n.id)||n; }
   toast('Transmitindo à SEFAZ via Focus NFe ('+(f.ambiente==='producao'?'produção':'homologação')+')...','ok');
   try{
     // Referência ESTÁVEL da nota (nunca muda sozinha): é ela que identifica o documento no Focus.
@@ -31982,17 +32039,23 @@ async function focusEmitir(n, modelo, opts){ opts=opts||{}; if(!n){ toast('Nota 
     }
     try{ const upd={ _focusRef:ref, _focusStatus:fo.status||('http '+data.status_http), _focusAmbiente:f.ambiente,
         _focusUltHttp:data.status_http, _focusUltMsg:(motivo||'').slice(0,300), _focusUltEm:new Date().toISOString() };
-      if(fo.chave_nfe) upd.chave=(''+fo.chave_nfe).replace(/\D/g,'');   // numeração real vem do Focus (não do número interno)
       if(fo.numero){ upd.numero=fo.numero; upd.numeroPendente=false; }
       if(fo.serie) upd.serie=fo.serie;
-      if(fo.caminho_danfe) upd._danfe=fo.caminho_danfe;
-      if(fo.caminho_xml_nota_fiscal) upd._xml=fo.caminho_xml_nota_fiscal;
-      if(fo.caminho_xml_cancelamento) upd._xmlCanc=fo.caminho_xml_cancelamento;
-      if(fo.qrcode_url) upd._qrcodeUrl=fo.qrcode_url;                    // QR-Code oficial da NFC-e (vem pronto do Focus)
-      if(fo.url_consulta_nfe) upd._urlConsulta=fo.url_consulta_nfe;
+      // v13/10-F: chave, DANFE, XML e QR-Code só entram no registro quando a nota está AUTORIZADA (ou em
+      // processamento). O Focus devolve chave e até um PDF na REJEIÇÃO — guardar isso fazia uma nota
+      // rejeitada "virar" autorizada mais tarde (cupom com chave e protocolo falsos). Rejeição limpa tudo.
+      if(autorizado || processando){
+        if(fo.chave_nfe) upd.chave=(''+fo.chave_nfe).replace(/\D/g,'');   // numeração real vem do Focus (não do número interno)
+        if(fo.caminho_xml_cancelamento) upd._xmlCanc=fo.caminho_xml_cancelamento;
+        if(fo.url_consulta_nfe) upd._urlConsulta=fo.url_consulta_nfe; }
+      if(autorizado){
+        if(fo.caminho_danfe) upd._danfe=fo.caminho_danfe;
+        if(fo.caminho_xml_nota_fiscal) upd._xml=fo.caminho_xml_nota_fiscal;
+        if(fo.qrcode_url) upd._qrcodeUrl=fo.qrcode_url;                    // QR-Code oficial da NFC-e (vem pronto do Focus)
+        const _prot=fo.protocolo||fo.numero_protocolo||fo.protocolo_sefaz||''; if(_prot) upd._protocolo=''+_prot; }
       if(autorizado) upd.status='autorizada';
       else if(processando) upd.status='processando';
-      else { upd.status='pendente'; if(!fo.chave_nfe){ upd.chave=''; upd._danfe=''; } }   // rejeição/erro da SEFAZ: NUNCA fica "autorizada" — volta para pendente
+      else { upd.status='pendente'; upd.chave=''; upd._danfe=''; upd._xml=''; upd._qrcodeUrl=''; upd._protocolo=''; }   // rejeição/erro da SEFAZ: NUNCA fica "autorizada" — volta para pendente, sem chave/DANFE
       DB.update('notasFiscais',n.id,upd);
       if(fo.numero) nfeNumeroChegou(n.id, fo.numero);   // boletos, pedido e fichas recebem o número verdadeiro
     }catch(e){}
@@ -32014,7 +32077,9 @@ async function focusAplicarConsulta(ref, modelo, notaId){ const f=focusCfg();
   const alvo = notaId ? DB.get('notasFiscais',notaId) : null;
   const refUso = (arguments.length>3 && arguments[3]) || (alvo && alvo._focusRef) || ref; if(!f.url||!refUso) return null;
   const r=await focusReq(f.url, {acao:'consultar',modelo:modelo||(alvo&&alvo.modelo)||'55',ambiente:f.ambiente,ref:refUso,token:f.token}); const data=await r.json(); const fo=data.focus||{};
-  try{ const nota=alvo || DB.all('notasFiscais').find(x=>x._focusRef===refUso); if(nota){ const upd={_focusStatus:fo.status||nota._focusStatus}; if(fo.chave_nfe)upd.chave=(''+fo.chave_nfe).replace(/\D/g,''); if(fo.numero)upd.numero=fo.numero; if(fo.serie)upd.serie=fo.serie; if(fo.caminho_danfe)upd._danfe=fo.caminho_danfe; if(fo.caminho_xml_nota_fiscal)upd._xml=fo.caminho_xml_nota_fiscal; if(fo.qrcode_url)upd._qrcodeUrl=fo.qrcode_url; if(fo.url_consulta_nfe)upd._urlConsulta=fo.url_consulta_nfe;
+  try{ const nota=alvo || DB.all('notasFiscais').find(x=>x._focusRef===refUso); if(nota){ const upd={_focusStatus:fo.status||nota._focusStatus}; if(fo.numero)upd.numero=fo.numero; if(fo.serie)upd.serie=fo.serie;
+      const _negC=/cancel|deneg|erro|rejeit|duplicid/i.test(fo.status||'');   // v13/10-F: rejeição não traz chave/DANFE/QR para o registro
+      if(!_negC){ if(fo.chave_nfe)upd.chave=(''+fo.chave_nfe).replace(/\D/g,''); if(fo.caminho_danfe)upd._danfe=fo.caminho_danfe; if(fo.caminho_xml_nota_fiscal)upd._xml=fo.caminho_xml_nota_fiscal; if(fo.qrcode_url)upd._qrcodeUrl=fo.qrcode_url; if(fo.url_consulta_nfe)upd._urlConsulta=fo.url_consulta_nfe; const _pr=fo.protocolo||fo.numero_protocolo||fo.protocolo_sefaz||''; if(_pr) upd._protocolo=''+_pr; }
       if(fo.caminho_xml_cancelamento)upd._xmlCanc=fo.caminho_xml_cancelamento; if(fo.caminho_xml_carta_correcao)upd._xmlCce=fo.caminho_xml_carta_correcao; if(fo.carta_correcao){ upd.cartaCorrecao=fo.carta_correcao; if(fo.numero_carta_correcao)upd.numeroCartaCorrecao=+fo.numero_carta_correcao; if(fo.data_carta_correcao)upd.dataCartaCorrecao=(''+fo.data_carta_correcao).slice(0,10); }
       const _neg=/cancel|deneg|erro|rejeit|duplicid/i.test(fo.status||'');
       const _proc=((fo.status||'').indexOf('processando')===0);
@@ -32023,7 +32088,7 @@ async function focusAplicarConsulta(ref, modelo, notaId){ const f=focusCfg();
       if(_aut){ upd.status='autorizada'; try{ nfeLimparPendencia(nota.vendaId); }catch(e){} try{ fiscalSincronizarNumeracao(modelo||nota.modelo||'55', fo.numero||nota.numero); }catch(e){} }
       else if(/cancelad/i.test(fo.status||'')){ upd.status='cancelada'; upd.canceladaEm=nota.canceladaEm||today(); }
       else if(focusJaAutorizada(fo, data)){ upd.status=nota.status==='autorizada'?'autorizada':'processando'; }   // "já foi autorizada" não é rejeição — nunca marca como recusada
-      else if(!_proc && /erro|rejeit|deneg/i.test(fo.status||'')){ upd.status='pendente';   // consulta trouxe rejeição: marca como pendente, não deixa verde
+      else if(!_proc && /erro|rejeit|deneg/i.test(fo.status||'')){ upd.status='pendente'; upd.chave=''; upd._danfe=''; upd._xml=''; upd._qrcodeUrl=''; upd._protocolo='';   // consulta trouxe rejeição: marca como pendente, sem chave/DANFE — não deixa verde
         const motivoC=fo.mensagem_sefaz||fo.mensagem||((fo.erros&&fo.erros.length)?fo.erros.map(e=>e.mensagem||'').filter(Boolean).join(' · '):'')||fo.status||'';
         upd._focusUltMsg=(''+motivoC).slice(0,300); try{ upd._focusUltEm=new Date().toISOString(); }catch(_e){}
         try{ nfeMarcarPendencia(nota.vendaId,'Nota rejeitada na SEFAZ'+(motivoC?(' — '+(''+motivoC).slice(0,160)):' — corrija e emita novamente')); }catch(e){} }
@@ -32031,8 +32096,21 @@ async function focusAplicarConsulta(ref, modelo, notaId){ const f=focusCfg();
   return data; }
 /* Corrige localmente notas que já têm chave + DANFE (portanto AUTORIZADAS) mas ficaram presas em "processando". */
 function nfeCorrigirAutorizadas(){ let n=0; DB.all('notasFiscais').forEach(nf=>{
-  if(nf && nf.status==='processando' && nf._danfe){ DB.update('notasFiscais',nf.id,{status:'autorizada'}); n++; } });   // só promove com DANFE real da SEFAZ (chave sozinha pode ser provisória)
+  if(nf && nf.status==='processando' && nf._danfe && nf._focusStatus==='autorizado'){ DB.update('notasFiscais',nf.id,{status:'autorizada'}); n++; } });   // v13/10-F: só promove quando o PRÓPRIO Focus disse "autorizado" (o PDF sozinho vinha até em rejeição)
   return n; }
+/* SANEAMENTO (v13/10-F): nota marcada como autorizada cujo último retorno do Focus NÃO foi "autorizado"
+   (ex.: erro_autorizacao com chave e PDF guardados por engano) volta para PENDENTE com o motivo, sem
+   chave/DANFE, e a venda fica retida. Roda ao abrir Notas Emitidas e depois da sincronização. */
+function nfeSanearAutorizadas(){ let n=0; const lista=[];
+  try{ DB.all('notasFiscais').forEach(nf=>{ if(!nf || nf.status!=='autorizada') return; const fs=''+(nf._focusStatus||'');
+      if(!fs || fs==='autorizado') return;                                   // sem registro do Focus (nota antiga) ou confirmada: não mexe
+      const motivo=(nf._focusUltMsg||('Focus: '+fs)).slice(0,300);
+      DB.update('notasFiscais',nf.id,{status:'pendente', chave:'', _danfe:'', _xml:'', _qrcodeUrl:'', _protocolo:'', _focusUltMsg:motivo});
+      try{ if(nf.vendaId){ DB.update('vendas',nf.vendaId,{notaEmitida:false}); nfeMarcarPendencia(nf.vendaId,'Nota rejeitada na SEFAZ — '+motivo.slice(0,160), nf.modelo); } }catch(e){}
+      try{ logAcao('Nota corrigida: aparecia como autorizada mas o Focus registrou erro', 'Nº '+(nf.numero||'')+' — '+motivo); }catch(e){}
+      lista.push('Nº '+(nf.numero||'?')+' — '+motivo.slice(0,100)); n++; }); }catch(e){}
+  if(n){ try{ toast(n+' nota(s) apareciam como autorizadas mas o Focus registrou ERRO — voltaram para Pendente','err'); }catch(e){} try{ buildNav(); }catch(e){} }
+  return {n, lista}; }
 /* Referências ALTERNATIVAS da mesma nota. Versões antigas trocavam a referência quando o Focus
    devolvia 429 (limite por minuto), então a nota pode estar AUTORIZADA sob uma referência anterior
    (…-0, …-1) enquanto o sistema guardou outra (…-2). A consulta procura em todas. */
@@ -33999,7 +34077,7 @@ function nemitTableHTML(c){ const lista=c.lista;
 function nemitFiltraRender(){ const c=nemitCompute();
   const k=document.getElementById('nemit-kpis'); if(k) k.innerHTML=nemitKpisHTML(c);
   const t=document.getElementById('nemit-table'); if(t) t.innerHTML=nemitTableHTML(c); }
-function viewNotasEmit(){ try{ nfeCorrigirAutorizadas(); }catch(e){}   // notas com DANFE não ficam presas em "processando"
+function viewNotasEmit(){ try{ nfeCorrigirAutorizadas(); }catch(e){} try{ nfeSanearAutorizadas(); }catch(e){}   // notas com DANFE não ficam presas em "processando"
   const c=nemitCompute(); const lista=c.lista;
   document.getElementById('view').innerHTML=`
    ${rtBanner('viewNotasEmit')}
@@ -34176,7 +34254,7 @@ function notaView(id){ const n=DB.get('notasFiscais',id); if(!n)return; const em
        <div class="tk-c tk-s">www.sefaz.es.gov.br</div>
        <div class="tk-c tk-s" style="word-break:break-all;font-size:9.5px">${chaveFmt}</div>
        <div class="tk-c tk-s" style="margin-top:6px">Consumidor: ${esc(n.clienteNome||'NÃO IDENTIFICADO')}</div>
-       <div class="tk-c tk-s">Protocolo: ${esc((n.chave||'').slice(0,15))} ${fDate(n.data)}</div>
+       <div class="tk-c tk-s">Protocolo: ${esc(n._protocolo||n.protocolo||'—')} ${fDate(n.data)}</div>
        ${nfceQRBloco(n)}
      </div></div>
      <div class="modal-foot no-print"><button class="btn btn-ghost" onclick="closeModal()">Fechar</button>${focusBtn(n)}<button class="btn btn-primary" onclick="printTicket('danfe-print')">${ico('print')} Imprimir cupom (térmica)</button></div>`,true);
@@ -34223,7 +34301,7 @@ function notaView(id){ const n=DB.get('notasFiscais',id); if(!n)return; const em
   const dstIE  =_dd?(_dd.ie||''):(cli&&cli.ie)||'';
   // ===== DANFE no MESMO MODELO do Focus NFe (SEFAZ) =====
   const fantasia=(emp.nomeFantasia && emp.nomeFantasia!==(emp.razaoSocial||emp.nome))?(' ('+dEsc(emp.nomeFantasia)+')'):'';
-  const protocolo=dEsc(n._protocolo||n.protocolo||(n.chave||'').slice(0,15));
+  const protocolo=dEsc(n._protocolo||n.protocolo||'—');
   const empUFv=dEsc(emp.uf||(typeof empUF==='function'?empUF():'')||'');
   const freteVal=(n.frete!=null?n.frete:(v2&&v2.frete))||0;
   const fretePorConta=freteVal>0?'0-Emitente':'9-Sem frete';
@@ -35092,7 +35170,9 @@ function nfeFocusLigado(){ try{ const f=focusCfg(); return !!(f.url && (f.token 
 // nota NÃO é gerada como autorizada — o sistema acusa erro. (Sem chave falsa, nunca.)
 function nfeStatusInicial(){ return 'pendente'; }
 function nfeChaveInicial(){ return ''; }
-function nfeAutorizadaReal(n){ if(!n||n.status!=='autorizada') return false; return !!n._danfe || n._focusStatus==='autorizado'; }
+function nfeAutorizadaReal(n){ if(!n||n.status!=='autorizada') return false;
+  const fs=''+(n._focusStatus||''); if(fs) return fs==='autorizado';        // v13/10-F: com retorno do Focus registrado, só vale a palavra dele
+  return !!n._danfe; }                                                        // nota antiga, sem registro do Focus: vale o DANFE
 /* A nota chegou a ser TRANSMITIDA ao Focus? Se sim, ela pode estar autorizada na
    SEFAZ mesmo que o registro aqui ainda diga "pendente" — a resposta pode ter se
    perdido no caminho. Nesse estado NADA pode ser apagado sem antes perguntar à SEFAZ. */
@@ -35800,6 +35880,15 @@ function viewFiscalCfg(){ try{ fiscalGuardAplicar(); }catch(e){}
        <div class="field-row"><div class="field"><label>Série NF-e</label><input id="fx-serie-nfe" type="number" value="${cfg.serieNFe||2}" title="Série própria da NF-e (separada da NFC-e) para não colidir com a numeração antiga"></div><div class="field"><label>Série NFC-e</label><input id="fx-serie" type="number" value="${cfg.serie}"></div><div class="field"><label>Próx. NF-e</label><input id="fx-pnfe" type="number" value="${cfg.proxNFe}"></div><div class="field"><label>Próx. NFC-e</label><input id="fx-pnfce" type="number" value="${cfg.proxNFCe}"></div></div>
        <div class="field-row"><div class="field"><label>CSC — NFC-e (Código de Segurança)</label><input id="fx-csc" value="${esc(cfg.csc||'')}" placeholder="token do CSC" autocomplete="off"></div><div class="field"><label>ID do CSC (idToken)</label><input id="fx-csctk" value="${esc(cfg.cscId||'')}" placeholder="000001"></div></div>
        <div class="card card-pad t-mut" style="background:#eff6ff;border:1px solid #bfdbfe;font-size:11.5px;margin-bottom:6px">ℹ️ <b>Séries separadas:</b> a <b>NF-e</b> usa a <b>Série NF-e</b> (padrão <b>2</b>) e a <b>NFC-e</b> usa a <b>Série NFC-e</b>. Isso evita colisão de numeração entre os dois documentos e com qualquer numeração antiga. Se a NF-e estava dando <b>“Duplicidade”</b>, use uma série NF-e nova (ex.: 2) e coloque <b>“Próx. NF-e” = 1</b> — série nova é limpa na SEFAZ, então não há duplicidade. A NFC-e pode continuar na série atual, que já está autorizando.</div>
+       <div class="card card-pad" style="border:1px solid var(--line);margin-bottom:10px">
+         <label style="display:flex;align-items:center;gap:8px;font-size:13px;font-weight:600;cursor:pointer"><input type="checkbox" id="fx-numsis" ${cfg.numeracaoSistema?'checked':''}> Numeração enviada pelo sistema (contador central da nuvem)</label>
+         <div class="t-mut" style="font-size:12px;margin-top:6px;line-height:1.5">Desligado: o <b>Focus</b> numera as notas com o contador dele ("Próximo número" no painel do Focus). Ligado: o <b>sistema</b> manda o número, tirado de um contador único na nuvem — todos os computadores seguem a mesma sequência e o "Próx. nº" acima passa a valer de verdade (o contador nunca fica abaixo dele). Precisa do SQL abaixo aplicado uma vez no Supabase.</div>
+         <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:8px;align-items:center">
+           <button type="button" class="btn btn-ghost btn-sm" onclick="numCentralConferir()">${ico('check')} Conferir numeração central</button>
+           <button type="button" class="btn btn-ghost btn-sm" onclick="numeracaoSqlCopiar()">${ico('copy')} Copiar SQL (seguranca/numeracao.sql)</button>
+           ${(function(){ const e=numSrvEstado(); if(!e) return '<span class="tag" style="font-size:10.5px">contador ainda não usado neste computador</span>'; return e.ok?'<span class="tag pos" style="font-size:10.5px">Numeração central ATIVA</span>':('<span class="tag err" style="font-size:10.5px">Numeração central '+(e.motivo==='sem_funcao'?'NÃO ativada (SQL não aplicado)':'sem resposta')+'</span>'); })()}
+         </div>
+       </div>
        <div class="field-row"><div class="field"><label>Alíquota ICMS padrão %</label><input id="fx-icms" type="number" step="0.1" value="${cfg.aliquotaICMS}"></div><div class="field"><label>Alíquota Simples (DAS) %</label><input id="fx-simples" type="number" step="0.1" value="${cfg.aliquotaSimples}"></div></div>
      </div>
      <div class="card card-pad"><h3 style="margin-bottom:10px">${ico('lock')} Certificado & Integração Focus NFe</h3>
@@ -35848,7 +35937,7 @@ function viewFiscalCfg(){ try{ fiscalGuardAplicar(); }catch(e){}
 function certEscolher(inp){ const f=inp.files&&inp.files[0]; if(!f) return; const el=document.getElementById('fx-cert'); if(el) el.value=f.name+' ('+Math.round(f.size/1024)+' KB)'; toast('Certificado selecionado: '+f.name,'ok'); }
 function saveFiscalCfg(){ const g=x=>(document.getElementById(x).value||'').trim(); const d=DB._load();
   d.empresa=Object.assign({},d.empresa,{razaoSocial:g('fx-razao'),nome:g('fx-fant'),cnpj:g('fx-cnpj'),ie:g('fx-ie'),regime:document.getElementById('fx-regime').value,cnae:g('fx-cnae'),cidade:g('fx-cidade')});
-  d.fiscalConfig=Object.assign({},fiscalCfg(),{ambiente:document.getElementById('fx-amb').value,serie:+g('fx-serie')||1,serieNFe:+g('fx-serie-nfe')||2,proxNFe:+g('fx-pnfe')||1,proxNFCe:+g('fx-pnfce')||1,aliquotaICMS:+g('fx-icms')||0,aliquotaSimples:+g('fx-simples')||0,csc:g('fx-csc'),cscId:g('fx-csctk'),certInfo:g('fx-cert'),certSenha:g('fx-cert-senha'),focusTokenProd:g('fx-focus-prod'),focusTokenHomolog:g('fx-focus-homolog'),focusUrl:g('fx-focus-url')});
+  d.fiscalConfig=Object.assign({},fiscalCfg(),{ambiente:document.getElementById('fx-amb').value,serie:+g('fx-serie')||1,serieNFe:+g('fx-serie-nfe')||2,proxNFe:+g('fx-pnfe')||1,proxNFCe:+g('fx-pnfce')||1,numeracaoSistema:!!(document.getElementById('fx-numsis')||{}).checked,aliquotaICMS:+g('fx-icms')||0,aliquotaSimples:+g('fx-simples')||0,csc:g('fx-csc'),cscId:g('fx-csctk'),certInfo:g('fx-cert'),certSenha:g('fx-cert-senha'),focusTokenProd:g('fx-focus-prod'),focusTokenHomolog:g('fx-focus-homolog'),focusUrl:g('fx-focus-url')});
   try{ nuvemConfMarcar(); }catch(e){}   // marca a config como alterada para SINCRONIZAR (token do Focus, série, CNPJ, regime...) para todas as máquinas
   DB._persist(); try{ fiscalGuardSalvar(); }catch(e){}   // cópia fora do pacote sincronizado
   const fe=document.getElementById('foot-empresa'); if(fe)fe.textContent=d.empresa.nome; toast('Configurações fiscais salvas — serão sincronizadas para as outras máquinas','ok'); }
