@@ -48,7 +48,7 @@ const CONFIG_EMPRESA = {
      Aparece no topo do menu e no rodapé das Configurações. Troque a cada publicação.
      MANTENHA O FORMATO 'vDD/MM-X' — é ele que o sistema usa para comparar as máquinas
      da loja e avisar quando alguma ficou para trás.                                  */
-  versao: 'v14/10-B',
+  versao: 'v14/10-C',
 
   /* 4) NUVEM (Supabase)  ------------------------------------------------------------
      Cole aqui a Project URL e a chave PUBLISHABLE do projeto Supabase DESTA empresa
@@ -26898,6 +26898,8 @@ async function nuvemBootRapido(){
    coleção por coleção — assim o dia começa igual em todos os computadores. */
 function nuvemDiaSincronizado(){ try{ return localStorage.getItem(LSK('sync_dia'))||''; }catch(e){ return ''; } }
 function nuvemPrimeiraAberturaDoDia(){ return nuvemDiaSincronizado()!==today(); }
+function nuvemSemanaCompletaVencida(){ try{ const d=localStorage.getItem(LSK('sync_full_dia'))||''; if(!d) return true; return (Date.now()-pDate(d).getTime())>7*86400000; }catch(e){ return true; } }
+function nuvemMarcarCompletaFeita(){ try{ localStorage.setItem(LSK('sync_full_dia'), today()); }catch(e){} }
 function nuvemMarcarDiaSincronizado(){ try{ localStorage.setItem(LSK('sync_dia'), today()); }catch(e){} }
 async function nuvemAutoSync(){ const c=nuvemCfg(); if(!(c.url&&c.key)||!window.supabase||_nuvemOffline) return; const sb=nuvemClient(); if(!sb) return;
   // AO ABRIR O SISTEMA: a NUVEM é a fonte da verdade. Todo navegador baixa a base da nuvem por
@@ -26908,11 +26910,21 @@ async function nuvemAutoSync(){ const c=nuvemCfg(); if(!(c.url&&c.key)||!window.
     try{
       // "tem alteração local não enviada?" = houve edição neste aparelho DEPOIS do último sync.
       const temPendente = _nuvemPendingPush || (nuvemTs((DB._load()._meta||{}).mod) > nuvemTs(c.ultimoSync||''));
-      if(temPendente){ nuvemProgresso('Enviando primeiro o que foi lançado neste computador…'); try{ await nuvemSalvar(); }catch(e){} }   // envia primeiro para não perder nada feito offline
+      // v14/10-C: na sincronização por registro, a leitura NUNCA sobrescreve o que é mais novo neste computador —
+      // então o envio prévio não precisa travar a abertura. Com poucos lançamentos pendentes (venda feita offline)
+      // envia antes, com tempo limitado; com muitos (ex.: importação de 14 mil produtos) entra e envia em segundo plano.
+      const _v3=(typeof nuvemV3On==='function' && nuvemV3On() && nuvemV3Cfg().migrado);
+      let _pend=0; try{ if(_v3) _pend=nuvemV3Pendentes(nuvemV3Cfg().envio).length; }catch(e){}
+      if(temPendente && (!_v3 || _pend<=60)){ nuvemProgresso('Enviando primeiro o que foi lançado neste computador…');
+        try{ await Promise.race([ nuvemSalvar(), new Promise(r=>setTimeout(r, _v3?20000:60000)) ]); }catch(e){} }   // envia primeiro para não perder nada feito offline (com teto de tempo)
+      else if(temPendente){ nuvemProgresso(NUM(_pend)+' lançamento(s) deste computador serão enviados em segundo plano…'); try{ setTimeout(()=>{ try{ nuvemSalvar(); }catch(e){} }, 1500); }catch(e){} }
     }catch(e){}
     // Cópia local RECENTE + sincronização por registro ativa: busca só o que mudou desde a
     // última leitura. A base inteira (lenta) fica para quando a cópia não existe ou envelheceu.
-    const _diaNovo = nuvemPrimeiraAberturaDoDia();
+    // v14/10-C: a releitura COMPLETA (14 mil produtos em cada computador) passa a ser semanal quando a
+    // sincronização por registro está em dia; nos outros dias a primeira abertura usa o incremental.
+    let _diaNovo = nuvemPrimeiraAberturaDoDia();
+    if(_diaNovo && nuvemBootPodeIncremental() && !nuvemSemanaCompletaVencida()) _diaNovo=false;
     if(_diaNovo) nuvemStatus('sync','Primeira abertura do dia — baixando tudo da nuvem…');
     if(!_diaNovo && nuvemBootPodeIncremental()){
       nuvemStatus('sync','Buscando o que mudou desde a última abertura…');
@@ -26937,7 +26949,7 @@ async function nuvemAutoSync(){ const c=nuvemCfg(); if(!(c.url&&c.key)||!window.
     if(ok){ window._nuvemBootAutoritativo=true; try{ nuvemReforcarExclusoesUmaVez(); }catch(e){}
       nuvemProgresso('Conferindo se chegou tudo…');
       try{ const conf=await nuvemCompletar(2); if(conf.ok) nuvemAvisoIncompletoLimpar(); }catch(e){}   // conferência final: nada fica pela metade sem aviso
-      nuvemMarcarDiaSincronizado();
+      nuvemMarcarDiaSincronizado(); nuvemMarcarCompletaFeita();
       if(_diaNovo){ try{ toast('Dados do dia baixados da nuvem — este computador está igual aos outros','ok'); }catch(e){}
         try{ if(typeof CURRENT_USER!=='undefined' && CURRENT_USER) uiAtualizarDados(); }catch(e){} }
       return; }
@@ -27053,7 +27065,7 @@ function nuvemSyncInicial(depois, denovo){
     try{ if(typeof CURRENT_USER!=='undefined' && CURRENT_USER) uiRedesenhar(); }catch(e){}
     return true; })();
   return _syncGateProm; }
-function nuvemStatus(state,label){ try{ if(_syncGateOn && state==='sync' && label) nuvemTravaMsg(label); }catch(e){}
+function nuvemStatus(state,label){ try{ if(_syncGateOn && state==='sync' && label && label!=='Conectando…') nuvemTravaMsg(label); }catch(e){}
   const el=document.getElementById('sync-pill'); if(!el) return;
   const map={ on:['#16a34a','Sincronizado'], sync:['#d97706','Sincronizando…'], off:['#dc2626','Sem conexão'], idle:['#94a3b8','Nuvem desligada'] };
   const m=map[state]||map.idle; el.style.display='inline-flex'; el.style.borderColor=m[0]+'55'; el.dataset.state=state;
