@@ -48,7 +48,7 @@ const CONFIG_EMPRESA = {
      Aparece no topo do menu e no rodapé das Configurações. Troque a cada publicação.
      MANTENHA O FORMATO 'vDD/MM-X' — é ele que o sistema usa para comparar as máquinas
      da loja e avisar quando alguma ficou para trás.                                  */
-  versao: 'v14/10-H',
+  versao: 'v14/10-I',
 
   /* 4) NUVEM (Supabase)  ------------------------------------------------------------
      Cole aqui a Project URL e a chave PUBLISHABLE do projeto Supabase DESTA empresa
@@ -32404,7 +32404,7 @@ function rtCfgCard(){ const r=rtCfg(); const obrig=rtObrigatorio(); const dt=fDa
     ${r.ativo?`
       <div style="font-size:12.5px;line-height:1.7">
         <div><b>Destaque ativo</b> desde ${fDate((r.autorizadoEm||'').slice(0,10))} — autorizado por ${esc(r.autorizadoPor||'—')}</div>
-        <div>Alíquotas: CBS <b>${NUM(r.cbs)}%</b> · IBS UF <b>${NUM(r.ibsUf)}%</b> · IBS mun. <b>${NUM(r.ibsMun)}%</b></div>
+        <div>Alíquotas: CBS <b>${rtPct(r.cbs)}%</b> · IBS UF <b>${rtPct(r.ibsUf)}%</b> · IBS mun. <b>${rtPct(r.ibsMun)}%</b></div>
         <div>Padrões: CST <b>${esc(r.cst)}</b> · cClassTrib <b>${esc(r.cclass)}</b> · Regime: ${r.crt==='3'?'Regular':'Simples/MEI'}</div>
       </div>
       <div style="display:flex;gap:8px;margin-top:12px;flex-wrap:wrap">
@@ -32415,13 +32415,15 @@ function rtCfgCard(){ const r=rtCfg(); const obrig=rtObrigatorio(); const dt=fDa
       <button class="btn btn-amber" style="width:100%;justify-content:center;margin-top:10px" onclick="rtAtivarModal('viewFiscalCfg')">${ico('check')} Revisar e autorizar ativação</button>`}
   </div>`; }
 /* linhas de exibição do IBS/CBS nos documentos (cupom térmico e DANFE) */
+/* Alíquota como foi configurada (0,9% fica 0,9% — sem arredondar para 1%). Até 4 casas, sem zeros à direita. */
+function rtPct(v){ return (+v||0).toLocaleString('pt-BR',{minimumFractionDigits:0,maximumFractionDigits:4}); }
 function rtCupomLinhas(n){ if(!n||!n.rt) return '';
   const t=Math.round(((+n.rt.cbs||0)+(+n.rt.ibsUf||0)+(+n.rt.ibsMun||0))*100)/100;
-  return `<div class="tk-row" style="font-size:10px"><span>CBS (${NUM(n.rt.aliqCbs)}%)</span><span>${BRL(n.rt.cbs)}</span></div>
-    <div class="tk-row" style="font-size:10px"><span>IBS (${NUM((+n.rt.aliqIbsUf||0)+(+n.rt.aliqIbsMun||0))}%)</span><span>${BRL((+n.rt.ibsUf||0)+(+n.rt.ibsMun||0))}</span></div>
+  return `<div class="tk-row" style="font-size:10px"><span>CBS (${rtPct(n.rt.aliqCbs)}%)</span><span>${BRL(n.rt.cbs)}</span></div>
+    <div class="tk-row" style="font-size:10px"><span>IBS (${rtPct((+n.rt.aliqIbsUf||0)+(+n.rt.aliqIbsMun||0))}%)</span><span>${BRL((+n.rt.ibsUf||0)+(+n.rt.ibsMun||0))}</span></div>
     <div class="tk-c tk-s" style="font-size:8.5px;color:#555">Trib. aprox. IBS/CBS ${BRL(t)} — destaque informativo (LC 214/2025)</div>`; }
 function rtDanfeInfo(n){ if(!n||!n.rt) return '';
-  return ' | REFORMA TRIBUTARIA (LC 214/2025): CBS '+BRL(n.rt.cbs)+' ('+NUM(n.rt.aliqCbs)+'%) + IBS '+BRL((+n.rt.ibsUf||0)+(+n.rt.ibsMun||0))+' ('+NUM((+n.rt.aliqIbsUf||0)+(+n.rt.aliqIbsMun||0))+'%) — DESTAQUE INFORMATIVO'; }
+  return ' | REFORMA TRIBUTARIA (LC 214/2025): CBS '+BRL(n.rt.cbs)+' ('+rtPct(n.rt.aliqCbs)+'%) + IBS '+BRL((+n.rt.ibsUf||0)+(+n.rt.ibsMun||0))+' ('+rtPct((+n.rt.aliqIbsUf||0)+(+n.rt.aliqIbsMun||0))+'%) — DESTAQUE INFORMATIVO'; }
 const ALIQ_DEFAULT={AC:19,AL:19,AP:18,AM:20,BA:20.5,CE:20,DF:20,ES:17,GO:19,MA:23,MT:17,MS:17,MG:18,PA:19,PB:20,PR:19.5,PE:20.5,PI:21,RJ:22,RN:18,RS:17,RO:19.5,RR:20,SC:17,SP:18,SE:19,TO:20};
 function aliquotasUF(){ const d=DB._load(); if(!d.aliquotasUF){ d.aliquotasUF={...ALIQ_DEFAULT}; DB._persist(); } return d.aliquotasUF; }
 function aliquotaDe(uf){ const a=aliquotasUF(); return a[(uf||'').toUpperCase()]!=null?a[(uf||'').toUpperCase()]:(fiscalCfg().aliquotaICMS||17); }
