@@ -48,7 +48,7 @@ const CONFIG_EMPRESA = {
      Aparece no topo do menu e no rodapé das Configurações. Troque a cada publicação.
      MANTENHA O FORMATO 'vDD/MM-X' — é ele que o sistema usa para comparar as máquinas
      da loja e avisar quando alguma ficou para trás.                                  */
-  versao: 'v14/10-E',
+  versao: 'v14/10-H',
 
   /* 4) NUVEM (Supabase)  ------------------------------------------------------------
      Cole aqui a Project URL e a chave PUBLISHABLE do projeto Supabase DESTA empresa
@@ -5185,7 +5185,8 @@ function finalizarVenda(){
       const saldo=indicSaldo(ind);
       if(comPag>saldo+0.001){ toast('Comissão insuficiente: '+ind.nome+' tem '+BRL(saldo)+' e você lançou '+BRL(comPag),'err'); return; }
       CART.comissaoIndicadorId=ind.id; } }
-  if(permiteVendaSemEstoque() && !CART._semEstOk){ const semEst=CART.itens.filter(i=>vendaItemSemEstoque(i)); if(semEst.length){ vendaSemEstoqueConfirm(semEst); return; } }
+  // v14/10-G: com a venda sem estoque liberada em Configurações, NÃO pede mais confirmação — só avisa (sem travar o caixa).
+  if(permiteVendaSemEstoque()){ try{ const semEst=CART.itens.filter(i=>vendaItemSemEstoque(i)); if(semEst.length) toast(semEst.length+' item(ns) vendido(s) sem estoque suficiente','info'); }catch(e){} }
   CART._semEstOk=false;
   const total=cartTotalValue();
   const custoTotal=CART.itens.reduce((s,i)=>s+i.qtd*i.custo,0);
@@ -5929,6 +5930,15 @@ async function nfeEmitirETransmitir(vendaId, modelo, origem){
       return null; } }
   if(MODO_TESTE){ try{ closeModal(); }catch(e){} toast('Ambiente de teste: o cadastro está completo para a nota, mas nada é enviado para a SEFAZ','ok'); return null; }
   const f=focusCfg();
+  // v14/10-F: sem sessão na nuvem (login local, sessão expirada ou derrubada), em vez de falhar com "sessão ausente"
+  // abre o login rápido da conta da loja e, ao entrar, emite a nota desta mesma venda. A venda fica retida
+  // ("Aguardando nota fiscal") — não volta para pendente nem é refeita.
+  if(f.url && focusTemToken() && !(await focusSessaoOk())){
+    try{ closeModal(); }catch(e){}
+    nfeMarcarPendencia(vendaId, 'Sem login na nuvem neste computador — entre com a conta da loja para emitir a nota', modelo);
+    try{ toast('Entre na nuvem (conta da loja) para emitir a nota — a venda ficou aguardando a nota fiscal','err'); }catch(e){}
+    nuvemLoginRapidoModal(()=>{ try{ nfeEmitirETransmitir(vendaId, modelo, 'sales').then(n=>{ try{ if(n) nfeFinalizarEmissao(n); }catch(e){} }); }catch(e){} });
+    return null; }
   if(!f.url||!focusTemToken()){ if(origem==='pdv') pdvNotaFalhou(vendaId, 'Focus NFe não configurado');
     try{ alert('NF-e/NFC-e NÃO emitida: o Focus NFe não está configurado (Fiscal › Configurações). O sistema não gera nota simulada — configure o Focus para emitir de verdade.'+(origem==='pdv'?'\n\nO pedido voltou para PENDENTE (não foi faturado).':'')); }catch(e){} toast('Emissão bloqueada — configure o Focus NFe','err'); return null; }
   // NF-e modelo 55: TELA DE CONFERÊNCIA — mostra a nota e deixa corrigir CFOP/CSOSN, natureza, xPed, obs.
@@ -5957,6 +5967,7 @@ async function nfeEmitirETransmitir(vendaId, modelo, origem){
     // avanço SEMPRE de 1 em 1 (sem aceleração) — mantém a numeração sequencial, sem vãos grandes
   }
   if(r && r.autorizado){ nfeLimparPendencia(vendaId); if(_tent) toast('Numeração ajustada automaticamente — NF autorizada nº '+((DB.get('notasFiscais',n.id)||{}).numero||''),'ok'); return DB.get('notasFiscais',n.id); }
+  if(r && (r.semSessao || r.semNumero)){ nfeMarcarPendencia(vendaId, r.semSessao?'Sem login na nuvem neste computador — entre com a conta da loja para emitir a nota':('Nota não transmitida: '+(r.motivo||'')), modelo); return null; }   // v14/10-F: não é rejeição — a nota fica pendente e a venda retida; o login rápido reenvia
   if(r && r.processando){ nfeMarcarPendencia(vendaId, 'Nota enviada — aguardando autorização da SEFAZ (ainda sem validade fiscal)', modelo); return DB.get('notasFiscais',n.id); }   // SEFAZ processando: NÃO é válida ainda → venda fica retida (fora do caixa) até autorizar
   // ERRO/REJEIÇÃO final: mostra o retorno da SEFAZ (suprimido durante o retry) e NÃO finaliza a nota
   try{ const _nf=DB.get('notasFiscais',n.id); if(r && r.data) focusResultModal((_nf&&_nf._focusRef)||('gp-'+n.modelo+'-'+n.id), n.modelo, focusCfg().ambiente, r.data); }catch(e){}
@@ -6070,8 +6081,7 @@ async function nfeFinalizarEmissao(n, origem){
   const md=nota.modelo||'55';
   if(nfeAutorizadaReal(nota) || nota.status==='autorizada'){   // autorizada na SEFAZ (ou registro interno sem Focus)
     nfeLimparPendencia(nota.vendaId);   // nota OK: libera a venda e lança no caixa
-    notaView(id);
-    setTimeout(()=>{ try{ if(md==='55') danfeImprimir(id, nota.numero); else printTicket('danfe-print'); }catch(e){} }, 250);
+    notaView(id);   // v14/10-H: só mostra a nota — a impressão sai apenas pelo botão "Imprimir cupom (térmica)" / "Imprimir DANFE"
   } else if(nota.status==='processando'){
     try{ nfeMarcarPendencia(nota.vendaId, 'Nota aguardando autorização da SEFAZ', nota.modelo); }catch(e){}   // ainda sem validade → segura a venda fora do caixa
     try{ alert('A nota AINDA NÃO foi autorizada pela SEFAZ (status: processando).\n\n• Ela NÃO é um documento fiscal válido ainda — por isso a venda ficou RETIDA fora do caixa.\n• Abra "Notas Emitidas" e clique em "Consultar status" em alguns instantes.\n• Quando a SEFAZ autorizar, a venda entra no caixa automaticamente.'); }catch(e){}
@@ -28015,7 +28025,7 @@ async function nuvemAuthLogin(email,pass){ const sb=nuvemClient(); if(!sb) retur
   try{ const { data, error }=await sb.auth.signInWithPassword({ email:(email||'').trim().toLowerCase(), password:pass||'' });
     if(error) return {error:error.message}; NUVEM_AUTH_USER=(data&&data.user)||null; return {ok:true}; }
   catch(e){ return {error:(e&&e.message)||(''+e)}; } }
-async function nuvemAuthLogout(){ const sb=nuvemClient(); try{ if(sb) await sb.auth.signOut(); }catch(e){} NUVEM_AUTH_USER=null; nuvemRealtimeStop(); }
+async function nuvemAuthLogout(){ const sb=nuvemClient(); try{ if(sb) await sb.auth.signOut({scope:'local'}); }catch(e){ try{ if(sb) await sb.auth.signOut(); }catch(_){} } NUVEM_AUTH_USER=null; nuvemRealtimeStop(); }   // v14/10-F: scope local — "Sair" num computador não derruba a sessão dos outros (era isso que gerava "sessão ausente ou expirada" nos demais caixas)
 function nuvemEhErroAuth(m){ m=(''+(m||'')).toLowerCase(); return /row-level security|violates row|new row|jwt|not authorized|unauthorized|permission denied|\b401\b|403/.test(m); }
 function nuvemReautenticar(msg){
   try{ const e=window._nuvemEmpresa; if(e && e.bloqueada){ nuvemLicencaBloquear(e); return; } }catch(x){}
@@ -31582,6 +31592,11 @@ function focusCfg(){ const c=fiscalCfg(); return { url:(c.focusUrl||'').trim(), 
 function focusTokenNoServidor(){ try{ return !!fiscalCfg().focusTokenServidor; }catch(e){ return false; } }
 function focusTemToken(){ const f=focusCfg(); return !!(f.token || f.tokenServidor); }
 async function focusJwt(){ try{ const sb=(typeof nuvemClient==='function')?nuvemClient():null; if(!sb) return ''; const { data }=await sb.auth.getSession(); return (data&&data.session&&data.session.access_token)||''; }catch(e){ return ''; } }
+/* Há sessão válida na nuvem para falar com a função do Focus? Tenta renovar o token antes de responder. */
+async function focusSessaoOk(){ try{ if(typeof nuvemSecureOn!=='function' || !nuvemSecureOn()) return true;
+    let jwt=await focusJwt(); if(jwt) return true;
+    try{ const sb=nuvemClient(); if(sb){ const r=await sb.auth.refreshSession(); jwt=(r&&r.data&&r.data.session&&r.data.session.access_token)||''; } }catch(e){}
+    return !!jwt; }catch(e){ return true; } }
 /* ESTE COMPUTADOR ESTÁ SEM SESSÃO NA NUVEM: o funcionário entrou com usuário/senha do
    sistema (login local), mas a função do Focus NFe exige o login da CONTA DA LOJA no
    Supabase. Esta janela faz esse login ali mesmo e repete a operação. */
@@ -31722,6 +31737,10 @@ function focusApagarTokensLocais(){
 async function focusTransmitirNota(noteId, modelo, opts){ opts=opts||{};
   const n0=DB.get('notasFiscais',noteId); if(!n0){ toast('Nota não encontrada','err'); return {autorizado:false,motivo:'Nota não encontrada'}; }
   const md=modelo||n0.modelo||'55';
+  if(focusCfg().url && focusTemToken() && !(await focusSessaoOk())){   // v14/10-F: sem sessão → login rápido e repete
+    try{ toast('Entre na nuvem (conta da loja) para transmitir a nota','err'); }catch(e){}
+    nuvemLoginRapidoModal(()=>{ try{ focusTransmitirNota(noteId, md, opts); }catch(e){} });
+    return {autorizado:false, processando:false, semSessao:true, motivo:'Sem login na nuvem neste computador'}; }
   DB.update('notasFiscais',noteId,{status:'processando'});
   let r=await focusEmitir(DB.get('notasFiscais',noteId), md, {silent:true, noModal:true});
   let _tent=0;
@@ -31741,6 +31760,7 @@ async function focusTransmitirNota(noteId, modelo, opts){ opts=opts||{};
     if(_nf && _nf.avulsa){ try{ closeModal(); }catch(e){} try{ notaView(noteId); }catch(e){} }
   }
   else if(r && r.processando){ toast('Enviada — processando autorização. Use "Consultar status".','ok'); }
+  else if(r && (r.semSessao || r.semNumero)){ try{ DB.update('notasFiscais',noteId,{status:'pendente'}); }catch(e){} return r; }   // v14/10-F: sem sessão/sem número não é rejeição
   else { // REJEITADA/erro: mostra AUTOMATICAMENTE o motivo da rejeição para o operador corrigir.
     const _motivo=((r&&r.motivo)||(_nf&&_nf._focusUltMsg)||'').toString().trim();
     // Nota avulsa: quem chamou desfaz tudo e devolve a tela com o motivo em destaque,
@@ -32027,7 +32047,14 @@ async function focusEmitir(n, modelo, opts){ opts=opts||{}; if(!n){ toast('Nota 
       return { ref:_ref, data:(await _r.json()) }; };
     let _res=await _emitir();
     if(_res && _res.data && _res.data.ok===false && (_res.data.auth===false || _res.data.sem_token)){
-      const _m=_res.data.erro||'a função recusou a chamada'; toast(_m,'err'); try{ alert('Não foi possível transmitir:\n\n'+_m); }catch(e){}
+      const _m=_res.data.erro||'a função recusou a chamada'; toast(_m,'err');
+      if(_res.data.auth===false){   // v14/10-F: sessão recusada pela função → abre o login rápido e repete a transmissão desta nota
+        try{ DB.update('notasFiscais',n.id,{status:'pendente', _focusUltMsg:'Sem login na nuvem: '+_m, _focusUltEm:new Date().toISOString()}); }catch(e){}
+        try{ if(n.vendaId) nfeMarcarPendencia(n.vendaId, 'Sem login na nuvem neste computador — entre com a conta da loja para emitir a nota', md); }catch(e){}
+        try{ closeModal(); }catch(e){}
+        nuvemLoginRapidoModal(()=>{ try{ focusTransmitirNota(n.id, md); }catch(e){} });
+        return {ok:false, semSessao:true, processando:false, autorizado:false, motivo:_m}; }
+      try{ alert('Não foi possível transmitir:\n\n'+_m); }catch(e){}
       return {ok:false, semConfig:true, motivo:_m}; }
     // HTTP 429 = LIMITE DE REQUISIÇÕES POR MINUTO do Focus — NÃO é limite da referência.
     // Trocar a referência aqui criaria uma NOVA nota no Focus (risco de emitir a mesma venda
