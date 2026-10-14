@@ -48,7 +48,7 @@ const CONFIG_EMPRESA = {
      Aparece no topo do menu e no rodapé das Configurações. Troque a cada publicação.
      MANTENHA O FORMATO 'vDD/MM-X' — é ele que o sistema usa para comparar as máquinas
      da loja e avisar quando alguma ficou para trás.                                  */
-  versao: 'v14/10-M',
+  versao: 'v14/10-N',
 
   /* 4) NUVEM (Supabase)  ------------------------------------------------------------
      Cole aqui a Project URL e a chave PUBLISHABLE do projeto Supabase DESTA empresa
@@ -8496,6 +8496,7 @@ function viewProd(){
       <div class="spacer"></div>
       <button class="btn btn-ghost btn-sm" onclick="exportCSV('produtos')">${ico('dl')} CSV</button>
       <button class="btn btn-ghost btn-sm" onclick="produtoImportar()">${ico('dl')} Importar planilha</button>
+      <button class="btn btn-ghost btn-sm" onclick="cadRecuperarNuvemModal(['produtos'])" title="Procura na nuvem (todas as tabelas e empresas) produtos que não estão neste computador e permite trazê-los de volta">${ico('dl')} Recuperar da nuvem</button>
       <button class="btn btn-ghost btn-sm" onclick="modalCompradosJuntos(3)">${ico('layers')} Comprados juntos</button>
       <button class="btn btn-amber btn-sm" onclick="prodForm()">${ico('plus')} Novo produto</button>
     </div>
@@ -10051,7 +10052,7 @@ async function cadRecuperarNuvemModal(cols){ cols=cols||['funcionarios'];
   const rows=achados.map((x,i)=>linha(x,i,'nuvem')).concat(lix.map((x,i)=>linha(x,i,'lix'))).join('');
   openModal(`<div class="modal-head"><h3>${ico('dl')} Recuperar da nuvem — ${cols.map(c=>nomes[c]||c).join(' e ')}</h3><button class="btn-icon btn-ghost" onclick="closeModal()">${ico('x')}</button></div>
    <div class="modal-body">
-     ${rows?`<p class="t-mut" style="font-size:12.5px;margin:0 0 10px">${NUM(achados.length+lix.length)} cadastro(s) que a nuvem (ou a lixeira) tem e este computador não. Marque os que devem voltar. Os marcados como <b>excluído na nuvem</b> foram apagados por alguém — restaure só se tiver certeza.</p>
+     ${rows?`<div style="display:flex;gap:6px;margin:0 0 8px"><button class="btn btn-ghost btn-sm" onclick="document.querySelectorAll('.cadrec-chk').forEach(c=>{c.checked=true})">Marcar todos</button><button class="btn btn-ghost btn-sm" onclick="document.querySelectorAll('.cadrec-chk').forEach(c=>{c.checked=false})">Desmarcar</button></div><p class="t-mut" style="font-size:12.5px;margin:0 0 10px">${NUM(achados.length+lix.length)} cadastro(s) que a nuvem (ou a lixeira) tem e este computador não. Marque os que devem voltar. Os marcados como <b>excluído na nuvem</b> foram apagados por alguém — restaure só se tiver certeza.</p>
        <div class="tbl-wrap" style="max-height:50vh;overflow:auto"><table><thead><tr><th></th><th>Tipo</th><th>Cadastro</th><th>Situação</th><th>Alterado</th></tr></thead><tbody>${rows}</tbody></table></div>`
        :`<div class="empty" style="padding:30px">${ico('check')}<h4>Nada para recuperar</h4><p class="t-mut">A nuvem não tem nenhum cadastro de ${cols.map(c=>nomes[c]||c).join(' / ')} além dos que já estão aqui. Se os cadastros existiam, eles podem estar em outro computador que ainda não sincronizou — abra o sistema lá.</p>
          <p class="t-mut" style="font-size:11.5px">Empresa consultada: <b>${esc(tenant)}</b> · registros lidos na nuvem: ${Object.keys(fontes).length?esc(Object.keys(fontes).map(k=>k+' '+fontes[k]).join(' · ')):'nenhum em acervo_reg, acervo_col e acervo'} · neste computador: ${NUM(DB.all('funcionarios').length)} funcionário(s), ${NUM(DB.all('vendedores').length)} vendedor(es)</p></div>`}
@@ -25787,10 +25788,16 @@ function nuvemTenant(){
 function nuvemTenantLembrar(t){ try{ const ant=localStorage.getItem(TENANT_ULT_KEY)||''; localStorage.setItem(TENANT_ULT_KEY,t);
     if(ant && ant!==t){ // este aparelho estava com os dados de OUTRA empresa: limpa antes de misturar
       try{ logAcao('Troca de empresa neste aparelho', ant+' → '+t); }catch(e){}
-      try{ localStorage.removeItem(DB.K); localStorage.removeItem(DB.K+'_snap'); localStorage.removeItem(DB.K+'_snap_meta'); }catch(e){}
-      try{ idbLimpar(); }catch(e){}
-      try{ nuvemCfgSalvar({ ultimoSync:'' }); }catch(e){}
-      setTimeout(()=>{ try{ location.reload(); }catch(e){} }, 300); return true; }
+      // v14/10-N: antes de limpar, guarda a base da empresa anterior no cofre local (recuperável pelo Cofre)
+      const _limpar=()=>{ if(window._trocaEmpresaFeita) return; window._trocaEmpresaFeita=true;
+        try{ localStorage.removeItem(DB.K); localStorage.removeItem(DB.K+'_snap'); localStorage.removeItem(DB.K+'_snap_meta'); }catch(e){}
+        try{ idbLimpar(); }catch(e){}
+        try{ nuvemCfgSalvar({ ultimoSync:'' }); }catch(e){}
+        try{ localStorage.setItem(LSK('cofre_restaurar'), t); }catch(e){}   // ao reabrir, repõe do cofre a base que ESTA empresa já tinha aqui
+        setTimeout(()=>{ try{ location.reload(); }catch(e){} }, 300); };
+      let _p=null; try{ _p=nuvemCofreGuardar('troca de empresa ('+ant+' → '+t+')', true); }catch(e){}
+      if(_p && _p.then){ _p.then(_limpar, _limpar); setTimeout(_limpar, 6000); } else _limpar();
+      return true; }
   }catch(e){} return false; }
 function nuvemNormUrl(u){ u=(u||'').trim();
   if(!u) return '';
@@ -26188,6 +26195,7 @@ async function nuvemV3Pull(opt){
 }
 async function nuvemV3PullExec(){
   const sb=nuvemClient(); if(!sb) return {ok:false, motivo:'sem conexão'};
+  try{ nuvemV3DelGuardaReset(); }catch(e){}
   const tenant=nuvemTenant(); const cfg=nuvemV3Cfg();
   if(!_v3SeqIndisponivel){
     const r=await nuvemV3PullSeq(sb, tenant, cfg);
@@ -26408,6 +26416,7 @@ function nuvemV3Aplicar(linhas){
       // propagada de outro aparelho/atualização não faz sumir vendas já faturadas. O estorno
       // continua funcionando normalmente NO aparelho em que é feito (remoção local direta).
       if(col==='vendas' && i>=0){ const _vv=arr[i]; if(_vv && (_vv.faturadoPDV || _vv.status==='faturado' || _vv.status==='pago')){ return; } }
+      if(i>=0 && !nuvemV3DelPermitida(d, col)) return;   // v14/10-N: exclusão em massa vinda da nuvem é barrada
       d._meta.del[col]=d._meta.del[col]||{};
       const jaTem=d._meta.del[col][l.id];
       if(!jaTem || nuvemTs(l.mod)>nuvemTs(jaTem)) d._meta.del[col][l.id]=l.mod;
@@ -26907,10 +26916,16 @@ async function nuvemCarregar(auto){ const sb=nuvemClient(); if(!sb){ if(!auto)to
   nuvemStatus('sync','Baixando da nuvem…');
   // A base COMPLETA fica na acervo_col (v2). É a fonte para reidratar um aparelho.
   // (A tabela 'acervo' do v1 pode não existir — por isso não lemos mais dela aqui.)
-  const ok=await nuvemV2CarregarTudo();
+  // v14/10-N: com a sincronização por registro ativa, NUNCA esvazia a base local — relê tudo por cima.
+  const _v3m=(typeof nuvemV3On==='function' && nuvemV3On() && nuvemV3Cfg().migrado);
+  let ok=false;
+  if(_v3m){ ok=await nuvemV3CarregarCompleto(); }
+  else {
+    ok=await nuvemV2CarregarTudo();
+    // Em v3 (ainda não migrado), aplica também o que houver de mais novo por registro (acervo_reg)
+    if(ok && typeof nuvemV3On==='function' && nuvemV3On()){ nuvemProgresso('Conferindo as alterações feitas nos outros computadores…'); try{ _v3SeqIndisponivel=false; nuvemCfgSalvar({ v3Leitura:'', v3LeituraSeq:'' }); await nuvemV3Pull(); }catch(e){} }
+  }
   if(ok){
-    // Em v3, aplica também o que houver de mais novo por registro (acervo_reg)
-    if(typeof nuvemV3On==='function' && nuvemV3On()){ nuvemProgresso('Conferindo as alterações feitas nos outros computadores…'); try{ _v3SeqIndisponivel=false; nuvemCfgSalvar({ v3Leitura:'', v3LeituraSeq:'' }); await nuvemV3Pull(); }catch(e){} }
     try{ nuvemServidorOk(); }catch(e){} nuvemStatus('on');
     if(auto){ toast('Dados sincronizados da nuvem','ok'); }
     else{ toast('Base baixada da nuvem — '+NUM(DB.all('produtos').length)+' produto(s)','ok'); }
@@ -27015,6 +27030,8 @@ async function nuvemAutoSync(){ const c=nuvemCfg(); if(!(c.url&&c.key)||!window.
   // do navegador). Só que, ANTES de baixar, se este aparelho tiver alterações locais ainda NÃO
   // enviadas (ex.: venda feita offline), envia primeiro — assim nada se perde. Roda 1x por abertura.
   if(!window._nuvemBootAutoritativo){
+    try{ await nuvemCofreRestaurarTroca(); }catch(e){}                 // v14/10-N: voltou para uma empresa que já esteve aqui? repõe do cofre
+    try{ await nuvemCofreGuardar('abertura do sistema'); }catch(e){}   // v14/10-N: cópia do dia no cofre local ANTES de falar com a nuvem
     try{
       // "tem alteração local não enviada?" = houve edição neste aparelho DEPOIS do último sync.
       const temPendente = _nuvemPendingPush || (nuvemTs((DB._load()._meta||{}).mod) > nuvemTs(c.ultimoSync||''));
@@ -27185,7 +27202,12 @@ function nuvemStatus(state,label){ try{ if(_syncGateOn && state==='sync' && labe
 ============================================================================ */
 /* perda anormal = ids que sumiriam SEM lápide de exclusão correspondente (>50% de uma coleção importante com >=20 itens) */
 function nuvemPerdaAnormal(local, merged){
-  const majors=['clientes','produtos','vendas','financeiro','fornecedores','compras'];
+  // v14/10-N: funcionários e vendedores são poucos, mas sumir com TODOS nunca é legítimo
+  for(const c of ['funcionarios','vendedores']){ const L=Array.isArray(local[c])?local[c]:[]; if(L.length<2) continue;
+    const M=Array.isArray(merged[c])?merged[c]:[]; const tem={}; M.forEach(x=>{ if(x&&x.id!=null) tem[x.id]=1; });
+    let perdidos=0; L.forEach(x=>{ if(x&&x.id!=null && !tem[x.id]) perdidos++; });
+    if(perdidos>=L.length) return c; }
+  const majors=['clientes','produtos','vendas','financeiro','fornecedores','compras','notasFiscais','orcamentos','movEstoque'];
   for(const c of majors){ const L=Array.isArray(local[c])?local[c]:[]; if(L.length<20) continue;
     const M=Array.isArray(merged[c])?merged[c]:[]; const tem={}; M.forEach(x=>{ if(x&&x.id!=null) tem[x.id]=1; });
     // Conta TODA perda — inclusive a "explicada" por marca de exclusão (tombstone).
@@ -27465,6 +27487,11 @@ async function nuvemV2CarregarTudo(){ const sb=nuvemClient(); if(!sb) return fal
         Object.keys(del).forEach(id=>{ if(pres[id]) delete del[id]; });   // item presente não pode estar "excluído" — limpa marca falsa
         base[col]=itens; base._meta.del[col]=del; }
       _v2RemoteTs[col]=atu; }
+    // v14/10-N: GUARDA ANTI-PERDA — a base da nuvem não pode fazer sumir em massa o que este computador tem.
+    try{ const _loc=DB._load(); const perigo=nuvemPerdaAnormal(_loc, base);
+      if(perigo){ toast('Proteção: a base da nuvem sumiria com registros de "'+perigo+'" deste computador — download cancelado, dados locais mantidos','err');
+        try{ logAcao('Proteção: download da nuvem cancelado', 'a nuvem (acervo_col) tem menos "'+perigo+'" que este computador'); }catch(e){}
+        return false; } }catch(e){ if(e && /Proteção/.test(String(e.message||''))) return false; }
     NUVEM_LOADING=true; DB.cache=base; DB._ensure(); try{ fiscalGuardAplicarEm(DB.cache); }catch(e){} DB._persist(); NUVEM_LOADING=false;
     try{ const _tn=nuvemTenant(); const _dd=DB._load();   // grava a base COMPLETA no cache local (IndexedDB) p/ hidratar nas próximas aberturas
       (typeof nuvemV3Cols==='function'?nuvemV3Cols():Object.keys(_dd).filter(k=>Array.isArray(_dd[k]))).forEach(col=>{ idbGravarCol(col, _dd[col]||[], ((_dd._meta||{}).del||{})[col]||{}, new Date().toISOString(), _tn); }); }catch(e){}
@@ -27948,13 +27975,13 @@ function nuvemRealtimeApply(payload){ try{
    3) baixa SÓ essas.
    Se o IndexedDB falhar, tudo volta a funcionar como antes.
    =================================================================== */
-const IDB_NOME='gcp_cache', IDB_STORE='cols', IDB_VER=1;
+const IDB_NOME='gcp_cache', IDB_STORE='cols', IDB_COFRE='cofre', IDB_VER=2;
 let _idb=null, _idbFalhou=false;
 function idbAbrir(){ if(_idbFalhou) return Promise.resolve(null); if(_idb) return Promise.resolve(_idb);
   return new Promise(res=>{ try{
     if(!window.indexedDB){ _idbFalhou=true; return res(null); }
     const rq=indexedDB.open(IDB_NOME, IDB_VER);
-    rq.onupgradeneeded=()=>{ try{ const db=rq.result; if(!db.objectStoreNames.contains(IDB_STORE)) db.createObjectStore(IDB_STORE,{keyPath:'col'}); }catch(e){} };
+    rq.onupgradeneeded=()=>{ try{ const db=rq.result; if(!db.objectStoreNames.contains(IDB_STORE)) db.createObjectStore(IDB_STORE,{keyPath:'col'}); if(!db.objectStoreNames.contains(IDB_COFRE)) db.createObjectStore(IDB_COFRE,{keyPath:'k'}); }catch(e){} };
     rq.onsuccess=()=>{ _idb=rq.result; res(_idb); };
     rq.onerror=()=>{ _idbFalhou=true; res(null); };
     setTimeout(()=>{ if(!_idb) res(null); }, 4000);   // não trava o carregamento
@@ -27971,6 +27998,133 @@ function idbLerTudo(tenant){
     rq.onerror=()=>res([]);
   }catch(e){ res([]); } })); }
 function idbLimpar(){ return idbAbrir().then(db=>{ if(!db) return; try{ db.transaction(IDB_STORE,'readwrite').objectStore(IDB_STORE).clear(); }catch(e){} }); }
+
+/* ===================================================================
+   COFRE LOCAL (v14/10-N) — cópias de segurança da base inteira no IndexedDB deste computador.
+   "NUNCA PODE ACONTECER DO BANCO DE DADOS SUMIR": mesmo que a nuvem, a troca de empresa ou uma
+   releitura dê errado, este computador guarda a base completa (1 cópia por dia, até 7 dias, mais
+   cópias extras antes de operações de risco). A recuperação só ADICIONA o que sumiu — não apaga
+   nem regride o que foi feito depois.
+   =================================================================== */
+const COFRE_MAX=7;
+function cofreTotais(d){ const t={}; ['produtos','clientes','vendas','financeiro','funcionarios','vendedores','fornecedores','orcamentos','notasFiscais','movEstoque'].forEach(c=>{ t[c]=(Array.isArray(d[c])?d[c]:[]).length; }); return t; }
+function cofreListar(){ return idbAbrir().then(db=>new Promise(res=>{ if(!db || !db.objectStoreNames.contains(IDB_COFRE)) return res([]); try{
+    const rq=db.transaction(IDB_COFRE,'readonly').objectStore(IDB_COFRE).getAll();
+    rq.onsuccess=()=>res((rq.result||[]).map(r=>({k:r.k, ts:r.ts, motivo:r.motivo, tenant:r.tenant, tot:r.tot||{}, bytes:(r.raw||'').length})).sort((a,b)=>String(b.ts).localeCompare(String(a.ts))));
+    rq.onerror=()=>res([]); }catch(e){ res([]); } })); }
+function cofreLer(k){ return idbAbrir().then(db=>new Promise(res=>{ if(!db || !db.objectStoreNames.contains(IDB_COFRE)) return res(null); try{
+    const rq=db.transaction(IDB_COFRE,'readonly').objectStore(IDB_COFRE).get(k);
+    rq.onsuccess=()=>res(rq.result||null); rq.onerror=()=>res(null); }catch(e){ res(null); } })); }
+function cofreApagar(k){ return idbAbrir().then(db=>{ if(!db) return; try{ db.transaction(IDB_COFRE,'readwrite').objectStore(IDB_COFRE).delete(k); }catch(e){} }); }
+/* Guarda uma cópia. Sem 'forcar': 1 por dia (a primeira do dia vence — é o estado "da manhã", o
+   mais útil para desfazer uma perda ao longo do dia). Com 'forcar': cópia extra com hora. */
+async function nuvemCofreGuardar(motivo, forcar){ try{
+    const d=DB._load(); if(!d) return false;
+    const tot=cofreTotais(d); const soma=Object.keys(tot).reduce((a,c)=>a+tot[c],0); if(soma<1) return false;   // base vazia não vale como cópia
+    const tenant=(function(){ try{ return nuvemTenant(); }catch(e){ return ''; } })();
+    const hoje=today(); const k=forcar ? (hoje+'T'+new Date().toTimeString().slice(0,8)+'|'+tenant) : (hoje+'|'+tenant);
+    const db=await idbAbrir(); if(!db || !db.objectStoreNames.contains(IDB_COFRE)) return false;
+    if(!forcar){ const ja=await cofreLer(k); if(ja) return false; }
+    const raw=JSON.stringify(d);
+    await new Promise((res,rej)=>{ try{ const tx=db.transaction(IDB_COFRE,'readwrite');
+      tx.objectStore(IDB_COFRE).put({k, ts:new Date().toISOString(), motivo:motivo||'', tenant, tot, raw});
+      tx.oncomplete=()=>res(true); tx.onerror=()=>rej(tx.error); tx.onabort=()=>rej(tx.error); }catch(e){ rej(e); } });
+    // poda: mantém as COFRE_MAX mais recentes
+    try{ const lista=await cofreListar(); for(const it of lista.slice(COFRE_MAX)) await cofreApagar(it.k); }catch(e){}
+    window._cofreUltimo=k; return true;
+  }catch(e){ return false; } }
+function cofreBytes(n){ n=+n||0; return n>1048576?(n/1048576).toFixed(1)+' MB':(n/1024).toFixed(0)+' KB'; }
+async function nuvemCofreModal(){ const lista=await cofreListar(); const d=DB._load(); const atual=cofreTotais(d);
+  const nomes={produtos:'Produtos',clientes:'Clientes',vendas:'Vendas',financeiro:'Financeiro',funcionarios:'Funcionários',vendedores:'Vendedores',fornecedores:'Fornecedores',orcamentos:'Orçamentos',notasFiscais:'Notas fiscais',movEstoque:'Mov. estoque'};
+  const cols=Object.keys(nomes);
+  const rows=lista.map(it=>{ const faltam=cols.filter(c=>(it.tot[c]||0)>(atual[c]||0)).map(c=>nomes[c]+' '+NUM(atual[c]||0)+'→'+NUM(it.tot[c]||0));
+    return `<tr><td><b>${esc(fDate(String(it.ts).slice(0,10)))} ${esc(String(it.ts).slice(11,16))}</b><div class="t-mut" style="font-size:11px">${esc(it.motivo||'')}${it.tenant?' · empresa '+esc(it.tenant):''} · ${cofreBytes(it.bytes)}</div></td>
+      <td style="font-size:12px">${cols.filter(c=>it.tot[c]).map(c=>nomes[c]+': <b>'+NUM(it.tot[c])+'</b>').join(' · ')}</td>
+      <td style="font-size:12px;color:${faltam.length?'var(--neg)':'var(--pos)'}">${faltam.length?('Esta cópia tem MAIS: '+esc(faltam.join(' · '))):'Nada a mais que o atual'}</td>
+      <td class="t-right" style="white-space:nowrap"><button class="btn btn-amber btn-sm" onclick="nuvemCofreRecuperar('${jsq(it.k)}')">${ico('check')} Recuperar o que sumiu</button></td></tr>`; }).join('');
+  openModal(`<div class="modal-head"><h3>${ico('shield')} Cofre local — cópias de segurança deste computador</h3><button class="btn-icon btn-ghost" onclick="closeModal()">${ico('x')}</button></div>
+   <div class="modal-body">
+     <p class="t-mut" style="font-size:12.5px;margin:0 0 10px">O sistema guarda, neste computador, uma cópia completa da base por dia (até ${COFRE_MAX} dias) e cópias extras antes de operações de risco. <b>Recuperar</b> só adiciona o que está faltando hoje (e reenvia à nuvem) — não apaga nem regride nada feito depois.</p>
+     <p style="font-size:12.5px;margin:0 0 10px">Agora: ${cols.filter(c=>atual[c]).map(c=>nomes[c]+' <b>'+NUM(atual[c])+'</b>').join(' · ')||'<span style="color:var(--neg)">base vazia</span>'}</p>
+     ${rows?`<div class="tbl-wrap" style="max-height:55vh;overflow:auto"><table><thead><tr><th>Cópia</th><th>Conteúdo</th><th>Comparado com agora</th><th></th></tr></thead><tbody>${rows}</tbody></table></div>`
+       :`<div class="empty" style="padding:26px">${ico('alert')}<h4>Nenhuma cópia ainda</h4><p class="t-mut">A primeira cópia é guardada na próxima abertura do sistema com dados. Para recuperar agora, use "Reler toda a nuvem" (Nuvem) ou "Recuperar da nuvem" (Produtos / Funcionários).</p></div>`}
+   </div>
+   <div class="modal-foot"><button class="btn btn-ghost" onclick="closeModal()">Fechar</button><button class="btn btn-ghost" onclick="nuvemCofreGuardar('manual',true).then(ok=>{ toast(ok?'Cópia guardada no cofre local':'Não foi possível guardar (base vazia ou navegador sem espaço)', ok?'ok':'err'); nuvemCofreModal(); })">${ico('plus')} Guardar cópia agora</button></div>`, true); }
+async function nuvemCofreRecuperar(k){ const reg=await cofreLer(k); if(!reg||!reg.raw){ toast('Cópia não encontrada','err'); return; }
+  let b=null; try{ b=JSON.parse(reg.raw); }catch(e){ toast('Cópia ilegível','err'); return; }
+  const d=DB._load(); d._meta=d._meta||{}; d._meta.del=d._meta.del||{};
+  const cols=(typeof NUVEM_COLS!=='undefined'?NUVEM_COLS:Object.keys(b).filter(c=>Array.isArray(b[c]))).filter(c=>c!=='_meta' && c!=='lixeira');
+  const plano={}; let total=0;
+  cols.forEach(c=>{ const src=Array.isArray(b[c])?b[c]:[]; if(!src.length) return; const tem=new Set((Array.isArray(d[c])?d[c]:[]).map(x=>x&&x.id!=null?String(x.id):'')); const f=src.filter(x=>x&&x.id!=null&&!tem.has(String(x.id))); if(f.length){ plano[c]=f; total+=f.length; } });
+  const confs=[]; for(const key in b){ const v=b[key]; if(key==='_meta'||Array.isArray(v)||!v||typeof v!=='object') continue; const cur=d[key]; if(!cur || typeof cur!=='object' || !Object.keys(cur).filter(x=>x!=='_mod').length) confs.push(key); }
+  if(!total && !confs.length){ toast('Esta cópia não tem nada que esteja faltando agora','info'); return; }
+  const res=Object.keys(plano).map(c=>'• '+c+': '+NUM(plano[c].length)).join('\n');
+  if(!confirm('Recuperar da cópia de '+fDate(String(reg.ts).slice(0,10))+' '+String(reg.ts).slice(11,16)+':\n\n'+(res||'(nenhum registro)')+(confs.length?('\n• configurações: '+confs.join(', ')):'')+'\n\nSó ADICIONA o que está faltando (nada do atual é apagado) e reenvia à nuvem. Continuar?')) return;
+  try{ await nuvemCofreGuardar('antes de recuperar do cofre', true); }catch(e){}
+  const now=new Date().toISOString(); let n=0;
+  NUVEM_LOADING=true;
+  try{ for(const c in plano){ if(!Array.isArray(d[c])) d[c]=[]; const del=d._meta.del[c]||{}; plano[c].forEach(x=>{ const it=Object.assign({},x); it._mod=now; delete del[it.id]; d[c].push(it); n++; }); }
+    confs.forEach(key=>{ const v=JSON.parse(JSON.stringify(b[key])); v._mod=now; d[key]=v; });
+    d._meta.mod=now; DB._ensure(); DB._persist(); }
+  finally{ NUVEM_LOADING=false; }
+  try{ nuvemConfBaseline(); }catch(e){}
+  try{ logAcao('Recuperação do cofre local', n+' registro(s) de '+String(reg.ts).slice(0,16)+(confs.length?(' + config: '+confs.join(',')):'')); }catch(e){}
+  try{ _nuvemPendingPush=true; nuvemPushJa(); }catch(e){}
+  closeModal(); toast(NUM(n)+' registro(s) recuperado(s) do cofre local — reenviando à nuvem','ok');
+  try{ buildNav(); uiRedesenhar(); }catch(e){} }
+
+/* Depois de uma troca de login/empresa, o computador reabre vazio. Se o cofre tem uma cópia da
+   empresa que acabou de entrar, ela volta na hora (a nuvem depois só completa por cima). Assim,
+   independente do login usado, nenhuma empresa perde o que tinha neste computador. */
+async function nuvemCofreRestaurarTroca(){ try{ const t=localStorage.getItem(LSK('cofre_restaurar'))||''; if(!t) return false;
+    localStorage.removeItem(LSK('cofre_restaurar'));
+    if(DB.all('produtos').length || DB.all('clientes').length || DB.all('vendas').length) return false;
+    const tn=nuvemTenant(); if(tn!==t) return false;
+    const lista=await cofreListar(); const it=lista.find(x=>x.tenant===t); if(!it) return false;
+    const reg=await cofreLer(it.k); if(!reg||!reg.raw) return false; const b=JSON.parse(reg.raw); delete b._v2;
+    NUVEM_LOADING=true; try{ DB.cache=b; DB._ensure(); DB._persist(); } finally{ NUVEM_LOADING=false; }
+    try{ nuvemConfBaseline(); }catch(e){}
+    try{ logAcao('Cofre local: base da empresa reposta após troca de login', t+' — cópia de '+String(reg.ts).slice(0,16)); }catch(e){}
+    try{ toast('Dados desta empresa repostos do cofre local — conferindo com a nuvem…','ok'); }catch(e){}
+    try{ nuvemRefreshUI(); }catch(e){}
+    return true; }catch(e){ return false; } }
+
+/* RELEITURA COMPLETA SEM ESVAZIAR (v14/10-N).
+   Antes, "baixar tudo" (primeira abertura, releitura semanal, botão "Baixar da nuvem") ESVAZIAVA as
+   coleções locais e as refazia a partir da acervo_col — tabela do modo antigo que NÃO é mais
+   atualizada depois da sincronização por registro. Se a leitura por registro falhasse no meio, o
+   computador ficava com a base velha/vazia. Agora, com a sincronização por registro ativa, a releitura
+   lê TUDO da acervo_reg por cima do que já existe (o mais novo vence, exclusões só por lápide) — nada
+   local é apagado. A acervo_col só serve de semente para um computador que abriu VAZIO. */
+async function nuvemV3CarregarCompleto(){ const sb=nuvemClient(); if(!sb) return false;
+  const temLocal=(DB.all('produtos').length>0 || DB.all('clientes').length>0 || DB.all('vendas').length>0);
+  if(temLocal){ try{ await nuvemCofreGuardar('antes da releitura completa'); }catch(e){} }
+  else { nuvemStatus('sync','Computador vazio — buscando a base inicial…'); try{ await nuvemV2CarregarTudo(); }catch(e){} }
+  nuvemStatus('sync','Relendo toda a nuvem por registro (sem apagar nada deste computador)…');
+  nuvemProgresso('Relendo toda a nuvem por registro…');
+  _v3SeqIndisponivel=false; window._v3ModFullFeito=false;
+  nuvemCfgSalvar({ v3Leitura:'', v3LeituraSeq:'' });
+  let r=null; try{ r=await nuvemV3Pull(); }catch(e){ r={ok:false, motivo:(e&&e.message)||String(e)}; }
+  if(!(r&&r.ok)){ const m=(r&&r.motivo)||'sem resposta'; nuvemStatus('off','Não consegui reler a nuvem — '+m); toast('Não consegui reler a nuvem ('+m+'). Os dados deste computador foram MANTIDOS.','err'); return false; }
+  try{ nuvemServidorOk(); }catch(e){}
+  nuvemCfgSalvar({ ultimoSync:new Date().toISOString() });
+  return true; }
+/* Guarda contra EXCLUSÃO EM MASSA vinda da nuvem (v14/10-N): numa mesma leitura, se as lápides
+   mandarem apagar 100+ (ou mais da metade) de uma coleção grande, ou TODOS os funcionários/
+   vendedores, o resto das exclusões daquela coleção é ignorado nesta leitura e fica registrado. */
+function nuvemV3DelGuardaReset(){ window._v3DelGuarda={ini:{},cont:{},bloq:{},avisou:{}}; }
+function nuvemV3DelPermitida(d, col){ const g=window._v3DelGuarda||(window._v3DelGuarda={ini:{},cont:{},bloq:{},avisou:{}});
+  if(g.bloq[col]) return false;
+  if(g.ini[col]==null) g.ini[col]=(Array.isArray(d[col])?d[col].length:0);
+  const n0=g.ini[col]; const c=(g.cont[col]||0)+1; g.cont[col]=c;
+  let lim=Infinity;
+  if(['clientes','produtos','vendas','financeiro','fornecedores','compras','notasFiscais','orcamentos','movEstoque'].indexOf(col)>=0){ if(n0>=20) lim=Math.max(100, Math.ceil(n0*0.5)); }
+  else if(['funcionarios','vendedores'].indexOf(col)>=0){ if(n0>=2) lim=n0-1; }
+  if(c>lim){ g.bloq[col]=true;
+    if(!g.avisou[col]){ g.avisou[col]=1; try{ logAcao('Proteção: exclusão em massa ignorada', col+' — a nuvem mandou apagar mais de '+NUM(lim)+' de '+NUM(n0)+' registro(s); este computador manteve os dados'); }catch(e){}
+      try{ toast('Proteção: a nuvem tentou apagar '+col+' em massa — este computador manteve os dados','err'); }catch(e){} }
+    return false; }
+  return true; }
 /* Abre o sistema com a cópia local antes de falar com a nuvem. */
 async function nuvemHidratarCache(){
   try{
@@ -28707,7 +28861,7 @@ async function nuvemConferir(){
       <button class="btn btn-ghost" onclick="nuvemConferir()">${ico('ret')} Reconferir</button>
       <div style="flex:1"></div>
       <button class="btn btn-amber" onclick="if(confirm('Enviar TODAS as vendas e dados DESTE computador para a nuvem?\\n\\nUse quando ESTE aparelho é o correto/completo. Os que faltam na nuvem serão adicionados.'))nuvemSalvar()">${ico('up')} Enviar este computador → nuvem</button>
-      <button class="btn btn-primary" onclick="if(confirm('Baixar os dados da nuvem? Isto substitui os dados deste computador pelos da nuvem.'))nuvemCarregar(false)">${ico('dl')} Baixar da nuvem → este computador</button>
+      <button class="btn btn-primary" onclick="if(confirm((typeof nuvemV3On==='function'&&nuvemV3On()&&nuvemV3Cfg().migrado)?'Reler toda a nuvem por cima deste computador? Nada daqui é apagado: o que falta é adicionado e o mais novo vence.':'Baixar os dados da nuvem? Isto substitui os dados deste computador pelos da nuvem.'))nuvemCarregar(false)">${ico('dl')} Baixar da nuvem → este computador</button>
     </div>`);
 }
 /* ===== Diagnóstico de sincronização (só leitura) =====================
@@ -29004,7 +29158,8 @@ function viewNuvem(){ const c=nuvemCfg(); const conf=!!(c.url&&c.key); const lib
        <b style="font-size:13.5px">Recuperação (faça backup antes — Configurações → Fazer backup)</b>
        ${linha('Juntar os dados de OUTRO computador','No outro computador faça o backup (.json) e traga o arquivo para cá. A mesclagem adiciona o que falta e mantém o mais novo em conflito — não apaga nem duplica. Depois, "Enviar para a nuvem".',`<label class="btn btn-ghost btn-sm" style="cursor:pointer;margin:0">${ico('dl')} Mesclar backup (.json)<input type="file" accept="application/json,.json" style="display:none" onchange="mesclarBackupArquivo(this.files[0]);this.value=''"></label>`)}
        ${linha('A nuvem ficou errada e ESTE computador está certo','Só no computador que tem TODOS os dados corretos, com os outros fechados. Reenvia tudo daqui e sobrepõe a nuvem; depois, nos outros, "Baixar da nuvem".',`<button class="btn btn-ghost btn-sm" onclick="nuvemForcarNuvemDeste()" ${conf?'':'disabled'}>${ico('up')} Corrigir a nuvem a partir DESTE computador</button><button class="btn btn-ghost btn-sm" onclick="if(confirm('SUBSTITUIR tudo na nuvem pelos dados DESTE aparelho?\n\nUse SOMENTE no aparelho que tem os dados completos e corretos.'))nuvemSalvarSubstituir()" ${conf?'':'disabled'} title="Reenvia todas as coleções deste aparelho, mesmo as que parecem iguais">${ico('up')} Reenviar tudo (forçado)</button>`)}
-       ${linha('Os dados sumiram depois de uma atualização','Restaura uma cópia de segurança: a do modelo antigo guardada na nuvem, ou a cópia local deste aparelho. Mostra as quantidades antes de aplicar.',`<button class="btn btn-ghost btn-sm" style="color:var(--neg)" onclick="nuvemV1Restaurar()" ${conf?'':'disabled'}>${ico('down')} Base de segurança (nuvem)</button><button class="btn btn-ghost btn-sm" onclick="nuvemSnapRestaurar()">${ico('down')} Cópia local deste aparelho</button>`)}
+       ${linha('Os dados sumiram depois de uma atualização','Restaura uma cópia de segurança: a do modelo antigo guardada na nuvem, ou a cópia local deste aparelho. Mostra as quantidades antes de aplicar.',`<button class="btn btn-amber btn-sm" onclick="nuvemCofreModal()">${ico('shield')} Cofre local (cópias por dia)</button><button class="btn btn-ghost btn-sm" style="color:var(--neg)" onclick="nuvemV1Restaurar()" ${conf?'':'disabled'}>${ico('down')} Base de segurança (nuvem)</button><button class="btn btn-ghost btn-sm" onclick="nuvemSnapRestaurar()">${ico('down')} Cópia local deste aparelho</button>`)}
+       ${linha('Reler TODA a nuvem sem apagar nada daqui','Lê todos os registros da nuvem por cima dos deste computador: o que falta é adicionado, o mais novo vence. Nada local é apagado. Use quando algo sumiu aqui mas existe na nuvem.',`<button class="btn btn-ghost btn-sm" onclick="nuvemCarregar(false)" ${conf?'':'disabled'}>${ico('dl')} Reler toda a nuvem</button><button class="btn btn-ghost btn-sm" onclick="cadRecuperarNuvemModal(['produtos'])" ${conf?'':'disabled'}>${ico('dl')} Procurar produtos na nuvem</button>`)}
      </div>
      <div class="card card-pad" style="margin-top:10px;border-left:4px solid ${c.v2?'#16a34a':'#d97706'}">
        <b style="font-size:13.5px">Modelo de sincronização</b>
@@ -36968,6 +37123,8 @@ function centralChave(id){ const c=DB.get('clientesSaaS',id); if(!c)return;
   try{ lixeiraPurge(); }catch(e){}
   setTimeout(function(){ try{ backupAutoCheck(); }catch(e){} }, 4000);
   setTimeout(function(){ try{ nuvemSnapSalvar(); }catch(e){} }, 8000);
+  setTimeout(function(){ try{ nuvemCofreGuardar('abertura do sistema'); }catch(e){} }, 12000);   // v14/10-N: cofre local (mesmo sem nuvem)
+  setInterval(function(){ try{ nuvemCofreGuardar('durante o uso'); }catch(e){} }, 30*60000);
   try{ autoSafetyCopy(); }catch(e){}
   if(!(typeof nuvemConfigurada==='function' && nuvemConfigurada())){ try{ maquinasSeedOnce(); }catch(e){} try{ fiscalSeedOnce(); }catch(e){} }  // com nuvem: só após baixar (evita readicionar padrões)
   const emp=DB._load().empresa||{};
