@@ -48,7 +48,7 @@ const CONFIG_EMPRESA = {
      Aparece no topo do menu e no rodapé das Configurações. Troque a cada publicação.
      MANTENHA O FORMATO 'vDD/MM-X' — é ele que o sistema usa para comparar as máquinas
      da loja e avisar quando alguma ficou para trás.                                  */
-  versao: 'v14/10-O',
+  versao: 'v14/10-P',
 
   /* 4) NUVEM (Supabase)  ------------------------------------------------------------
      Cole aqui a Project URL e a chave PUBLISHABLE do projeto Supabase DESTA empresa
@@ -28092,6 +28092,27 @@ async function nuvemCofreRestaurarTroca(){ try{ const t=localStorage.getItem(LSK
     try{ nuvemRefreshUI(); }catch(e){}
     return true; }catch(e){ return false; } }
 
+/* REENVIAR TUDO POR REGISTRO (v14/10-P) — para quando a nuvem ficou VAZIA (tabelas zeradas, projeto
+   restaurado) e este computador tem a base. Primeiro lê a nuvem por cima (o mais novo vence, nada daqui
+   é apagado), depois sobe TODOS os registros e as configurações para a acervo_reg. */
+async function nuvemV3RepovoarNuvem(){
+  if(!(typeof nuvemV3On==='function' && nuvemV3On())){ toast('A sincronização por registro não está ativa neste computador','err'); return; }
+  if(!nuvemClient()){ toast('Sem conexão com a nuvem','err'); return; }
+  const d=DB._load(); const nP=(d.produtos||[]).length, nC=(d.clientes||[]).length, nV=(d.vendas||[]).length, nF=(d.financeiro||[]).length, nU=(d.funcionarios||[]).length;
+  if(nP+nC+nV===0){ toast('Este computador está SEM dados — não pode ser a fonte. Use o Cofre local, um backup (.json) ou o computador que tem os dados.','err'); return; }
+  if(!confirm('REENVIAR TUDO deste computador para a nuvem (por registro)?\n\nEste computador tem:\n• Produtos: '+NUM(nP)+'\n• Clientes: '+NUM(nC)+'\n• Vendas: '+NUM(nV)+'\n• Financeiro: '+NUM(nF)+'\n• Funcionários: '+NUM(nU)+'\n\n1) Antes, lê a nuvem por cima (o mais novo vence; nada daqui é apagado);\n2) Depois sobe TODOS os registros e configurações.\n\nUse no computador que tem a base mais completa.')) return;
+  try{ await nuvemCofreGuardar('antes de reenviar tudo', true); }catch(e){}
+  const pinta=(html)=>{ openModal(`<div class="modal-head"><h3>${ico('up')} Reenviando tudo para a nuvem</h3></div><div class="modal-body">${html}</div>`, true); };
+  pinta('<div class="card card-pad t-mut">Lendo a nuvem antes de enviar…</div>');
+  try{ await nuvemV3CarregarCompleto(); }catch(e){}
+  nuvemCfgSalvar({ v3MigCol:'', v3MigIdx:0 });
+  const barra=(f,t,col)=>{ const pct=t?Math.round(f/t*100):0; pinta(`<div class="card card-pad"><b>Enviando ${NUM(f)} de ${NUM(t)}</b> (${pct}%) — ${esc(col||'')}<div style="height:8px;background:var(--surface-2);border-radius:4px;margin-top:8px;overflow:hidden"><div style="height:100%;width:${pct}%;background:var(--amber)"></div></div><div class="t-mut" style="font-size:11.5px;margin-top:6px">Não feche o sistema até terminar.</div></div>`); };
+  let r=null; try{ r=await nuvemV3Migrar(barra); }catch(e){ r={ok:false, motivo:String((e&&e.message)||e)}; }
+  if(r&&r.ok){ nuvemCfgSalvar({ v3Migrado:true }); try{ logAcao('Nuvem reenviada por registro', NUM(r.feitos)+' registro(s)'); }catch(e){}
+    closeModal(); toast('Pronto: '+NUM(r.feitos)+' registro(s) reenviados à nuvem. Nos outros computadores use "Reler toda a nuvem".','ok'); try{ nuvemStatus('on'); }catch(e){} }
+  else { pinta(`<div class="card card-pad" style="background:var(--neg-soft);color:var(--neg)"><b>Parou em ${NUM((r&&r.feitos)||0)} de ${NUM((r&&r.total)||0)}:</b> ${esc((r&&r.motivo)||'')}<br><br>Clique em "Reenviar tudo" de novo para continuar de onde parou.</div><div class="modal-foot"><button class="btn btn-ghost" onclick="closeModal()">Fechar</button><button class="btn btn-amber" onclick="closeModal();nuvemV3RepovoarNuvem()">${ico('up')} Reenviar tudo</button></div>`); }
+  try{ if(STATE.route==='nuvem') viewNuvem(); }catch(e){} }
+
 /* RELEITURA COMPLETA SEM ESVAZIAR (v14/10-N).
    Antes, "baixar tudo" (primeira abertura, releitura semanal, botão "Baixar da nuvem") ESVAZIAVA as
    coleções locais e as refazia a partir da acervo_col — tabela do modo antigo que NÃO é mais
@@ -29160,7 +29181,7 @@ function viewNuvem(){ const c=nuvemCfg(); const conf=!!(c.url&&c.key); const lib
      <div class="card card-pad" style="margin-top:10px;border-left:4px solid var(--neg)">
        <b style="font-size:13.5px">Recuperação (faça backup antes — Configurações → Fazer backup)</b>
        ${linha('Juntar os dados de OUTRO computador','No outro computador faça o backup (.json) e traga o arquivo para cá. A mesclagem adiciona o que falta e mantém o mais novo em conflito — não apaga nem duplica. Depois, "Enviar para a nuvem".',`<label class="btn btn-ghost btn-sm" style="cursor:pointer;margin:0">${ico('dl')} Mesclar backup (.json)<input type="file" accept="application/json,.json" style="display:none" onchange="mesclarBackupArquivo(this.files[0]);this.value=''"></label>`)}
-       ${linha('A nuvem ficou errada e ESTE computador está certo','Só no computador que tem TODOS os dados corretos, com os outros fechados. Reenvia tudo daqui e sobrepõe a nuvem; depois, nos outros, "Baixar da nuvem".',`<button class="btn btn-ghost btn-sm" onclick="nuvemForcarNuvemDeste()" ${conf?'':'disabled'}>${ico('up')} Corrigir a nuvem a partir DESTE computador</button><button class="btn btn-ghost btn-sm" onclick="if(confirm('SUBSTITUIR tudo na nuvem pelos dados DESTE aparelho?\n\nUse SOMENTE no aparelho que tem os dados completos e corretos.'))nuvemSalvarSubstituir()" ${conf?'':'disabled'} title="Reenvia todas as coleções deste aparelho, mesmo as que parecem iguais">${ico('up')} Reenviar tudo (forçado)</button>`)}
+       ${linha('A nuvem ficou errada e ESTE computador está certo','Só no computador que tem TODOS os dados corretos, com os outros fechados. Reenvia tudo daqui e sobrepõe a nuvem; depois, nos outros, "Baixar da nuvem".',`<button class="btn btn-amber btn-sm" onclick="nuvemV3RepovoarNuvem()" ${conf?'':'disabled'} title="Lê a nuvem por cima (nada daqui é apagado) e depois sobe TODOS os registros deste computador para a acervo_reg">${ico('up')} Reenviar tudo por registro (nuvem vazia)</button><button class="btn btn-ghost btn-sm" onclick="nuvemForcarNuvemDeste()" ${conf?'':'disabled'}>${ico('up')} Corrigir a nuvem a partir DESTE computador</button><button class="btn btn-ghost btn-sm" onclick="if(confirm('SUBSTITUIR tudo na nuvem pelos dados DESTE aparelho?\n\nUse SOMENTE no aparelho que tem os dados completos e corretos.'))nuvemSalvarSubstituir()" ${conf?'':'disabled'} title="Reenvia todas as coleções deste aparelho, mesmo as que parecem iguais">${ico('up')} Reenviar tudo (forçado)</button>`)}
        ${linha('Os dados sumiram depois de uma atualização','Restaura uma cópia de segurança: a do modelo antigo guardada na nuvem, ou a cópia local deste aparelho. Mostra as quantidades antes de aplicar.',`<button class="btn btn-amber btn-sm" onclick="nuvemCofreModal()">${ico('shield')} Cofre local (cópias por dia)</button><button class="btn btn-ghost btn-sm" style="color:var(--neg)" onclick="nuvemV1Restaurar()" ${conf?'':'disabled'}>${ico('down')} Base de segurança (nuvem)</button><button class="btn btn-ghost btn-sm" onclick="nuvemSnapRestaurar()">${ico('down')} Cópia local deste aparelho</button>`)}
        ${linha('Reler TODA a nuvem sem apagar nada daqui','Lê todos os registros da nuvem por cima dos deste computador: o que falta é adicionado, o mais novo vence. Nada local é apagado. Use quando algo sumiu aqui mas existe na nuvem.',`<button class="btn btn-ghost btn-sm" onclick="nuvemCarregar(false)" ${conf?'':'disabled'}>${ico('dl')} Reler toda a nuvem</button><button class="btn btn-ghost btn-sm" onclick="cadRecuperarNuvemModal(['produtos'])" ${conf?'':'disabled'}>${ico('dl')} Procurar produtos na nuvem</button>`)}
      </div>
