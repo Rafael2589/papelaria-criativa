@@ -48,7 +48,7 @@ const CONFIG_EMPRESA = {
      Aparece no topo do menu e no rodapé das Configurações. Troque a cada publicação.
      MANTENHA O FORMATO 'vDD/MM-X' — é ele que o sistema usa para comparar as máquinas
      da loja e avisar quando alguma ficou para trás.                                  */
-  versao: 'v14/10-P',
+  versao: 'v15/10-A',
 
   /* 4) NUVEM (Supabase)  ------------------------------------------------------------
      Cole aqui a Project URL e a chave PUBLISHABLE do projeto Supabase DESTA empresa
@@ -4231,10 +4231,10 @@ function renderPdvResults(){ const dd=document.getElementById('pdv-dd'); if(!dd)
     return `<div class="orc-row ${active?'active':''}" data-pid="${p.id}" onclick="pdvActivate('${p.id}')">
       <div style="flex:1;min-width:0"><div class="orc-rn">${esc(p.nome)}</div>
         <div class="orc-rs">SKU: ${esc(p.sku||'—')} • ${p.servico?'<b style="color:var(--blue)">Serviço</b> (sem estoque)':`Est: ${NUM(p.estoque)} ${esc(un)}`}${emb?` • ${esc(p.embalagemTipo||'Caixa')} de ${NUM(p.qtdPorEmbalagem,2)} ${esc(un)}`:''}${(p.estoque<=0&&!p.servico)?' • <span style="color:var(--neg)">sem estoque</span>':''}</div></div>
-      <div class="orc-rp">${BRL(p.preco)}</div>
+      <div class="orc-rp">${produtoPromoAtiva(p)?`<span class="t-mut" style="font-size:11px;font-weight:500;text-decoration:line-through">${BRL(p.preco)}</span> <span style="color:var(--pos)">${BRL(p.precoPromo)}</span> <span style="background:var(--pos);color:#fff;font-size:9px;font-weight:700;padding:1px 5px;border-radius:8px;vertical-align:middle">PROMOÇÃO</span>`:BRL(p.preco)}</div>
       ${active?`<div class="orc-inl" onclick="event.stopPropagation()">
         <label>${emb?'Qtd ('+esc(un)+'):':'Qtd:'}</label><input id="pdv-rq" type="number" min="0" step="any" value="${PDVS.qtyPrefix||1}" onkeydown="pdvRowKey(event)">
-        <label>R$:</label><input id="pdv-rp" type="number" step="0.01" value="${p.preco}" oninput="pdvPriceToDisc()" onkeydown="pdvRowKey(event)">
+        <label>R$:</label><input id="pdv-rp" type="number" step="0.01" value="${precoVigente(p)}" oninput="pdvPriceToDisc()" onkeydown="pdvRowKey(event)">
         <label>%:</label><input id="pdv-rd" type="number" step="0.01" value="0" oninput="pdvDiscToPrice()" onkeydown="pdvRowKey(event)">
         <button class="orc-add" title="Adicionar" onclick="pdvAddActive()">${ico('plus')}</button></div>
       ${emb?`<div class="orc-embnote" onclick="event.stopPropagation()">${ico('box')} Vendido em <b>${esc(p.embalagemTipo||'Caixa')}</b> de ${NUM(p.qtdPorEmbalagem,2)} ${esc(un)} — a quantidade é arredondada para embalagem fechada.</div>`:''}`:''}
@@ -4252,11 +4252,16 @@ function pdvRowKey(e){ if(e.key!=='Enter') return; e.preventDefault(); const id=
 function pdvAddActive(){ const p=DB.get('produtos',PDVS.activePid); if(!p){ toast('Selecione um produto','err'); return; }
   if(p.estoque<=0 && !p.servico && !permiteVendaSemEstoque()){ toast('Produto sem estoque','err'); return; }
   const qIn=Math.max(0.001,+(document.getElementById('pdv-rq')||{}).value||1);
-  let unit=Math.round(Math.max(0,+(document.getElementById('pdv-rp')||{}).value||p.preco)*100)/100; const lista=p.preco;
-  // v14/10-K: no PDV também pergunta se adota o preço PROMOCIONAL (ou de atacado pela quantidade) — igual ao orçamento.
-  try{ if(Math.abs(unit-p.preco)<0.01){ const un=(p.unidade||'UN').toUpperCase();
-    const promo=produtoPromoAtiva(p)?Math.round(p.precoPromo*100)/100:0; const atacMin=+p.atacadoQtdMin||0;
-    const atacado=(p.precoAtacado>0 && atacMin>0 && qIn>=atacMin && p.precoAtacado<p.preco)?Math.round(p.precoAtacado*100)/100:0;
+  // v15/10-A: o preço PROMOCIONAL vale sozinho no PDV (como no supermercado): o campo já vem com ele e,
+  // no código de barras (campo vazio), o preço vigente é o promocional. Só o atacado (depende da quantidade) pergunta.
+  const _promoAtiva=produtoPromoAtiva(p); const _vig=Math.round(precoVigente(p)*100)/100;
+  let unit=Math.round(Math.max(0,+(document.getElementById('pdv-rp')||{}).value||_vig)*100)/100; const lista=p.preco;
+  let _promoUsada=_promoAtiva && Math.abs(unit-_vig)<0.01;
+  if(_promoAtiva && Math.abs(unit-p.preco)<0.01 && Math.abs(unit-_vig)>=0.01){ unit=_vig; _promoUsada=true; }   // veio o preço de lista por engano: vale a promoção
+  if(_promoUsada){ try{ toast('Preço promocional aplicado: '+BRL(_vig)+' (-'+Math.round((1-_vig/p.preco)*100)+'%)','ok'); }catch(e){} }
+  try{ if(Math.abs(unit-_vig)<0.01){ const un=(p.unidade||'UN').toUpperCase();
+    const promo=0; const atacMin=+p.atacadoQtdMin||0;
+    const atacado=(p.precoAtacado>0 && atacMin>0 && qIn>=atacMin && p.precoAtacado<unit)?Math.round(p.precoAtacado*100)/100:0;
     const cands=[]; if(promo) cands.push({tipo:'promocional', valor:promo, extra:''}); if(atacado) cands.push({tipo:'de atacado', valor:atacado, extra:' (a partir de '+NUM(atacMin)+' '+un+')'});
     if(cands.length){ cands.sort((a,b)=>a.valor-b.valor); const best=cands[0]; const pct=Math.round((1-best.valor/p.preco)*100);
       const outros=cands.length>1?('\n\n(há também o preço '+cands[1].tipo+' de '+BRL(cands[1].valor)+' — será usado o menor)'):'';
@@ -4275,7 +4280,7 @@ function pdvAddActive(){ const p=DB.get('produtos',PDVS.activePid); if(!p){ toas
     if(ex && cartDupMerge(p.nome)){ ex.pacotes+=pacotes; ex.qtd=Math.round(ex.pacotes*p.qtdPorEmbalagem*1000)/1000; ex.preco=unit; ex.precoLista=lista; }
     else CART.itens.push({id:p.id,nome:p.nome,preco:unit,precoLista:lista,custo:p.custo,unidade:p.unidade,embalagem:true,qtdPorEmbalagem:p.qtdPorEmbalagem,embalagemTipo:p.embalagemTipo||'Caixa',pacotes,qtd});
   } else { const ex=CART.itens.find(i=>i.id===p.id && !i.embalagem);
-    if(ex && cartDupMerge(p.nome)){ ex.qtd+=qIn; ex.preco=unit; ex.precoLista=lista; } else CART.itens.push({id:p.id,nome:p.nome,qtd:qIn,preco:unit,precoLista:lista,custo:p.custo,unidade:p.unidade}); }
+    if(ex && cartDupMerge(p.nome)){ ex.qtd+=qIn; ex.preco=unit; ex.precoLista=lista; ex.promo=!!_promoUsada; } else CART.itens.push({id:p.id,nome:p.nome,qtd:qIn,preco:unit,precoLista:lista,custo:p.custo,unidade:p.unidade,promo:!!_promoUsada}); }
   PDVS.results=[]; PDVS.activePid=null; PDVS.qtyPrefix=null; renderPDV();
   scrollAteItem('cart-items', CART.itens.findIndex(i=>i.id===p.id)); }
 function pdvKey(e){ if(!PDVS.results.length){ if(e.key==='Enter')e.preventDefault(); return; }
@@ -4335,7 +4340,7 @@ function cartRows(){ try{ servRecalcItens(CART.itens,'id'); }catch(e){}
         <label class="cr2-retira" title="Cliente levou na hora (retira na loja)" style="display:flex;align-items:center;gap:5px;cursor:pointer;white-space:nowrap;padding-right:8px;color:${it.retiradoLoja?'var(--pos)':'var(--muted)'}">
           <input type="checkbox" ${it.retiradoLoja?'checked':''} onchange="cartRetira(${idx})" style="width:15px;height:15px;cursor:pointer">
           <span style="font-size:11px;font-weight:${it.retiradoLoja?'700':'500'}">Retira</span></label>
-        <div class="cr-name"><div class="n">${esc(it.nome)}${it.kitId?` <span style="background:#7c3aed;color:#fff;font-size:9px;font-weight:700;padding:1px 5px;border-radius:8px;vertical-align:middle">KIT</span>`:''}${it.madeira?` <span style="background:#7c3aed;color:#fff;font-size:9px;font-weight:700;padding:1px 5px;border-radius:8px;vertical-align:middle">MADEIRA</span>`:''}${it.retiradoLoja?` <span style="background:#dc2626;color:#fff;font-size:9px;font-weight:800;padding:1px 5px;border-radius:8px;vertical-align:middle" title="Marcado no pedido como retirado na loja">RETIRADO</span>`:''}</div>
+        <div class="cr-name"><div class="n">${esc(it.nome)}${it.kitId?` <span style="background:#7c3aed;color:#fff;font-size:9px;font-weight:700;padding:1px 5px;border-radius:8px;vertical-align:middle">KIT</span>`:''}${it.madeira?` <span style="background:#7c3aed;color:#fff;font-size:9px;font-weight:700;padding:1px 5px;border-radius:8px;vertical-align:middle">MADEIRA</span>`:''}${it.promo?` <span style="background:var(--pos);color:#fff;font-size:9px;font-weight:700;padding:1px 5px;border-radius:8px;vertical-align:middle">PROMOÇÃO</span>`:''}${it.retiradoLoja?` <span style="background:#dc2626;color:#fff;font-size:9px;font-weight:800;padding:1px 5px;border-radius:8px;vertical-align:middle" title="Marcado no pedido como retirado na loja">RETIRADO</span>`:''}</div>
           <div class="p tnum">${it.madeira?`peça ${fmtQ(it.tamanho||0.5)} m · ${BRL(it.precoMetro||0)}/m · total ${fmtQ(Math.round((it.qtd*(it.tamanho||0))*1000)/1000)} m`:`${it.embalagem?`${fmtQ(it.qtd)} ${un} · `:''}lista ${BRL(lista)}/${un}${it.preco<lista?` · <span style="color:var(--pos)">−${PCT(pct)}</span>`:''}`}</div></div>
       </div>
       <div class="cr2-bot">
@@ -5963,19 +5968,8 @@ async function nfeEmitirETransmitir(vendaId, modelo, origem){
   }
   const n=nfeEmitir(vendaId,true,modelo); if(!n){ if(origem==='pdv'){ pdvNotaFalhou(vendaId, 'Não foi possível gerar a nota'); toast('A nota não foi gerada — o pedido voltou para PENDENTE','err'); } return null; }
   DB.update('notasFiscais',n.id,{status:'processando'});
-  let r=await focusEmitir(DB.get('notasFiscais',n.id), modelo, {silent:true, noModal:true});
-  // AUTO-AVANÇO na duplicidade: a SEFAZ já autorizou uma nota com este número — pula para o próximo livre e reenvia.
-  // Passo cresce (1,1,1,1,2,4,8…até 200) para atravessar rápido um bloco grande de números já usados.
-  let _tent=0;
-  while(false /* Focus numera de forma central: NÃO reemitir em duplicidade (senão empurra o contador do Focus de 1 em 1). Se der duplicidade, ajuste o "Próximo número" no painel do Focus. */ && r && r.duplicidade && _tent<50){
-    _tent++;
-    const _at=DB.get('notasFiscais',n.id); const _base=(+((_at&&_at.numero)||n.numero)||0); const _prox=_base+1;
-    fiscalSaveCfg(modelo==='65'?{proxNFCe:_prox+1}:{proxNFe:_prox+1});
-    DB.update('notasFiscais',n.id,{numero:_prox, status:'processando'});
-    toast('Nº '+_base+' já usado na SEFAZ — tentando o nº '+_prox+'… ('+_tent+')','ok');
-    r=await focusEmitir(DB.get('notasFiscais',n.id), modelo, {silent:true, noModal:true});
-    // avanço SEMPRE de 1 em 1 (sem aceleração) — mantém a numeração sequencial, sem vãos grandes
-  }
+  let r=await focusEmitirAvancando(n.id, modelo);   // v15/10-A: duplicidade na SEFAZ → avança o número e reenvia sozinho
+  const _tent=(r&&r.tentativasNum)||0;
   if(r && r.autorizado){ nfeLimparPendencia(vendaId); if(_tent) toast('Numeração ajustada automaticamente — NF autorizada nº '+((DB.get('notasFiscais',n.id)||{}).numero||''),'ok'); return DB.get('notasFiscais',n.id); }
   if(r && (r.semSessao || r.semNumero)){ nfeMarcarPendencia(vendaId, r.semSessao?'Sem login na nuvem neste computador — entre com a conta da loja para emitir a nota':('Nota não transmitida: '+(r.motivo||'')), modelo); return null; }   // v14/10-F: não é rejeição — a nota fica pendente e a venda retida; o login rápido reenvia
   if(r && r.processando){ nfeMarcarPendencia(vendaId, 'Nota enviada — aguardando autorização da SEFAZ (ainda sem validade fiscal)', modelo); return DB.get('notasFiscais',n.id); }   // SEFAZ processando: NÃO é válida ainda → venda fica retida (fora do caixa) até autorizar
@@ -6019,6 +6013,38 @@ async function nfeEmitirETransmitir(vendaId, modelo, origem){
   else if(origem==='sales'){ try{ renderSalesTable((document.getElementById('sales-q')||{}).value||''); }catch(e){} }
   return null;
 }
+
+/* v15/10-A: DUPLICIDADE com numeração enviada pelo sistema — a SEFAZ já tem uma nota com este número
+   (emitida pelo sistema antigo, por outro computador ou pelo contador do Focus). A chave devolvida na
+   rejeição traz o número usado: o sistema pula para o seguinte, avança o contador central e reenvia,
+   de 1 em 1 (sem deixar vãos), até autorizar — limite de 60 tentativas. Vale para venda, transmissão
+   manual, devolução, estorno e nota avulsa. */
+function nfeNumDaChave(r){ try{ const d=(r&&r.data)||{}; const txt=JSON.stringify(d)+' '+((r&&r.motivo)||''); const m=txt.match(/\d{44}/); if(!m) return {num:0,serie:''};
+    return {num:parseInt(m[0].substr(25,9),10)||0, serie:String(parseInt(m[0].substr(22,3),10)||'')}; }catch(e){ return {num:0,serie:''}; } }
+async function nfeAvancarNumeroDuplicado(noteId, modelo, r){
+  const n=DB.get('notasFiscais',noteId); if(!n) return 0;
+  const cfg=fiscalCfg(); const serie=(modelo==='65')?(cfg.serie||1):(cfg.serieNFe||2); const k=(modelo==='65')?'proxNFCe':'proxNFe';
+  const dup=nfeNumDaChave(r); const atual=+n.numero||0;
+  const minimo=Math.max(atual+1, (dup.num||0)+1, +cfg[k]||1, nfeMaiorEmitido(modelo,serie)+1);
+  let novo=0; try{ if(typeof navigator==='undefined' || navigator.onLine!==false){ const rs=await numeroReservarServidor(nfeNumTipo(modelo,serie), minimo); if(rs>0) novo=rs; } }catch(e){}
+  if(!novo) novo=minimo;
+  DB.update('notasFiscais',noteId,{numero:novo, numeroPendente:false, serie, _numSistema:true, status:'processando'});
+  try{ if((+cfg[k]||0)<novo+1){ const p={}; p[k]=novo+1; fiscalSaveCfg(p); } }catch(e){}
+  try{ logAcao('Numeração avançada por duplicidade na SEFAZ', (modelo==='65'?'NFC-e':'NF-e')+' nº '+atual+' → '+novo); }catch(e){}
+  return novo; }
+async function focusEmitirAvancando(noteId, modelo, opts){
+  const o=Object.assign({silent:true, noModal:true}, opts||{});
+  let r=await focusEmitir(DB.get('notasFiscais',noteId), modelo, o);
+  if(!(typeof fiscalNumeracaoSistema==='function' && fiscalNumeracaoSistema())) return r;
+  let t=0;
+  while(r && r.duplicidade && t<60){ t++;
+    const antes=(DB.get('notasFiscais',noteId)||{}).numero;
+    const novo=await nfeAvancarNumeroDuplicado(noteId, modelo, r); if(!novo) break;
+    try{ toast('Nº '+antes+' já existe na SEFAZ — tentando o nº '+novo+'… ('+t+')','info'); }catch(e){}
+    r=await focusEmitir(DB.get('notasFiscais',noteId), modelo, o);
+  }
+  if(r){ r.tentativasNum=t; if(t && (r.autorizado||r.processando)){ try{ toast('Numeração ajustada automaticamente — nota nº '+((DB.get('notasFiscais',noteId)||{}).numero||''),'ok'); }catch(e){} } }
+  return r; }
 let NFEPARC=null;
 /* NF-e a prazo (Boleto): coleta nº de parcelas e vencimentos antes de emitir. */
 function nfeParcModal(vendaId, onConfirm){
@@ -6382,7 +6408,7 @@ async function devolFiscalEmitir(){
   nfeNumeroConsumir('55', num);
   closeModal();
   DB.update('notasFiscais',nota.id,{status:'processando'});
-  const r=await focusEmitir(DB.get('notasFiscais',nota.id), '55', {silent:true, noModal:true});
+  const r=await focusEmitirAvancando(nota.id, '55');   // v15/10-A: duplicidade → avança o número e reenvia
   if(r && (r.autorizado||r.processando)){
     const _at=DB.get('notasFiscais',nota.id);
     if(D.baixaEstoque && !_at._estoqueBaixado){   // itens saem do estoque (voltam ao fornecedor) — uma vez só
@@ -8678,9 +8704,11 @@ function prodOrdAplicar(arr){ const f=PROD_ORD_VAL[PROD_ORD.col]; if(!f) return 
 function prodTable(prods){ prods=prodOrdAplicar((prods||[]).slice());
   if(!prods.length) return `<div class="empty">${ico('box')}<h4>Nenhum produto</h4></div>`;
   const LIM=listLim('prod'); const totalN=prods.length; let nota=''; if(totalN>LIM){ prods=prods.slice(0,LIM); nota=listNota('prod', LIM, totalN, 'produtos'); }
-  return nota+`<table><thead><tr>${prodOrdTh('nome','Produto')}${prodOrdTh('sku','SKU')}${prodOrdTh('barras','Cód. barras')}${prodOrdTh('categoria','Categoria')}${prodOrdTh('custo','Custo','t-right')}${prodOrdTh('preco','Venda','t-right')}${prodOrdTh('margem','Margem','t-right')}${prodOrdTh('embalagem','Embalagem','t-right')}${prodOrdTh('estoque','Estoque','t-right')}<th></th></tr></thead><tbody>
+  const _vis=prods.map(p=>p.id); const _todosVis=_vis.length>0 && _vis.every(id=>PROD_SEL.has(id));
+  return prodSelBarra()+nota+`<table><thead><tr><th style="width:28px"><input type="checkbox" ${_todosVis?'checked':''} onchange="prodSelVisiveis(this.checked)" title="Marcar/desmarcar os produtos desta lista"></th>${prodOrdTh('nome','Produto')}${prodOrdTh('sku','SKU')}${prodOrdTh('barras','Cód. barras')}${prodOrdTh('categoria','Categoria')}${prodOrdTh('custo','Custo','t-right')}${prodOrdTh('preco','Venda','t-right')}${prodOrdTh('margem','Margem','t-right')}${prodOrdTh('embalagem','Embalagem','t-right')}${prodOrdTh('estoque','Estoque','t-right')}<th></th></tr></thead><tbody>
   ${prods.map(p=>{ const margem=(p.preco-p.custo)/p.preco*100; const crit=!p.servico && p.estoque<=p.estoqueMinimo;
-    return `<tr>
+    return `<tr${PROD_SEL.has(p.id)?' style="background:var(--amber-soft,#fff7e6)"':''}>
+    <td><input type="checkbox" class="prod-sel-chk" ${PROD_SEL.has(p.id)?'checked':''} onchange="prodSelToggle('${p.id}',this.checked)"></td>
     <td><div class="prod-cell"><div class="prod-thumb" style="background:${p.cor}">${esc(p.nome[0])}</div>
       <div><div class="t-strong">${esc(p.nome)}${p.usoConsumo?' <span class="tag" style="font-size:9.5px;background:var(--surface-2);color:var(--muted)">USO/CONSUMO</span>':''}</div><div class="t-mut" style="font-size:12px">${esc(p.marca||'')}</div></div></div></td>
     <td class="tnum t-mut" style="white-space:nowrap">${esc(p.sku||'—')}</td>
@@ -8699,6 +8727,68 @@ function prodTable(prods){ prods=prodOrdAplicar((prods||[]).slice());
   </tr>`;}).join('')}
   </tbody></table>`;
 }
+
+/* ===== SELEÇÃO + AJUSTE EM LOTE DE PRODUTOS (v15/10-A) =====
+   Marque os produtos na lista (ou "todos os filtrados") e altere de uma vez: marca, preço de venda
+   (fixo, % ou R$ para mais/menos, margem sobre o custo), categoria/grupo/subgrupo e estoque
+   (definir, somar, subtrair — cada ajuste de estoque gera movimentação com motivo). */
+const PROD_SEL=new Set();
+function prodSelToggle(id, on){ if(on) PROD_SEL.add(id); else PROD_SEL.delete(id); prodSelBarraAtualizar(); }
+function prodSelVisiveis(on){ document.querySelectorAll('.prod-sel-chk').forEach(c=>{ const tr=c.closest('tr'); c.checked=!!on; }); 
+  const vis=prodOrdAplicar(prodFiltrados(PROD_Q,(document.getElementById('prod-flt')||{}).value||'')).slice(0, listLim('prod')).map(p=>p.id);
+  vis.forEach(id=>{ if(on) PROD_SEL.add(id); else PROD_SEL.delete(id); }); renderProdTable(); }
+function prodSelTodosFiltrados(){ prodFiltrados(PROD_Q,(document.getElementById('prod-flt')||{}).value||'').forEach(p=>PROD_SEL.add(p.id)); renderProdTable(); }
+function prodSelLimpar(){ PROD_SEL.clear(); renderProdTable(); }
+function prodSelBarra(){ const n=PROD_SEL.size; const tot=prodFiltrados(PROD_Q,(document.getElementById('prod-flt')||{}).value||'').length;
+  return `<div id="prod-sel-bar" style="display:${n?'flex':'none'};gap:8px;align-items:center;flex-wrap:wrap;padding:8px 12px;margin-bottom:8px;border:1px solid var(--amber);background:var(--amber-soft,#fff7e6);border-radius:10px">
+    <b><span id="prod-sel-n">${NUM(n)}</span> produto(s) selecionado(s)</b>
+    <button class="btn btn-amber btn-sm" onclick="prodLoteModal()">${ico('edit')} Ajustar em lote</button>
+    <button class="btn btn-ghost btn-sm" onclick="prodSelTodosFiltrados()" title="Seleciona todos os produtos que a busca/filtro atual mostra, inclusive os que ainda não aparecem na lista">Selecionar todos os filtrados (${NUM(tot)})</button>
+    <button class="btn btn-ghost btn-sm" onclick="prodSelLimpar()">Limpar seleção</button></div>`; }
+function prodSelBarraAtualizar(){ const b=document.getElementById('prod-sel-bar'); if(!b){ renderProdTable(); return; } b.style.display=PROD_SEL.size?'flex':'none'; const n=document.getElementById('prod-sel-n'); if(n) n.textContent=NUM(PROD_SEL.size); }
+function prodLoteModal(){ const ids=[...PROD_SEL].filter(id=>DB.get('produtos',id)); if(!ids.length){ toast('Marque pelo menos um produto na lista','err'); return; }
+  const marcas=marcaListaTodas(); const cats=categoriasProduto().map(c=>c.nome).filter(Boolean).sort((a,b)=>a.localeCompare(b,'pt'));
+  const grupos=[...new Set(DB.all('gruposProd').map(g=>g.nome).filter(Boolean))].sort(); const subs=[...new Set(DB.all('subgruposProd').map(g=>g.nome).filter(Boolean))].sort();
+  const opt=(arr)=>arr.map(v=>`<option value="${esc(v)}">`).join('');
+  const lin=(id,label,inner)=>`<div class="card card-pad" style="margin-bottom:8px"><label style="display:flex;align-items:center;gap:8px;font-weight:700;cursor:pointer"><input type="checkbox" id="lote-${id}-on" onchange="document.getElementById('lote-${id}-box').style.display=this.checked?'block':'none'"> ${label}</label><div id="lote-${id}-box" style="display:none;margin-top:8px">${inner}</div></div>`;
+  openModal(`<div class="modal-head"><h3>${ico('edit')} Ajustar em lote — ${NUM(ids.length)} produto(s)</h3><button class="btn-icon btn-ghost" onclick="closeModal()">${ico('x')}</button></div>
+   <div class="modal-body">
+     <p class="t-mut" style="font-size:12.5px;margin:0 0 10px">Marque o que deseja alterar. Só os campos marcados mudam; os demais ficam como estão.</p>
+     ${lin('marca','Marca',`<input id="lote-marca" list="lote-marcas-dl" placeholder="Nome da marca"><datalist id="lote-marcas-dl">${opt(marcas)}</datalist>`)}
+     ${lin('preco','Preço de venda',`<div class="field-row"><div class="field"><label>Como</label><select id="lote-preco-modo"><option value="fixo">Definir valor (R$)</option><option value="maispct">Aumentar %</option><option value="menospct">Diminuir %</option><option value="maisrs">Aumentar R$</option><option value="menosrs">Diminuir R$</option><option value="margem">Margem % sobre o custo</option></select></div><div class="field"><label>Valor</label><input id="lote-preco-val" type="text" inputmode="decimal" placeholder="Ex.: 19,90 ou 10"></div></div><div class="t-mut" style="font-size:11.5px">O preço promocional cadastrado não é alterado. Resultado arredondado para centavos.</div>`)}
+     ${lin('cat','Categoria / grupo / subgrupo',`<div class="field-row"><div class="field"><label>Categoria</label><input id="lote-cat" list="lote-cat-dl" placeholder="(manter)"><datalist id="lote-cat-dl">${opt(cats)}</datalist></div><div class="field"><label>Grupo</label><input id="lote-grupo" list="lote-grupo-dl" placeholder="(manter)"><datalist id="lote-grupo-dl">${opt(grupos)}</datalist></div><div class="field"><label>Subgrupo</label><input id="lote-sub" list="lote-sub-dl" placeholder="(manter)"><datalist id="lote-sub-dl">${opt(subs)}</datalist></div></div><div class="t-mut" style="font-size:11.5px">Campo vazio = não altera aquele nível.</div>`)}
+     ${lin('estoque','Estoque',`<div class="field-row"><div class="field"><label>Como</label><select id="lote-est-modo"><option value="definir">Definir quantidade</option><option value="somar">Somar (entrada)</option><option value="subtrair">Subtrair (saída)</option></select></div><div class="field"><label>Quantidade</label><input id="lote-est-qtd" type="text" inputmode="decimal" placeholder="Ex.: 10"></div><div class="field"><label>Motivo</label><input id="lote-est-motivo" placeholder="Ex.: inventário, ajuste em lote"></div></div><div class="t-mut" style="font-size:11.5px">Serviços não têm estoque e são ignorados. Cada produto recebe uma movimentação de estoque com o motivo.</div>`)}
+     ${lin('sit','Situação',`<select id="lote-sit"><option value="ativo">Ativo</option><option value="inativo">Inativo</option></select>`)}
+   </div>
+   <div class="modal-foot"><button class="btn btn-ghost" onclick="closeModal()">Cancelar</button><button class="btn btn-amber" onclick="prodLoteAplicar()">${ico('check')} Aplicar a ${NUM(ids.length)} produto(s)</button></div>`, true); }
+function prodLoteAplicar(){ const ids=[...PROD_SEL].filter(id=>DB.get('produtos',id)); if(!ids.length){ toast('Nenhum produto selecionado','err'); return; }
+  const on=id=>!!(document.getElementById('lote-'+id+'-on')||{}).checked; const v=id=>((document.getElementById(id)||{}).value||'').trim();
+  const mudar={ marca:on('marca'), preco:on('preco'), cat:on('cat'), estoque:on('estoque'), sit:on('sit') };
+  if(!Object.values(mudar).some(Boolean)){ toast('Marque pelo menos um campo para alterar','err'); return; }
+  let marca=''; if(mudar.marca){ marca=v('lote-marca'); if(!marca){ toast('Informe a marca','err'); return; } const reg=marcaRegistrar(marca); if(reg&&reg.nome) marca=reg.nome; }
+  let pModo='', pVal=0; if(mudar.preco){ pModo=v('lote-preco-modo'); pVal=numBR(v('lote-preco-val'))||0; if(!(pVal>0) && pModo!=='fixo'){ toast('Informe o valor do ajuste de preço','err'); return; } if(pModo==='fixo' && !(pVal>=0)){ toast('Informe o preço','err'); return; } }
+  const cat=mudar.cat?v('lote-cat'):'', grupo=mudar.cat?v('lote-grupo'):'', sub=mudar.cat?v('lote-sub'):'';
+  if(mudar.cat && !cat && !grupo && !sub){ toast('Informe categoria, grupo ou subgrupo','err'); return; }
+  let eModo='', eQtd=0, eMotivo=''; if(mudar.estoque){ eModo=v('lote-est-modo'); eQtd=Math.round(Math.max(0,numBR(v('lote-est-qtd')))*1000)/1000; eMotivo=v('lote-est-motivo')||'Ajuste em lote'; if(eModo!=='definir' && !(eQtd>0)){ toast('Informe a quantidade','err'); return; } }
+  const sit=mudar.sit?v('lote-sit'):'';
+  const resumo=[ mudar.marca?('• Marca → '+marca):'', mudar.preco?('• Preço: '+({fixo:'definir '+BRL(pVal),maispct:'+'+pVal+'%',menospct:'−'+pVal+'%',maisrs:'+'+BRL(pVal),menosrs:'−'+BRL(pVal),margem:'margem '+pVal+'% sobre o custo'})[pModo]):'', mudar.cat?('• Categoria/grupo/subgrupo → '+[cat||'(manter)',grupo||'(manter)',sub||'(manter)'].join(' › ')):'', mudar.estoque?('• Estoque: '+({definir:'definir ',somar:'somar ',subtrair:'subtrair '})[eModo]+fmtQ(eQtd)):'', mudar.sit?('• Situação → '+sit):'' ].filter(Boolean).join('\n');
+  if(!confirm('Aplicar a '+NUM(ids.length)+' produto(s):\n\n'+resumo+'\n\nContinuar?')) return;
+  let n=0, nEst=0; const hoje=today();
+  DB.bulk(()=>{ ids.forEach(id=>{ const p=DB.get('produtos',id); if(!p) return; const upd={};
+      if(mudar.marca) upd.marca=marca;
+      if(mudar.preco){ const custo=+p.custo||0, atual=+p.preco||0; let novo=atual;
+        if(pModo==='fixo') novo=pVal; else if(pModo==='maispct') novo=atual*(1+pVal/100); else if(pModo==='menospct') novo=atual*(1-pVal/100); else if(pModo==='maisrs') novo=atual+pVal; else if(pModo==='menosrs') novo=atual-pVal; else if(pModo==='margem') novo=custo*(1+pVal/100);
+        upd.preco=Math.max(0, Math.round(novo*100)/100); }
+      if(mudar.cat){ if(cat){ upd.categoria=cat; try{ const r=catRegistrar(cat,'produto'); if(r&&r.nome) upd.categoria=r.nome; }catch(e){} } if(grupo){ upd.grupo=grupo; } if(sub){ upd.subgrupo=sub; } }
+      if(mudar.estoque && !p.servico){ const atual=+p.estoque||0; let novo=atual; if(eModo==='definir') novo=eQtd; else if(eModo==='somar') novo=atual+eQtd; else novo=Math.max(0,atual-eQtd); novo=Math.round(novo*1000)/1000;
+        if(novo!==atual){ upd.estoque=novo; DB.insert('movEstoque',{produtoId:id, tipo:(eModo==='definir'?'ajuste':(eModo==='somar'?'entrada':'saida')), qtd:(eModo==='definir'?novo:eQtd), data:hoje, motivo:eMotivo+' (lote)'}); nEst++; } }
+      if(mudar.sit) upd.situacao=sit;
+      if(Object.keys(upd).length){ DB.update('produtos',id,upd); n++; } }); });
+  DB._persist();
+  try{ if(mudar.cat) gruposSincronizarDosProdutos && gruposSincronizarDosProdutos(); }catch(e){}
+  try{ logAcao('Ajuste em lote de produtos', NUM(n)+' produto(s): '+resumo.replace(/\n/g,' ')); }catch(e){}
+  try{ nuvemPushJa(); }catch(e){}
+  closeModal(); PROD_SEL.clear(); toast(NUM(n)+' produto(s) alterado(s)'+(nEst?(' · '+NUM(nEst)+' movimentação(ões) de estoque'):''),'ok'); try{ go('prod'); }catch(e){ renderProdTable(); } }
 const IMP_PROD_MAP={ SKU:'sku', CODIGO:'sku', COD:'sku', PRODUTO:'nome', NOME:'nome', DESCRICAO:'nome', CATEGORIA:'categoria', GRUPO:'categoria', UNIDADE:'unidade', UN:'unidade', UNID:'unidade', ESTOQUE:'estoque', SALDO:'estoque', QTD:'estoque', MIN:'estoqueMinimo', MINIMO:'estoqueMinimo', ESTOQUE_MINIMO:'estoqueMinimo', CUSTO:'custo', PRECO_CUSTO:'custo', PRECO_DE_CUSTO:'custo', VENDA:'preco', PRECO:'preco', PRECO_VENDA:'preco', PRECO_DE_VENDA:'preco', NCM:'ncm', CEST:'cest', STATUS:'situacao', SITUACAO:'situacao', CFOP_VENDA_ES:'cfop', CFOP:'cfop', CFOP_VENDA:'cfop', CFOP_VENDA_OUTRO_ESTADO:'cfopInter', CFOP_INTERESTADUAL:'cfopInter', CFOP_OUTRO_ESTADO:'cfopInter', CSOSN_PADRAO:'cst', CSOSN:'cst', CST:'cst', CST_CSOSN:'cst', COD_BARRAS:'codigoBarras', CODIGO_BARRAS:'codigoBarras', CODIGO_DE_BARRAS:'codigoBarras', EAN:'codigoBarras', GTIN:'codigoBarras', MARCA:'marca', FABRICANTE:'marca' };
 function impNormHdr(h){ return String(h||'').toUpperCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/[^A-Z0-9]+/g,'_').replace(/^_+|_+$/g,''); }
 function impMoney(v){ if(typeof v==='number') return Math.round(v*100)/100; let s=String(v||'').replace(/r\$/i,'').replace(/[\s\u00a0]/g,'').trim(); if(!s) return 0; return Math.round((numBR(s)||0)*100)/100; }
@@ -24262,16 +24352,26 @@ function caixaVendasFiltraRender(){
   const body=document.getElementById('caixa-vsx-body'); if(body) body.innerHTML=tab.rows;
   const cnt=document.getElementById('caixa-vsx-count'); if(cnt) cnt.textContent=tab.count+' de '+vok.length;
 }
-function caixaSessaoAberta(){ const hoje=today();
-  // "Caixa aberto" é SOMENTE uma sessão aberta de HOJE. Uma sessão aberta de um dia ANTERIOR é órfã
-  // (esquecida em aberto, ou vinda de outro aparelho) e NÃO é o caixa ativo — senão, mesmo tendo
-  // fechado o caixa de hoje, o sistema mostrava o caixa como ABERTO puxando dados de outra sessão.
-  const abertasHoje=DB.all('caixaSessoes').filter(s=>s && s.status==='aberto' && caixaDiaSessao(s)===hoje);
-  if(!abertasHoje.length) return undefined;
-  return abertasHoje.slice().sort((a,b)=>String(b.abertura||'').localeCompare(String(a.abertura||'')))[0]; }
+/* MÚLTIPLOS CAIXAS (v15/10-A) — como num supermercado: cada operador (login) abre e fecha o SEU caixa;
+   as sessões dos outros não aparecem para ele. O administrador vê todos os caixas do dia, com os totais
+   unificados e o detalhe de cada um. A venda grava o caixa (sessaoId) de quem a fez. */
+function caixaEhAdmin(){ try{ return !!(CURRENT_USER && CURRENT_USER.perfil==='admin'); }catch(e){ return false; } }
+function caixaUid(){ try{ return (CURRENT_USER && CURRENT_USER.id)||''; }catch(e){ return ''; } }
+function caixaSessaoDoUsuario(sess){ const uid=caixaUid(); if(!sess) return false; if(sess.operadorId) return sess.operadorId===uid; return true; }   // sessão antiga (sem operador) vale para quem a vê
+function caixaAbertasHoje(){ const hoje=today(); return DB.all('caixaSessoes').filter(s=>s && s.status==='aberto' && caixaDiaSessao(s)===hoje).slice().sort((a,b)=>String(a.abertura||'').localeCompare(String(b.abertura||''))); }
+function caixaSessaoAberta(){
+  // "Caixa aberto" é SOMENTE uma sessão aberta de HOJE, do operador logado. Uma sessão aberta de um dia
+  // ANTERIOR é órfã e NÃO é o caixa ativo.
+  const abertasHoje=caixaAbertasHoje(); if(!abertasHoje.length) return undefined;
+  const uid=caixaUid();
+  const minhas=abertasHoje.filter(s=>s.operadorId===uid);
+  if(minhas.length) return minhas.slice().sort((a,b)=>String(b.abertura||'').localeCompare(String(a.abertura||'')))[0];
+  const semDono=abertasHoje.filter(s=>!s.operadorId);   // sessões antigas (antes dos múltiplos caixas): valem para quem está logado
+  if(semDono.length) return semDono.slice().sort((a,b)=>String(b.abertura||'').localeCompare(String(a.abertura||'')))[0];
+  return undefined; }
 function caixaDiaSessao(s){ return s?(s.data||(s.abertura||'').slice(0,10)):''; }
-function caixaSessaoDiaAnterior(){ const hoje=today();   // sessões abertas de dias anteriores (órfãs)
-  const antigas=DB.all('caixaSessoes').filter(s=>s && s.status==='aberto' && caixaDiaSessao(s)<hoje);
+function caixaSessaoDiaAnterior(){ const hoje=today();   // sessões abertas de dias anteriores (órfãs) — do operador (admin: de qualquer um)
+  const antigas=DB.all('caixaSessoes').filter(s=>s && s.status==='aberto' && caixaDiaSessao(s)<hoje && (caixaEhAdmin() || caixaSessaoDoUsuario(s)));
   return antigas.length ? antigas.slice().sort((a,b)=>String(b.abertura||'').localeCompare(String(a.abertura||'')))[0] : null; }
 /* ESTORNO SÓ ABATE O CAIXA SE O DINHEIRO DAQUELA VENDA ENTROU NESTA SESSÃO.
    O estorno é lançado no caixa que estiver ABERTO na hora do cancelamento, que nem
@@ -24324,7 +24424,7 @@ function caixaViradaPrompt(s){ s=s||caixaSessaoDiaAnterior(); if(!s) return;
 function caixaMovs(sid){ return DB.all('caixaMovs').filter(m=>m.sessaoId===sid); }
 function caixaVendasSessao(sid){
   const sesIds=new Set(DB.all('caixaSessoes').map(x=>x.id));
-  const aberta=(typeof caixaSessaoAberta==='function')?caixaSessaoAberta():null;
+  const _ab=(typeof caixaAbertasHoje==='function')?caixaAbertasHoje():[]; const aberta=_ab.length?_ab[0]:null;   // órfãs vão para o PRIMEIRO caixa aberto do dia (um só, nunca para todos)
   const isAtual=!!(aberta && aberta.id===sid);
   const ses=DB.get('caixaSessoes',sid)||{};
   const dia=ses.data || (''+(ses.abertura||'')).slice(0,10) || today();
@@ -24361,9 +24461,11 @@ function caixaSomaVendas(vendas){ const ok=(vendas||[]).filter(v=>(v.status||'')
   return { total: (cents-credCents-comCents)/100, bruto: cents/100, credito: credCents/100, comissao: comCents/100, count: ok.length, ok }; }
 function nowTime(){ const d=new Date(); return String(d.getHours()).padStart(2,'0')+':'+String(d.getMinutes()).padStart(2,'0'); }
 function viewCaixa(){
-  const s=caixaSessaoAberta();
+  let s=caixaSessaoAberta();
+  if(caixaEhAdmin() && CAIXA.verSid){ const o=DB.get('caixaSessoes',CAIXA.verSid); if(o && o.status==='aberto') s=o; else CAIXA.verSid=null; }   // admin olhando o caixa de outro operador
   const ant=caixaSessaoDiaAnterior();   // caixa aberto de um dia anterior (fechamento pendente)
   if(!s){ document.getElementById('view').innerHTML=`
+     ${caixaEhAdmin()?caixaTodosHTML():''}
      ${ant?`<div class="card card-pad" style="max-width:620px;margin:0 auto 14px;border:1px solid var(--amber);background:var(--amber-soft)">
        <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap">
          <div style="color:var(--amber-d)">${ico('alert')}</div>
@@ -24392,9 +24494,11 @@ function viewCaixa(){
   const suprimentos=movs.filter(m=>m.tipo==='suprimento').reduce((a,m)=>a+m.valor,0);
   const fundo=s.saldoInicial||0;
   const saldoEspecie=caixaSaldoEspecieSessao(s);   // mesma conta do fechamento e do histórico
-  const tabs=[['resumo','Resumo'],['vendas','Vendas da Sessão'],['mov','Movimentações'],['historico','Histórico'],['mensal','Fechamento Mensal']];
+  const tabs=[['resumo','Resumo'],['vendas','Vendas da Sessão'],['mov','Movimentações'],['historico','Histórico'],['mensal','Fechamento Mensal']].concat(caixaEhAdmin()?[['todos','Todos os caixas']]:[]);
+  const _outro=!!(CAIXA.verSid && s.id===CAIXA.verSid && !caixaSessaoDoUsuario(s));
   document.getElementById('view').innerHTML=`
-   <div class="toolbar" style="margin-bottom:14px"><div><span class="tag pos">${ico('bank')} Caixa Aberto</span> <span class="t-mut" style="font-size:12px">${esc(s.caixaNome||'Caixa')} · ${esc(s.operador||'')} · aberto ${esc(s.abertura.slice(11)||s.aberturaHora||'')}</span></div>
+   ${(caixaEhAdmin() && CAIXA.tab!=='todos')?caixaTodosHTML(s.id):''}
+   <div class="toolbar" style="margin-bottom:14px"><div><span class="tag pos">${ico('bank')} Caixa Aberto</span> <span class="t-mut" style="font-size:12px">${esc(s.caixaNome||'Caixa')} · ${esc(s.operador||'')} · aberto ${esc(s.aberturaHora||(s.abertura||'').slice(11,16))}</span>${_outro?` <span class="tag warn">caixa de outro operador</span> <button class="btn btn-ghost btn-sm" onclick="CAIXA.verSid=null;viewCaixa()">Voltar ao meu</button>`:''}</div>
      <div class="spacer"></div>
      <button class="btn btn-ghost btn-sm" onclick="caixaMovModal('sangria')">${ico('money')} Sangria</button>
      <button class="btn btn-ghost btn-sm" onclick="caixaMovModal('suprimento')">${ico('plus')} Suprimento</button>
@@ -24411,9 +24515,32 @@ function viewCaixa(){
      ${kpiCard('Recebido líquido',BRL(totalVendas-taxasCartao),'money','#15803d','vendas − taxas de cartão')}
    </div>
    <div class="ptabs" style="margin-bottom:14px">${tabs.map(([k,l])=>`<button class="ptab ${CAIXA.tab===k?'on':''}" onclick="CAIXA.tab='${k}';viewCaixa()">${l}</button>`).join('')}</div>
-   <div id="caixa-body">${caixaBody(s,{movs,vendas,vendasOk,totalVendas,creditoTroca,comissaoIndic,vendasDinheiro,recebimentos,sangrias,estornos,estornosFora,suprimentos,fundo,saldoEspecie})}</div>`;
+   <div id="caixa-body">${CAIXA.tab==='todos'?caixaTodosHTML(s.id,true):caixaBody(s,{movs,vendas,vendasOk,totalVendas,creditoTroca,comissaoIndic,vendasDinheiro,recebimentos,sangrias,estornos,estornosFora,suprimentos,fundo,saldoEspecie})}</div>`;
   if(CAIXA.tab==='historico') caixaRenderHist();
 }
+/* ADMINISTRADOR — todos os caixas do dia: totais unificados e o detalhe de cada caixa (abertos e fechados hoje). */
+function caixaTodosHTML(atualSid, completo){
+  const hoje=today(); const sess=DB.all('caixaSessoes').filter(x=>x && caixaDiaSessao(x)===hoje).slice().sort((a,b)=>String(a.abertura||'').localeCompare(String(b.abertura||'')));
+  if(!sess.length && !completo) return '';
+  const linhas=sess.map(x=>{ const vendas=caixaVendasSessao(x.id); const sv=caixaSomaVendas(vendas); const din=caixaVendasDinheiro(vendas); const esp=caixaSaldoEspecieSessao(x);
+    return {x, n:sv.count, total:sv.total, din, esp}; });
+  const tot=linhas.reduce((a,l)=>({n:a.n+l.n, total:a.total+l.total, din:a.din+l.din, esp:a.esp+l.esp}),{n:0,total:0,din:0,esp:0});
+  const abertos=linhas.filter(l=>l.x.status==='aberto').length;
+  const tabela=`<div class="tbl-wrap"><table><thead><tr><th>Caixa</th><th>Operador</th><th>Situação</th><th class="t-right">Vendas</th><th class="t-right">Total vendido</th><th class="t-right">Em dinheiro</th><th class="t-right">Saldo em espécie</th><th></th></tr></thead><tbody>
+      ${linhas.map(l=>`<tr style="${l.x.id===atualSid?'background:var(--amber-soft,#fff7e6)':''}"><td><b>${esc(l.x.caixaNome||'Caixa')}</b><div class="t-mut" style="font-size:11px">aberto ${esc((l.x.abertura||'').slice(11,16)||l.x.aberturaHora||'')}${l.x.status==='fechado'?(' · fechado '+esc((l.x.fechamento||'').slice(11,16)||l.x.fechamentoHora||'')):''}</div></td><td>${esc(l.x.operador||'')}</td><td>${l.x.status==='aberto'?'<span class="tag pos">Aberto</span>':'<span class="tag">Fechado</span>'}</td><td class="t-right tnum">${NUM(l.n)}</td><td class="t-right tnum t-strong">${BRL(l.total)}</td><td class="t-right tnum">${BRL(l.din)}</td><td class="t-right tnum">${BRL(l.esp)}</td>
+        <td class="t-right" style="white-space:nowrap">${l.x.status==='aberto'?`<button class="btn btn-ghost btn-sm" onclick="CAIXA.verSid='${l.x.id}';CAIXA.tab='resumo';viewCaixa()">${ico('eye')} Ver</button> <button class="btn btn-ghost btn-sm" onclick="caixaFecharModal('${l.x.id}')">${ico('alert')} Fechar</button>`:`<button class="btn btn-ghost btn-sm" onclick="caixaRelatorioModal('${l.x.id}')">${ico('doc')} Relatório</button>`}</td></tr>`).join('')}
+      <tr style="font-weight:700;background:var(--surface-2)"><td colspan="3">Todos os caixas de hoje (${NUM(sess.length)}${abertos?(' · '+NUM(abertos)+' aberto(s)'):''})</td><td class="t-right tnum">${NUM(tot.n)}</td><td class="t-right tnum">${BRL(tot.total)}</td><td class="t-right tnum">${BRL(tot.din)}</td><td class="t-right tnum">${BRL(tot.esp)}</td><td></td></tr>
+    </tbody></table></div>`;
+  if(!completo) return `<div class="card" style="margin-bottom:14px"><div class="card-head"><h3>${ico('bank')} Caixas de hoje — visão do administrador</h3><span class="t-mut" style="font-size:12px">Cada operador vê só o seu caixa; aqui aparecem todos, com o total unificado.</span></div><div class="card-pad" style="padding-top:0">${tabela}</div></div>`;
+  // aba completa: além da tabela, TODAS as vendas do dia com a coluna do caixa
+  const todasVendas=[]; linhas.forEach(l=>{ caixaVendasSessao(l.x.id).filter(v=>(v.status||'')!=='cancelada').forEach(v=>todasVendas.push({v, cx:l.x})); });
+  todasVendas.sort((a,b)=>String((b.v.hora||'')+(b.v.id||'')).localeCompare(String((a.v.hora||'')+(a.v.id||''))));
+  const somaCent=todasVendas.reduce((a,t)=>a+Math.round((+t.v.total||0)*100),0)/100;
+  return `<div class="card" style="margin-bottom:14px"><div class="card-head"><h3>${ico('bank')} Todos os caixas de hoje</h3></div><div class="card-pad" style="padding-top:0">${tabela}</div></div>
+    <div class="card"><div class="card-head"><h3>${ico('cart')} Vendas de todos os caixas <span class="tag">${NUM(todasVendas.length)} · ${BRL(somaCent)}</span></h3></div>
+      <div class="tbl-wrap"><table><thead><tr><th>Hora</th><th>Caixa</th><th>Operador</th><th>Venda</th><th>Cliente</th><th>Pagamento</th><th class="t-right">Total</th></tr></thead><tbody>
+      ${todasVendas.map(t=>`<tr><td class="tnum">${esc(t.v.hora||'')}</td><td><b>${esc(t.cx.caixaNome||'Caixa')}</b></td><td class="t-mut">${esc(t.cx.operador||'')}</td><td class="tnum">#${esc(t.v.numero||t.v.id)}</td><td>${esc(t.v.clienteNome||'Consumidor')}</td><td>${caixaPagCell(t.v)}</td><td class="t-right tnum t-strong">${BRL(t.v.total)}</td></tr>`).join('')||'<tr><td colspan="7" class="t-mut" style="text-align:center;padding:18px">Nenhuma venda hoje</td></tr>'}
+      </tbody></table></div></div>`; }
 function caixaPagCell(v){ if(v.formaPagamento==='Múltiplas' && Array.isArray(v.pagamentos)&&v.pagamentos.length){
     return `<span class="tag info">Múltiplas</span><div class="t-mut" style="font-size:11px;margin-top:3px">${v.pagamentos.map(p=>esc(p.forma)+': '+BRL(p.valor)).join(' · ')}</div>`; }
   return `<span class="tag">${esc(v.formaPagamento||'—')}</span>`; }
@@ -24490,16 +24617,18 @@ function caixaBody(s,d){
 function caixaTipoLabel(t){ return {abertura:'Abertura',venda:'Venda',sangria:'Sangria',estorno:'Estorno (cancelamento)',suprimento:'Suprimento',recebimento:'Recebimento'}[t]||t; }
 function caixaAbrirModal(){ openModal(`<div class="modal-head"><h3>${ico('bank')} Abrir caixa</h3><button class="btn-icon btn-ghost" onclick="closeModal()">${ico('x')}</button></div>
   <div class="modal-body">
-    <div class="field"><label>Operador</label><input id="cx-op" value="${esc((CURRENT_USER&&CURRENT_USER.nome)||'')}"></div>
-    <div class="field"><label>Nome do caixa</label><input id="cx-nome" value="Caixa 1"></div>
+    <div class="field"><label>Operador</label><input id="cx-op" value="${esc((CURRENT_USER&&CURRENT_USER.nome)||'')}" ${CURRENT_USER?'readonly title="O caixa é do login que o abre"':''}></div>
+    <div class="field"><label>Nome do caixa</label><input id="cx-nome" value="Caixa ${caixaAbertasHoje().length+1}"></div>
+    ${caixaAbertasHoje().length?`<div class="t-mut" style="font-size:12px;margin-bottom:8px">${ico('bank')} Já há ${NUM(caixaAbertasHoje().length)} caixa(s) aberto(s) hoje: ${esc(caixaAbertasHoje().map(x=>(x.caixaNome||'Caixa')+' ('+(x.operador||'')+')').join(' · '))}. O seu será mais um, separado.</div>`:''}
     <div class="field"><label>Fundo de troco (R$)</label><input id="cx-fundo" type="number" step="0.01" value="0"></div>
     <button class="btn btn-amber" style="width:100%;justify-content:center" onclick="caixaAbrir()">${ico('check')} Abrir caixa</button>
   </div>`,true); }
 function caixaAbrir(){ const g=x=>(document.getElementById(x)||{}).value;
-  // Fecha qualquer caixa que tenha ficado aberto (de dia anterior ou duplicado da sincronização)
-  // ANTES de abrir o novo — assim só existe UM caixa aberto e o sistema não volta a pedir abertura.
-  try{ DB.all('caixaSessoes').filter(x=>x && x.status==='aberto').forEach(x=>DB.update('caixaSessoes',x.id,{status:'fechado',fechamento:new Date().toISOString(),fechamentoHora:nowTime(),fechadoAuto:true})); }catch(e){}
-  const fundo=+g('cx-fundo')||0; const s=DB.insert('caixaSessoes',{operador:(g('cx-op')||'').trim()||'Operador',caixaNome:(g('cx-nome')||'').trim()||'Caixa',
+  // v15/10-A: fecha só o que ficou aberto DESTE operador (dia anterior ou duplicado da sincronização) e as
+  // sessões antigas sem dono. Os caixas dos OUTROS operadores continuam abertos — cada um tem o seu.
+  const _uid=caixaUid();
+  try{ DB.all('caixaSessoes').filter(x=>x && x.status==='aberto' && (!x.operadorId || x.operadorId===_uid)).forEach(x=>DB.update('caixaSessoes',x.id,{status:'fechado',fechamento:new Date().toISOString(),fechamentoHora:nowTime(),fechadoAuto:true})); }catch(e){}
+  const fundo=+g('cx-fundo')||0; const s=DB.insert('caixaSessoes',{operador:(g('cx-op')||'').trim()||'Operador',operadorId:_uid||null,caixaNome:(g('cx-nome')||'').trim()||'Caixa',
     abertura:new Date().toISOString(), aberturaHora:nowTime(), data:today(), saldoInicial:fundo, status:'aberto'});
   DB.insert('caixaMovs',{sessaoId:s.id,tipo:'abertura',valor:fundo,descricao:'Abertura de caixa',data:today(),hora:nowTime()});
   closeModal(); buildNav(); logAcao('Abertura de caixa', (s.caixaNome||'Caixa')+' · fundo '+BRL(fundo)); toast('Caixa aberto','ok'); CAIXA.tab='resumo'; viewCaixa(); }
@@ -24537,14 +24666,14 @@ function caixaFechar(esperado, sid){ const s = sid ? DB.get('caixaSessoes',sid) 
   // esquecida em dias anteriores). Sem isso, o caixa continuava aparecendo como ABERTO após o fechamento,
   // porque caixaSessaoAberta() ainda encontrava outra sessão aberta.
   let extras=0;
-  DB.all('caixaSessoes').filter(x=>x && x.status==='aberto' && x.id!==s.id).forEach(x=>{
+  DB.all('caixaSessoes').filter(x=>x && x.status==='aberto' && x.id!==s.id && ((s.operadorId && x.operadorId===s.operadorId) || (!s.operadorId && !x.operadorId))).forEach(x=>{
     DB.update('caixaSessoes',x.id,{status:'fechado',fechamento:agoraISO,fechamentoHora:horaFech,fechadoAuto:true}); extras++; });
   try{ nuvemPushJa(); }catch(e){}   // empurra o fechamento para a nuvem imediatamente (evita voltar a 'aberto' numa sincronização)
   closeModal(); buildNav(); logAcao('Fechamento de caixa', 'esperado '+BRL(esperado)+' · contado '+BRL(contado)+(dif?(' · dif '+BRL(dif)):' · sem diferença')+(extras?(' · +'+extras+' sessão(ões) aberta(s) encerrada(s)'):'')); toast('Caixa fechado'+(dif?(' · diferença '+BRL(dif)):''),'ok'); CAIXA.tab='resumo'; viewCaixa();
   if(eraAnterior){ setTimeout(()=>{ toast('Agora abra o caixa de hoje para liberar as vendas.','ok'); try{ caixaAbrirModal(); }catch(e){} }, 500); } }
 function caixaRenderHist(){ const el=document.getElementById('caixa-hist-inner')||document.getElementById('caixa-hist-wrap'); if(!el)return;
-  const sess=DB.all('caixaSessoes').slice().sort((a,b)=>(b.abertura||'').localeCompare(a.abertura||''));
-  el.innerHTML=`<div class="card" style="margin-top:14px"><div class="card-head"><h3>${ico('clock')} Histórico de Sessões</h3></div>
+  const sess=DB.all('caixaSessoes').filter(x=>caixaEhAdmin()||caixaSessaoDoUsuario(x)).slice().sort((a,b)=>(b.abertura||'').localeCompare(a.abertura||''));   // operador: só os próprios caixas
+  el.innerHTML=`<div class="card" style="margin-top:14px"><div class="card-head"><h3>${ico('clock')} Histórico de Sessões${caixaEhAdmin()?'':' <span class="t-mut" style="font-size:12px;font-weight:400">(seus caixas)</span>'}</h3></div>
     <div class="tbl-wrap"><table><thead><tr><th>Data</th><th>Caixa</th><th>Operador</th><th>Abertura</th><th>Fechamento</th><th class="t-right">Saldo Inicial</th><th class="t-right">Saldo Final</th><th class="t-right">Diferença</th><th>Status</th><th class="t-center">Relatório</th></tr></thead><tbody>
     ${sess.length?sess.map(s=>`<tr><td class="tnum">${fDate(s.data)}</td><td>${esc(s.caixaNome||'')}</td><td>${esc(s.operador||'')}</td><td class="tnum">${esc(s.aberturaHora||'')}</td><td class="tnum">${esc(s.fechamentoHora||'—')}</td>
       <td class="t-right tnum">${BRL(s.saldoInicial||0)}</td><td class="t-right tnum">${s.status==='fechado'?BRL(s.saldoContado||0):'—'}</td>
@@ -24552,7 +24681,7 @@ function caixaRenderHist(){ const el=document.getElementById('caixa-hist-inner')
       <td><span class="tag ${s.status==='aberto'?'warn':'pos'}">${s.status==='aberto'?'Em aberto':'Conferido'}</span></td>
       <td class="t-center"><button class="btn-icon btn-ghost" title="Ver relatório do caixa (abertura, sangrias, suprimentos, vendas e fechamento)" onclick="caixaRelatorioModal('${s.id}')">${ico('doc')}</button></td></tr>`).join(''):`<tr><td colspan="10"><div class="empty" style="padding:30px">${ico('clock')}<h4>Sem sessões registradas</h4></div></td></tr>`}
     </tbody></table></div></div>`; }
-function caixaMensalHTML(){ const sess=DB.all('caixaSessoes').filter(s=>s.status==='fechado');
+function caixaMensalHTML(){ const sess=DB.all('caixaSessoes').filter(s=>s.status==='fechado' && (caixaEhAdmin()||caixaSessaoDoUsuario(s)));
   const totalVendas=sess.reduce((a,s)=>a+Math.round(caixaSomaVendas(caixaVendasSessao(s.id)).total*100),0)/100;
   const dif=sess.reduce((a,s)=>a+(s.diferenca||0),0);
   return `<div class="g4" style="margin-bottom:14px">
@@ -24657,7 +24786,7 @@ function caixaRelatorioHTML(s,ctx){ ctx=ctx||'view';
    </div>`, 'Conferência do dinheiro em caixa');
   return head+kpis+abertura+vendasForma+suprimentos+sangrias+recebimentos+fechamento;
 }
-function caixaRelSessoes(){ return DB.all('caixaSessoes').slice().sort((a,b)=>String(b.abertura||b.data||'').localeCompare(String(a.abertura||a.data||''))); }
+function caixaRelSessoes(){ return DB.all('caixaSessoes').filter(x=>caixaEhAdmin()||caixaSessaoDoUsuario(x)).slice().sort((a,b)=>String(b.abertura||b.data||'').localeCompare(String(a.abertura||a.data||''))); }
 function viewCaixaDiarioRel(){
   const sess=caixaRelSessoes();
   if(CAIXAREL.sid && !sess.some(s=>s.id===CAIXAREL.sid)) CAIXAREL.sid='';
@@ -32017,17 +32146,8 @@ async function focusTransmitirNota(noteId, modelo, opts){ opts=opts||{};
     nuvemLoginRapidoModal(()=>{ try{ focusTransmitirNota(noteId, md, opts); }catch(e){} });
     return {autorizado:false, processando:false, semSessao:true, motivo:'Sem login na nuvem neste computador'}; }
   DB.update('notasFiscais',noteId,{status:'processando'});
-  let r=await focusEmitir(DB.get('notasFiscais',noteId), md, {silent:true, noModal:true});
-  let _tent=0;
-  while(false /* Focus numera de forma central: NÃO reemitir em duplicidade (senão empurra o contador do Focus de 1 em 1). Se der duplicidade, ajuste o "Próximo número" no painel do Focus. */ && r && r.duplicidade && _tent<50){
-    _tent++;
-    const _at=DB.get('notasFiscais',noteId); const _base=(+((_at&&_at.numero)||n0.numero)||0); const _prox=_base+1;
-    fiscalSaveCfg(md==='65'?{proxNFCe:_prox+1}:{proxNFe:_prox+1});
-    DB.update('notasFiscais',noteId,{numero:_prox, status:'processando'});
-    toast('Nº '+_base+' já usado na SEFAZ — tentando o nº '+_prox+'… ('+_tent+')','ok');
-    r=await focusEmitir(DB.get('notasFiscais',noteId), md, {silent:true, noModal:true});
-    // avanço SEMPRE de 1 em 1 (sem aceleração) — mantém a numeração sequencial, sem vãos grandes
-  }
+  let r=await focusEmitirAvancando(noteId, md);   // v15/10-A: duplicidade na SEFAZ → avança o número e reenvia sozinho
+  const _tent=(r&&r.tentativasNum)||0;
   const _nf=DB.get('notasFiscais',noteId);
   if(r && r.autorizado){ toast('NF '+((_nf&&_nf.numero)||'')+' AUTORIZADA'+(_tent?' — numeração ajustada automaticamente':''),'ok');
     // Nota avulsa autorizada: mostra o mesmo DANFE das notas do PDV (com chave, status e ações),
@@ -35037,7 +35157,7 @@ async function notaEstornarExec(id){ const n=DB.get('notasFiscais',id); if(!n) r
   nfeNumeroConsumir('55', num);
   closeModal(); toast('Transmitindo a NF-e de estorno à SEFAZ…','ok');
   DB.update('notasFiscais',nova.id,{status:'processando'});
-  let r=null; try{ r=await focusEmitir(DB.get('notasFiscais',nova.id), '55', {silent:true, noModal:true}); }catch(e){ r={autorizado:false, motivo:(e&&e.message)||''+e}; }
+  let r=null; try{ r=await focusEmitirAvancando(nova.id, '55'); }catch(e){ r={autorizado:false, motivo:(e&&e.message)||''+e}; }
   if(r && (r.autorizado||r.processando)){
     DB.update('notasFiscais',n.id,{ estornadaPor:nova.id, estornadaEm:today(), estornoJust:just });
     try{ logAcao('NF-e de ESTORNO emitida', 'Estorna a NF-e nº '+(n.numero||'')+' · '+BRL(n.valor||0)+' · motivo: '+just, nova.id); }catch(e){}
