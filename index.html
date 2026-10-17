@@ -48,7 +48,7 @@ const CONFIG_EMPRESA = {
      Aparece no topo do menu e no rodapé das Configurações. Troque a cada publicação.
      MANTENHA O FORMATO 'vDD/MM-X' — é ele que o sistema usa para comparar as máquinas
      da loja e avisar quando alguma ficou para trás.                                  */
-  versao: 'v15/10-A',
+  versao: 'v16/10-A',
 
   /* 4) NUVEM (Supabase)  ------------------------------------------------------------
      Cole aqui a Project URL e a chave PUBLISHABLE do projeto Supabase DESTA empresa
@@ -33179,11 +33179,11 @@ function wizStep3(){ const nf=WIZ.nf; const cats=catProdNomes();
        <div class="field" style="margin:0;max-width:180px"><label>Margem Bruta Padrão (%)</label><input id="wiz-margem" type="number" step="0.1" value="${WIZ.margemPadrao}"></div>
        <button class="btn btn-ghost btn-sm" onclick="wizAplicarMargem()">Aplicar a Todos</button>
        <div class="field" style="margin:0;max-width:230px"><label>Frete pago por fora (R$) <span class="t-mut" style="font-weight:400;font-size:10px">— entra no custo, não na NF</span></label><input id="wiz-frete-fora" type="number" step="0.01" min="0" value="${WIZ.freteFora||''}" placeholder="0,00" onchange="wizSetFreteFora(this.value)"></div>
-       ${(()=>{ const tq=WIZ.itens.reduce((s,it)=>s+(+it.qCom||0),0); return (+WIZ.freteFora>0 && tq>0)?`<div class="t-mut" style="font-size:11.5px;align-self:center;line-height:1.3">Rateado por quantidade:<br><b>${BRL(WIZ.freteFora/tq)}/un</b> somado ao custo</div>`:''; })()}
+       ${(()=>{ const tq=wizUnidadesTotais(); return (+WIZ.freteFora>0 && tq>0)?`<div class="t-mut" style="font-size:11.5px;align-self:center;line-height:1.3">Rateado por <b>${NUM(tq,3)} un</b> (qtd × fator, itens marcados):<br><b>${BRL(WIZ.freteFora/tq)}/un</b> somado ao custo</div>`:''; })()}
      </div>
      <div class="tbl-wrap"><table class="wiz-items"><colgroup><col style="width:26px"><col style="width:15%"><col style="width:50px"><col style="width:8%"><col style="width:6.5%"><col style="width:78px"><col style="width:44px"><col style="width:8.5%"><col style="width:7.5%"><col style="width:8.5%"><col style="width:9.5%"><col style="width:8%"><col style="width:14%"></colgroup><thead><tr><th><input type="checkbox" ${WIZ.itens.every(i=>i._incluir!==false)?'checked':''} onchange="wizToggleAll(this.checked)"></th><th>Produto</th><th>Qtd</th><th>Finalidade</th><th>CFOP</th><th>Un</th><th>Fator</th><th>Custo Calc</th><th>Margem %</th><th>Preço Venda</th><th>Classificação</th><th>Marca</th><th>Associar a</th></tr></thead><tbody>
      ${WIZ.itens.map((it,i)=>`<tr style="${it._incluir===false?'opacity:.45':''}">
-       <td><input type="checkbox" ${it._incluir!==false?'checked':''} onchange="WIZ.itens[${i}]._incluir=this.checked;document.getElementById('wiz-step').innerHTML=wizStep3()"></td>
+       <td><input type="checkbox" ${it._incluir!==false?'checked':''} onchange="WIZ.itens[${i}]._incluir=this.checked;wizRatearFrete();document.getElementById('wiz-step').innerHTML=wizStep3()"></td>
        <td><div class="t-strong" style="font-size:12.5px">${esc(it.xProd)}${it.custoExtra>0?` <span style="background:#7c3aed;color:#fff;font-size:9.5px;font-weight:700;padding:1px 6px;border-radius:10px;white-space:nowrap" title="ST + IPI + Outras despesas do XML somados ao custo por unidade">ST/IPI/Out.desp. no custo +${BRL(it.custoExtra)}</span>`:''}</div><div class="t-mut" style="font-size:11px">Cód: ${esc(it.cProd||'—')} · ${(it.cEAN||it.cEANTrib)?('barras: '+esc(it.cEAN||it.cEANTrib)):'<span style="color:var(--amber-d)" title="O XML veio com SEM GTIN: o fornecedor não informou o código de barras deste item">nota sem código de barras</span>'}</div></td>
        <td><input type="number" step="any" class="mini-input" style="width:68px;text-align:center;font-weight:700;font-size:13px" value="${(it.qCom!=null&&!isNaN(it.qCom))?it.qCom:0}" onchange="wizSetQtd(${i},this.value)"></td>
        <td><select class="cc-sel" onchange="wizSetFinalidade(${i},this.value)"><option ${it.finalidade==='Revenda'?'selected':''}>Revenda</option><option ${it.finalidade==='Uso e consumo'?'selected':''}>Uso e consumo</option><option ${it.finalidade==='Imobilizado'?'selected':''}>Imobilizado</option></select></td>
@@ -33210,12 +33210,12 @@ function wizStep3(){ const nf=WIZ.nf; const cats=catProdNomes();
      <div class="card-pad" style="display:flex;justify-content:space-between"><button class="btn btn-ghost" onclick="wizGo(2)">${ico('chev')} Voltar</button><button class="btn btn-primary" onclick="wizGo(4)">Continuar para Revisão Fiscal ${ico('chev')}</button></div>
    </div>`;
 }
-function wizSetQtd(i,val){ const it=WIZ.itens[i]; const q=Math.max(0,+(''+val).replace(',','.')||0); it.qCom=q; it.qBase=(+it.fator>0)? Math.round((q/it.fator)*1000)/1000 : q; }
+function wizSetQtd(i,val){ const it=WIZ.itens[i]; const q=Math.max(0,+(''+val).replace(',','.')||0); it.qCom=q; it.qBase=(+it.fator>0)? Math.round((q/it.fator)*1000)/1000 : q;
+  if(+WIZ.freteFora>0){ wizRatearFrete(); wizRefreshRow(); } }   // v16/10-A: mudou a quantidade → o total de unidades mudou → refaz o rateio do frete
 function wizRecalc(i){ const it=WIZ.itens[i]; const f=+it.fator||1; if(it.qBase==null) it.qBase=it.qCom;
   it.qCom = Math.round((it.qBase*f)*1000)/1000; // QTD mostra a quantidade já convertida pelo fator
-  const _base = (f>1)? ((it.vUnCom+(it.custoExtra||0))/f) : ((it.vUnCom||0)+(it.custoExtra||0));
-  it.custoCalc = Math.round((_base + (+it.freteUnit||0))*100)/100;   // + frete pago por fora, rateado por unidade
-  wizAjustarPrecoOuMargem(it); wizRefreshRow(); }
+  // v16/10-A: o fator muda o total de unidades da nota → o frete é rateado de novo entre TODOS os itens
+  wizRatearFrete(); wizRefreshRow(); }
 /* versão TH — Mudou o FATOR (ou o frete por fora): só o CUSTO muda. Se o item está ligado a um produto do
    cadastro, o PREÇO DE VENDA é o que a loja já pratica e fica como está — recalcula-se a MARGEM a partir do
    novo custo. Antes, o preço de venda era refeito pela margem antiga e "pulava" (ex.: fator 12 numa caixa de
@@ -33226,13 +33226,21 @@ function wizAjustarPrecoOuMargem(it){
   else { it.precoVenda=Math.round(c*(1+(+it.margem||0)/100)*100)/100; } }
 // Frete pago por FORA da nota: rateia pela quantidade e soma no custo unitário de cada item
 // (muda o custo no cadastro do produto), SEM alterar o total/lançamento da NF-e.
-function wizSetFreteFora(val){ WIZ.freteFora=Math.max(0, +(''+val).replace(',','.')||0);
-  const totQ=WIZ.itens.reduce((s,it)=>s+(+it.qCom||0),0); const fpu=totQ>0?(WIZ.freteFora/totQ):0;
-  WIZ.itens.forEach(it=>{ it.freteUnit=Math.round(fpu*100)/100; const f=+it.fator||1;
-    const _b=(f>1)?((it.vUnCom+(it.custoExtra||0))/f):((it.vUnCom||0)+(it.custoExtra||0));
-    it.custoCalc=Math.round((_b+(+it.freteUnit||0))*100)/100;
+/* v16/10-A: RATEIO DO FRETE pela QUANTIDADE TOTAL DE UNIDADES, já multiplicada pelo FATOR de cada item
+   (ex.: 5 caixas × fator 12 = 60 unidades). Só entram os itens marcados na nota. É refeito SEMPRE que
+   muda o valor do frete, o fator, a quantidade ou a marcação dos itens — antes só era calculado ao digitar
+   o frete, e depois de mexer no fator o custo ficava com o rateio velho. O frete por unidade fica SEM
+   arredondar (a soma dos rateios fecha exatamente com o valor pago); só o custo final vai a centavos. */
+function wizUnidadesItem(it){ if(!it) return 0; const f=+it.fator||1; const base=(it.qBase!=null && !isNaN(+it.qBase))?(+it.qBase):((+it.qCom||0)/f); return Math.round(base*f*1000)/1000; }
+function wizUnidadesTotais(){ return (WIZ.itens||[]).reduce((s,it)=>s+(it._incluir===false?0:wizUnidadesItem(it)),0); }
+function wizCustoBaseUn(it){ const f=+it.fator||1; return (f>1)?(((+it.vUnCom||0)+(it.custoExtra||0))/f):((+it.vUnCom||0)+(it.custoExtra||0)); }
+function wizRatearFrete(){ const totU=wizUnidadesTotais(); const fpu=(+WIZ.freteFora>0 && totU>0)?(WIZ.freteFora/totU):0;
+  (WIZ.itens||[]).forEach(it=>{ it.freteUnit=(it._incluir===false)?0:Math.round(fpu*1e6)/1e6;
+    it.custoCalc=Math.round((wizCustoBaseUn(it)+(+it.freteUnit||0))*100)/100;
     wizAjustarPrecoOuMargem(it); });
-  wizRefreshRow(); }
+  return {totU, fpu}; }
+function wizSetFreteFora(val){ WIZ.freteFora=Math.max(0, +(''+val).replace(',','.')||0);
+  wizRatearFrete(); wizRefreshRow(); }
 function wizFromMargem(i){ const it=WIZ.itens[i]; it.precoVenda=Math.round(it.custoCalc*(1+(+it.margem||0)/100)*100)/100; wizRefreshRow(); }
 function wizFromPreco(i){ const it=WIZ.itens[i]; it.margem = it.custoCalc>0? Math.round((it.precoVenda/it.custoCalc-1)*1000)/10 : 0; wizRefreshRow(); }
 function wizAntes(it,campo){ if(!it.associarId) return ''; const p=DB.get('produtos',it.associarId); if(!p) return '';
@@ -33335,7 +33343,7 @@ function wizSetFinalidade(i,val){ const it=WIZ.itens[i]; it.finalidade=val; it._
   else if(val==='Imobilizado'){ it.f_cfop=wizCfopImobilizado(); it.f_csosn=''; it.inativo=true; it._fed.f_cfop=1; }
   else { const cp=contrapartidaDe(it.cfop); it.f_cfop=(cp&&cp.cfop)||'5102'; it.f_csosn=csosnVendaDeEntrada(it.csosn)||(cp&&cp.cst)||it.f_csosn||''; it.inativo=false; delete it._fed.f_cfop; delete it._fed.f_csosn; }
   wizRefreshRow(); }
-function wizToggleAll(v){ WIZ.itens.forEach(it=>it._incluir=!!v); const el=document.getElementById('wiz-step'); if(el)el.innerHTML=wizStep3(); }
+function wizToggleAll(v){ WIZ.itens.forEach(it=>it._incluir=!!v); wizRatearFrete(); const el=document.getElementById('wiz-step'); if(el)el.innerHTML=wizStep3(); }
 /* ===== CLASSIFICAÇÃO DO PRODUTO NA ENTRADA DE NOTA ===== */
 let WIZCLASS={ alvo:null, lista:null, cat:'', grupo:'', sub:'' };
 /* Como a classificação aparece no botão da linha. */
