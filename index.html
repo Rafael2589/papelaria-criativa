@@ -48,7 +48,7 @@ const CONFIG_EMPRESA = {
      Aparece no topo do menu e no rodapé das Configurações. Troque a cada publicação.
      MANTENHA O FORMATO 'vDD/MM-X' — é ele que o sistema usa para comparar as máquinas
      da loja e avisar quando alguma ficou para trás.                                  */
-  versao: 'v19/10-G',
+  versao: 'v19/10-H',
 
   /* 4) NUVEM (Supabase)  ------------------------------------------------------------
      Cole aqui a Project URL e a chave PUBLISHABLE do projeto Supabase DESTA empresa
@@ -4196,6 +4196,7 @@ function renderPDV(){
     </div>
     <button class="btn btn-ghost" onclick="kitPicker('pdv')" style="white-space:nowrap" title="Aplicar kit promocional">${ico('gift')} Kits</button>
   </div>
+  ${(function(){ try{ return servPdvBarraHTML(); }catch(e){ return ''; } })()}
   <!-- versão TP: no PDV, como no editor de orçamento, cliente/vendedor/canal ficam numa linha própria abaixo da busca de produtos -->
   <div class="orc-top orc-top2">
     <div style="display:flex;gap:6px;align-items:stretch;flex:2;min-width:260px">
