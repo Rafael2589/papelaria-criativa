@@ -48,7 +48,7 @@ const CONFIG_EMPRESA = {
      Aparece no topo do menu e no rodapé das Configurações. Troque a cada publicação.
      MANTENHA O FORMATO 'vDD/MM-X' — é ele que o sistema usa para comparar as máquinas
      da loja e avisar quando alguma ficou para trás.                                  */
-  versao: 'v16/10-A',
+  versao: 'v19/10-A',
 
   /* 4) NUVEM (Supabase)  ------------------------------------------------------------
      Cole aqui a Project URL e a chave PUBLISHABLE do projeto Supabase DESTA empresa
@@ -21692,11 +21692,41 @@ const SERV_PADRAO=[
   {nome:'PLASTIFICAÇÃO A4', faixas:[{ate:0,preco:5}]},
   {nome:'ENCADERNAÇÃO ESPIRAL', faixas:[{ate:0,preco:8}]} ];
 function servLista(){ return DB.all('produtos').filter(p=>p && p.servico && (p.situacao||'ativo')!=='inativo').sort((a,b)=>(a.nome||'').localeCompare(b.nome||'','pt-BR')); }
-function servCandidatosConverter(){ return DB.all('produtos').filter(p=>p && !p.servico && (p.situacao||'ativo')!=='inativo' && /\b(IMPRESS|COPIA|CÓPIA|XEROX|PLASTIFIC|ENCADERN|DIGITALIZ|SCANNER)/i.test(p.nome||'')).slice(0,40); }
+function servCandidatosConverter(){ return DB.all('produtos').filter(p=>p && !p.servico && (p.situacao||'ativo')!=='inativo' && /\b(IMPRESS|COPIA|CÓPIA|XEROX|PLASTIFIC|ENCADERN|DIGITALIZ|SCANNER)/i.test(p.nome||'')); }
 function servVendidoMes(){ const ini=today().slice(0,8)+'01'; let q=0, v=0;
   DB.all('vendas').forEach(s=>{ if(!s || s.status==='cancelada' || (s.data||'')<ini) return; if(typeof pedidoStatusInfo==='function' && pedidoStatusInfo(s).k!=='faturado') return;
     (s.itens||[]).forEach(i=>{ const p=DB.get('produtos',i.produtoId||i.id); if(p && p.servico){ q+=(+i.qtd||0); v+=(+i.qtd||0)*(+i.preco||0); } }); });
   return {q:Math.round(q*1000)/1000, v:Math.round(v*100)/100}; }
+
+/* v19/10-A: BUSCA NO CADASTRO DE PRODUTOS por SKU (um ou vários) ou nome, para marcar como serviço o que a
+   detecção automática não pegou. Vários SKUs: separe por vírgula, espaço ou ponto e vírgula (ex.: 15, 66, 166). */
+function servBuscaProdutos(q){ q=(q||'').trim(); if(!q) return [];
+  const toks=q.split(/[,;\s]+/).map(t=>t.trim()).filter(Boolean); const todos=DB.all('produtos').filter(p=>p);
+  if(toks.length>1 && toks.every(t=>/^[A-Za-z0-9._\/-]+$/.test(t))){ const set=new Set(toks.map(t=>t.toLowerCase()));
+    const porSku=todos.filter(p=>set.has(String(p.sku==null?'':p.sku).trim().toLowerCase())); if(porSku.length) return porSku; }
+  const exato=todos.filter(p=>String(p.sku==null?'':p.sku).trim().toLowerCase()===q.toLowerCase());
+  const resto=todos.filter(p=>!exato.includes(p) && matchTokens((p.nome||'')+' '+(p.sku||'')+' '+(p.codigoBarras||'')+' '+(p.marca||''), q));
+  return exato.concat(resto); }
+function servBuscaRender(){ const el=document.getElementById('serv-busca-res'); if(!el) return; const q=((document.getElementById('serv-busca')||{}).value||'').trim();
+  if(!q){ el.innerHTML='<div class="t-mut" style="font-size:12px">Digite o SKU (ou vários SKUs separados por vírgula) ou parte do nome do produto cadastrado.</div>'; return; }
+  const R=servBuscaProdutos(q); const LIM=80; const vis=R.slice(0,LIM);
+  if(!R.length){ el.innerHTML='<div class="t-mut" style="font-size:12.5px;padding:8px 0">Nenhum produto cadastrado com esse SKU/nome.</div>'; return; }
+  const pend=vis.filter(p=>!p.servico);
+  el.innerHTML=`<div class="t-mut" style="font-size:12px;margin-bottom:6px">${NUM(R.length)} produto(s) encontrado(s)${R.length>LIM?(' — mostrando os '+LIM+' primeiros; refine a busca'):''}${pend.length?` · <label style="cursor:pointer"><input type="checkbox" onchange="document.querySelectorAll('.serv-bchk').forEach(c=>c.checked=this.checked)"> marcar todos</label>`:''}</div>
+    <div style="display:flex;flex-direction:column;gap:2px;max-height:46vh;overflow:auto">${vis.map(p=>`<div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;border-bottom:1px solid var(--line-2);padding:5px 0">
+      ${p.servico?'<span style="width:16px"></span>':`<input type="checkbox" class="serv-bchk" value="${esc(p.id)}">`}
+      <span style="flex:1;min-width:200px"><b>${esc(p.nome)}</b> <span class="t-mut" style="font-size:11.5px">SKU ${esc(p.sku||'—')} · ${BRL(+p.preco||0)} · estoque ${fmtQ(p.estoque||0)}${(p.situacao||'ativo')==='inativo'?' · inativo':''}</span></span>
+      ${p.servico?`<span class="tag pos" style="font-size:10.5px">já é serviço</span>`:`<button class="btn btn-ghost btn-sm" onclick="servConverter('${esc(p.id)}')">${ico('check')} Marcar como serviço</button>`}</div>`).join('')}</div>
+    ${pend.length?`<div style="margin-top:8px"><button class="btn btn-amber btn-sm" onclick="servConverterMarcados()">${ico('check')} Marcar selecionados como serviço</button></div>`:''}`; }
+function servConverterAplicar(p){ DB.update('produtos',p.id,{servico:true, servicoAtalho:true, categoria:'SERVIÇOS', grupo:'SERVIÇOS', subgrupo:'', estoque:0, estoqueMinimo:0, faixasPreco:(p.faixasPreco&&p.faixasPreco.length)?p.faixasPreco:[{ate:0,preco:+p.preco||0}]}); }
+function servConverterLista(ids){ const ps=(ids||[]).map(id=>DB.get('produtos',id)).filter(p=>p && !p.servico); if(!ps.length){ toast('Nada para converter','err'); return; }
+  if(!confirm('Marcar '+ps.length+' produto(s) como SERVIÇO?\n\n• Saem do controle de estoque (não baixam nas vendas, não entram na contagem)\n• Passam para a categoria SERVIÇOS\n• O histórico de vendas continua igual\n\n'+ps.slice(0,8).map(p=>'• '+p.nome+' (SKU '+(p.sku||'—')+')').join('\n')+(ps.length>8?('\n… e mais '+(ps.length-8)):''))) return;
+  try{ catRegistrar('SERVIÇOS','produto'); }catch(e){}
+  DB.bulk(()=>{ ps.forEach(p=>servConverterAplicar(p)); }); DB._persist();
+  try{ logAcao('Produtos marcados como serviço', ps.length+' produto(s): '+ps.slice(0,5).map(p=>p.nome).join(', ')+(ps.length>5?'…':'')); }catch(e){} try{ nuvemPushJa(); }catch(e){}
+  toast(ps.length+' produto(s) agora são serviço','ok'); viewServPap(); }
+function servConverterMarcados(){ servConverterLista([...document.querySelectorAll('.serv-bchk:checked')].map(c=>c.value)); }
+function servConverterTodosCandidatos(){ servConverterLista(servCandidatosConverter().map(p=>p.id)); }
 function viewServPap(){ const L=servLista(); const conv=servCandidatosConverter(); const mes=servVendidoMes();
   document.getElementById('view').innerHTML=`
    <div class="bi-banner" style="margin-bottom:16px"><div>${ico('print')}</div>
@@ -21713,9 +21743,13 @@ function viewServPap(){ const L=servLista(); const conv=servCandidatosConverter(
       <td class="t-right"><button class="btn-icon btn-ghost" onclick="servForm('${p.id}')" title="Editar">${ico('edit')}</button><button class="btn-icon btn-ghost" style="color:var(--neg)" onclick="servRemover('${p.id}')" title="Deixa de ser serviço / inativa">${ico('trash')}</button></td></tr>`).join('')
      :`<tr><td colspan="6"><div class="empty" style="padding:26px">${ico('print')}<h4>Nenhum serviço cadastrado</h4><p class="t-mut">Clique em <b>Criar serviços padrão</b> (cópia, impressão, plastificação, encadernação) e ajuste os preços.</p></div></td></tr>`}
    </tbody></table></div></div>
-   ${conv.length?`<div class="card card-pad" style="margin-top:14px"><b style="font-size:13px">${ico('alert')} Produtos que parecem serviço</b>
+   <div class="card card-pad" style="margin-top:14px"><b style="font-size:13px">${ico('search')} Buscar no cadastro de produtos</b>
+     <p class="t-mut" style="font-size:12px;margin:4px 0 8px">Procure por <b>SKU</b> (um ou vários, separados por vírgula) ou pelo nome — para marcar como serviço o que não apareceu na lista abaixo.</p>
+     <input id="serv-busca" class="pill-filter" style="width:100%;max-width:520px" placeholder="SKU ou nome — ex.: 1441  ou  15, 66, 166  ou  xerox" oninput="servBuscaRender()" onkeydown="if(event.key==='Enter')servBuscaRender()">
+     <div id="serv-busca-res" style="margin-top:10px"><div class="t-mut" style="font-size:12px">Digite o SKU (ou vários SKUs separados por vírgula) ou parte do nome do produto cadastrado.</div></div></div>
+   ${conv.length?`<div class="card card-pad" style="margin-top:14px"><div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap"><b style="font-size:13px;flex:1">${ico('alert')} Produtos que parecem serviço (${NUM(conv.length)})</b><button class="btn btn-amber btn-sm" onclick="servConverterTodosCandidatos()">${ico('check')} Marcar todos como serviço</button></div>
      <p class="t-mut" style="font-size:12px;margin:4px 0 8px">Estão cadastrados como produto (mexem no estoque e na contagem). Marque como serviço para tirar do estoque.</p>
-     <div style="display:flex;flex-direction:column;gap:6px">${conv.map(p=>`<div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;border-bottom:1px solid var(--line-2);padding:5px 0"><span style="flex:1;min-width:200px"><b>${esc(p.nome)}</b> <span class="t-mut" style="font-size:11.5px">SKU ${esc(p.sku||'—')} · ${BRL(+p.preco||0)} · estoque ${NUM(+p.estoque||0)}</span></span>
+     ${conv.length>100?`<div class="t-mut" style="font-size:12px;margin-bottom:6px">Mostrando os 100 primeiros de ${NUM(conv.length)} — "Marcar todos" converte todos; ou use a busca acima.</div>`:''}<div style="display:flex;flex-direction:column;gap:6px">${conv.slice(0,100).map(p=>`<div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;border-bottom:1px solid var(--line-2);padding:5px 0"><span style="flex:1;min-width:200px"><b>${esc(p.nome)}</b> <span class="t-mut" style="font-size:11.5px">SKU ${esc(p.sku||'—')} · ${BRL(+p.preco||0)} · estoque ${NUM(+p.estoque||0)}</span></span>
        <button class="btn btn-ghost btn-sm" onclick="servConverter('${p.id}')">${ico('check')} Marcar como serviço</button></div>`).join('')}</div></div>`:''}`; }
 function servNovoProduto(nome, faixas, extra){ const pr=(faixas&&faixas.length)?(+faixas[0].preco||0):0;
   try{ catRegistrar('SERVIÇOS','produto'); }catch(e){}
