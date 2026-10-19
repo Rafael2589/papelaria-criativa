@@ -48,7 +48,7 @@ const CONFIG_EMPRESA = {
      Aparece no topo do menu e no rodapé das Configurações. Troque a cada publicação.
      MANTENHA O FORMATO 'vDD/MM-X' — é ele que o sistema usa para comparar as máquinas
      da loja e avisar quando alguma ficou para trás.                                  */
-  versao: 'v19/10-J',
+  versao: 'v19/10-K',
 
   /* 4) NUVEM (Supabase)  ------------------------------------------------------------
      Cole aqui a Project URL e a chave PUBLISHABLE do projeto Supabase DESTA empresa
@@ -4124,7 +4124,7 @@ function formaTipoPeloNome(nome){ const n=normTxt(nome||''); if(/cred/.test(n)) 
 function formaExtraMaquina(forma){ const x=formaPagExtra(forma||''); if(!x||!formaTipoCartao(forma)) return ''; return (x.maquina && maquinasCartao().some(m=>m.id===x.maquina))?x.maquina:'padrao'; }
 const CART={ itens:[], clienteId:null, clienteNome:'', desconto:0, descModo:'valor', descPct:0, pagamento:'PIX', pagamentos:[], canal:'', entrega:false, frete:0, distanciaKm:0, enderecoEntrega:'', obs:'', fromOrcId:null, fromOrcNumero:null, faturaPedidoId:null, faturaPedidoNumero:null, vendedorId:null, vendedorNome:null, contratoId:null };
 function numBR(v){ v=(''+(v==null?'':v)).trim(); if(!v)return 0; if(v.indexOf(',')>-1){ v=v.replace(/\./g,'').replace(',','.'); } const n=parseFloat(v); return isNaN(n)?0:n; }
-function cartSub(){ return CART.itens.reduce((s,i)=>s+i.qtd*i.preco,0); }
+function cartSub(){ try{ servRecalcItens(CART.itens,'id'); }catch(e){} return CART.itens.reduce((s,i)=>s+i.qtd*i.preco,0); }
 function cartFrete(){ return CART.entrega?Math.round((+CART.frete||0)*100)/100:0; }
 function cartTotalValue(){ return Math.round((Math.max(0,cartSub()-CART.desconto)+cartFrete())*100)/100; }
 /* VENDAS QUE FICARAM SEM NOTA POR ERRO NA EMISSÃO — continuam aqui no PDV para emitir a nota
@@ -4215,7 +4215,7 @@ function renderPDV(){
   <div class="pdv-grid">
     <div class="card">
       <div class="card-head"><div><h3>Itens da venda</h3><div class="ch-sub">Ajuste quantidades e preços</div></div>
-        ${CART.itens.length?`<button class="btn btn-ghost btn-sm" onclick="clearCart()">Limpar</button>`:''}</div>
+        <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">${pdvContadoresHTML()}${CART.itens.length?`<button class="btn btn-ghost btn-sm" onclick="clearCart()">Limpar</button>`:''}</div></div>
       <div class="card-pad" style="padding-top:8px">
         ${CART.fromOrcId?`<div class="orc-imported">${ico('quote')}<span>Orçamento Nº <b>${CART.fromOrcNumero}</b> importado</span><button onclick="clearCart()" title="Descartar">${ico('x')}</button></div>`:''}
         <div class="cart-items" id="cart-items">${CART.itens.length?cartRows():`<div class="empty" style="padding:40px 20px"><h4>Venda não iniciada</h4><p class="t-mut">Busque produtos acima e adicione ao carrinho para registrar a venda.</p></div>`}</div>
@@ -4261,6 +4261,7 @@ function renderPDV(){
      sempre respeitando onde o operador já estiver digitando. */
   if(window.__pdvFocoCliente) pdvFocoInicial(); else setTimeout(()=>{ const s=document.getElementById('pdv-q'); if(s)s.focus(); },60);
   pdvUpdCliComplete();
+  pdvAjustarAlturaItens();
 }
 function pdvFocoLivre(){ const a=document.activeElement;
   return !a || a===document.body || a.id==='pdv-q' || a.id==='cart-cli__ac'; }
@@ -4274,6 +4275,26 @@ function pdvFocoInicial(){ [60,260,650].forEach(ms=>setTimeout(()=>{
   },ms)); }
 function pdvEntregaTop(v){ if(!!v===!!CART.entrega){ renderPDV(); return; } pdvToggleEntrega(); renderPDV(); }
 function cartRetira(idx){ const it=CART.itens[idx]; if(!it) return; it.retiradoLoja=!it.retiradoLoja; renderPDV(); }
+/* Contadores do carrinho: quantos PRODUTOS diferentes (SKU) e quantos ITENS (soma das quantidades). */
+function pdvContadores(){ const skus=new Set(); let itens=0;
+  CART.itens.forEach(i=>{ if(!i) return; skus.add(i.id||i.produtoId||i.nome); itens+=(+i.qtd||0); });
+  return {skus:skus.size, itens:Math.round(itens*1000)/1000}; }
+function pdvContadoresHTML(){ const c=pdvContadores();
+  const chip=(lbl,val,tip)=>`<span title="${esc(tip)}" style="display:inline-flex;align-items:center;gap:6px;border:1px solid var(--line);border-radius:9px;padding:4px 10px;font-size:12px;background:var(--surface)"><span class="t-mut">${lbl}</span><b class="tnum" style="font-size:13.5px">${val}</b></span>`;
+  return chip('SKUs', NUM(c.skus), 'Produtos diferentes na venda')+chip('Itens', fmtQ(c.itens), 'Quantidade total de itens (soma das quantidades)'); }
+function abrirLista(el){ try{ if(el && typeof el.showPicker==='function') el.showPicker(); }catch(e){} }
+function fmtMoeda(v){ return (Math.round((+v||0)*100)/100).toFixed(2).replace('.',','); }
+function pdvAjustarAlturaItens(){ const calc=()=>{ try{
+    const itens=document.getElementById('cart-items'); const grid=document.querySelector('.pdv-grid'); if(!itens||!grid) return;
+    const side=grid.querySelector('.cart-side > .card'); const card=itens.closest('.card'); if(!side||!card) return;
+    if(window.innerWidth<1000){ itens.style.maxHeight=''; card.style.minHeight=''; return; }   // tela estreita: as colunas ficam uma embaixo da outra
+    card.style.minHeight='';
+    const outros=card.offsetHeight-itens.offsetHeight;                 // cabeçalho, sugestões e espaçamentos do quadro
+    const alvo=Math.round(side.offsetHeight-outros);
+    itens.style.maxHeight=Math.max(340, alvo)+'px';
+    card.style.minHeight=side.offsetHeight+'px'; }catch(e){} };
+  requestAnimationFrame(calc); setTimeout(calc,120); }
+window.addEventListener('resize', ()=>{ try{ if(STATE.route==='pdv') pdvAjustarAlturaItens(); }catch(e){} });
 function pdvParseQty(raw){ const m=(''+(raw||'')).match(/^\s*(\d+(?:[.,]\d+)?)\s*\*\s*(.*)$/); if(m){ const q=parseFloat(m[1].replace(',','.')); return {qty:(q>0?q:null), rest:m[2]}; } return {qty:null, rest:raw||''}; }
 function pdvSearch(raw){ const parsed=pdvParseQty(raw); PDVS.qtyPrefix=parsed.qty; const q=(parsed.rest||'').trim().toLowerCase(); const dd=document.getElementById('pdv-dd'); if(!dd)return;
   if(q.length<1){ PDVS.results=[]; PDVS.activePid=null; dd.classList.remove('on'); dd.innerHTML=''; return; }
@@ -4305,11 +4326,11 @@ function renderPdvResults(){ const dd=document.getElementById('pdv-dd'); if(!dd)
   dd.innerHTML=PDVS.results.map(p=>{ const active=p.id===PDVS.activePid; const emb=p.embalagemVenda&&p.qtdPorEmbalagem>0; const un=(p.unidade||'UN').toUpperCase();
     return `<div class="orc-row ${active?'active':''}" data-pid="${p.id}" onclick="pdvActivate('${p.id}')">
       <div style="flex:1;min-width:0"><div class="orc-rn">${esc(p.nome)}</div>
-        <div class="orc-rs">SKU: ${esc(p.sku||'—')} • Est: ${fmtQ(p.estoque)} ${esc(un)}${emb?` • ${esc(p.embalagemTipo||'Caixa')} de ${NUM(p.qtdPorEmbalagem,2)} ${esc(un)}`:''}${p.estoque<=0?' • <span style="color:var(--neg)">sem estoque</span>':''}</div></div>
-      <div class="orc-rp">${BRL(p.preco)}</div>
+        <div class="orc-rs">SKU: ${esc(p.sku||'—')} • ${p.servico?'<b style="color:var(--blue)">Serviço</b> (sem estoque)':`Est: ${fmtQ(p.estoque)} ${esc(un)}`}${emb?` • ${esc(p.embalagemTipo||'Caixa')} de ${NUM(p.qtdPorEmbalagem,2)} ${esc(un)}`:''}${(p.estoque<=0&&!p.servico)?' • <span style="color:var(--neg)">sem estoque</span>':''}</div></div>
+      <div class="orc-rp">${produtoPromoAtiva(p)?`<span class="t-mut" style="font-size:11px;font-weight:500;text-decoration:line-through">${BRL(p.preco)}</span> <span style="color:var(--pos)">${BRL(p.precoPromo)}</span> <span style="background:var(--pos);color:#fff;font-size:9px;font-weight:700;padding:1px 5px;border-radius:8px;vertical-align:middle">PROMOÇÃO</span>`:BRL(p.preco)}</div>
       ${active?`<div class="orc-inl" onclick="event.stopPropagation()">
         <label>${emb?'Qtd ('+esc(un)+'):':'Qtd:'}</label><input id="pdv-rq" type="number" min="0" step="any" value="${PDVS.qtyPrefix||1}" onkeydown="pdvRowKey(event)">
-        <label>R$:</label><input id="pdv-rp" type="number" step="0.01" value="${p.preco}" oninput="pdvPriceToDisc()" onkeydown="pdvRowKey(event)">
+        <label>R$:</label><input id="pdv-rp" type="number" step="0.01" value="${precoVigente(p)}" oninput="pdvPriceToDisc()" onkeydown="pdvRowKey(event)">
         <label>%:</label><input id="pdv-rd" type="number" step="0.01" value="0" oninput="pdvDiscToPrice()" onkeydown="pdvRowKey(event)">
         <button class="orc-add" title="Adicionar" onclick="pdvAddActive()">${ico('plus')}</button></div>
       ${emb?`<div class="orc-embnote" onclick="event.stopPropagation()">${ico('box')} Vendido em <b>${esc(p.embalagemTipo||'Caixa')}</b> de ${NUM(p.qtdPorEmbalagem,2)} ${esc(un)} — a quantidade é arredondada para embalagem fechada.</div>`:''}`:''}
@@ -4324,9 +4345,23 @@ function pdvRowKey(e){ if(e.key!=='Enter') return; e.preventDefault(); const id=
   else if(id==='pdv-rp'){ const el=document.getElementById('pdv-rd'); if(el){el.focus();el.select();} }
   else { pdvAddActive(); } }
 function pdvAddActive(){ const p=DB.get('produtos',PDVS.activePid); if(!p){ toast('Selecione um produto','err'); return; }
-  if(p.estoque<=0 && !permiteVendaSemEstoque()){ toast('Produto sem estoque','err'); return; }
+  if(p.estoque<=0 && !p.servico && !permiteVendaSemEstoque()){ toast('Produto sem estoque','err'); return; }
   const qIn=Math.max(0.001,+(document.getElementById('pdv-rq')||{}).value||1);
-  const unit=Math.round(Math.max(0,+(document.getElementById('pdv-rp')||{}).value||p.preco)*100)/100; const lista=p.preco;
+  // v15/10-A: o preço PROMOCIONAL vale sozinho no PDV (como no supermercado): o campo já vem com ele e,
+  // no código de barras (campo vazio), o preço vigente é o promocional. Só o atacado (depende da quantidade) pergunta.
+  const _promoAtiva=produtoPromoAtiva(p); const _vig=Math.round(precoVigente(p)*100)/100;
+  let unit=Math.round(Math.max(0,+(document.getElementById('pdv-rp')||{}).value||_vig)*100)/100; const lista=p.preco;
+  let _promoUsada=_promoAtiva && Math.abs(unit-_vig)<0.01;
+  if(_promoAtiva && Math.abs(unit-p.preco)<0.01 && Math.abs(unit-_vig)>=0.01){ unit=_vig; _promoUsada=true; }   // veio o preço de lista por engano: vale a promoção
+  if(_promoUsada){ try{ toast('Preço promocional aplicado: '+BRL(_vig)+' (-'+Math.round((1-_vig/p.preco)*100)+'%)','ok'); }catch(e){} }
+  try{ if(Math.abs(unit-_vig)<0.01){ const un=(p.unidade||'UN').toUpperCase();
+    const promo=0; const atacMin=+p.atacadoQtdMin||0;
+    const atacado=(p.precoAtacado>0 && atacMin>0 && qIn>=atacMin && p.precoAtacado<unit)?Math.round(p.precoAtacado*100)/100:0;
+    const cands=[]; if(promo) cands.push({tipo:'promocional', valor:promo, extra:''}); if(atacado) cands.push({tipo:'de atacado', valor:atacado, extra:' (a partir de '+NUM(atacMin)+' '+un+')'});
+    if(cands.length){ cands.sort((a,b)=>a.valor-b.valor); const best=cands[0]; const pct=Math.round((1-best.valor/p.preco)*100);
+      const outros=cands.length>1?('\n\n(há também o preço '+cands[1].tipo+' de '+BRL(cands[1].valor)+' — será usado o menor)'):'';
+      if(confirm('Este produto tem preço '+best.tipo+' de '+BRL(best.valor)+best.extra+' (desconto de '+pct+'% sobre '+BRL(p.preco)+').'+outros+'\n\nAdotar este valor?\n\nOK = Sim   |   Cancelar = Não')){
+        unit=best.valor; toast('Preço '+best.tipo+' aplicado: '+BRL(best.valor)+' (-'+pct+'%)','ok'); } } } }catch(e){}
   if(ehMadeiraSerrada(p)){                                          // pergunta o tamanho da peça (0,5 em 0,5 m)
     const tam=madeiraTamanhoPrompt(p.nome); if(tam===null) return;
     const precoMetro=unit; const custoMetro=+p.custo||0;
@@ -4340,7 +4375,7 @@ function pdvAddActive(){ const p=DB.get('produtos',PDVS.activePid); if(!p){ toas
     if(ex && cartDupMerge(p.nome)){ ex.pacotes+=pacotes; ex.qtd=Math.round(ex.pacotes*p.qtdPorEmbalagem*1000)/1000; ex.preco=unit; ex.precoLista=lista; }
     else CART.itens.push({id:p.id,nome:p.nome,preco:unit,precoLista:lista,custo:p.custo,unidade:p.unidade,embalagem:true,qtdPorEmbalagem:p.qtdPorEmbalagem,embalagemTipo:p.embalagemTipo||'Caixa',pacotes,qtd});
   } else { const ex=CART.itens.find(i=>i.id===p.id && !i.embalagem);
-    if(ex && cartDupMerge(p.nome)){ ex.qtd+=qIn; ex.preco=unit; ex.precoLista=lista; } else CART.itens.push({id:p.id,nome:p.nome,qtd:qIn,preco:unit,precoLista:lista,custo:p.custo,unidade:p.unidade}); }
+    if(ex && cartDupMerge(p.nome)){ ex.qtd+=qIn; ex.preco=unit; ex.precoLista=lista; ex.promo=!!_promoUsada; } else CART.itens.push({id:p.id,nome:p.nome,qtd:qIn,preco:unit,precoLista:lista,custo:p.custo,unidade:p.unidade,promo:!!_promoUsada}); }
   PDVS.results=[]; PDVS.activePid=null; PDVS.qtyPrefix=null; renderPDV();
   scrollAteItem('cart-items', CART.itens.findIndex(i=>i.id===p.id)); }
 function pdvKey(e){ if(!PDVS.results.length){ if(e.key==='Enter')e.preventDefault(); return; }
@@ -4351,7 +4386,22 @@ function pdvKey(e){ if(!PDVS.results.length){ if(e.key==='Enter')e.preventDefaul
   else if(e.key==='End'){ e.preventDefault(); const n=PDVS.results[PDVS.results.length-1]; if(n){PDVS.activePid=n.id;renderPdvResults();ddScrollAtivo('pdv-dd',n.id);} }
   else if(e.key==='PageDown'){ e.preventDefault(); const n=PDVS.results[Math.min(PDVS.results.length-1,(idx<0?0:idx)+5)]; if(n){PDVS.activePid=n.id;renderPdvResults();ddScrollAtivo('pdv-dd',n.id);} }
   else if(e.key==='PageUp'){ e.preventDefault(); const n=PDVS.results[Math.max(0,(idx<0?0:idx)-5)]; if(n){PDVS.activePid=n.id;renderPdvResults();ddScrollAtivo('pdv-dd',n.id);} }
-  else if(e.key==='Enter'){ e.preventDefault(); if(PDVS.qtyPrefix && PDVS.activePid){ const rq=document.getElementById('pdv-rq'); if(rq)rq.value=PDVS.qtyPrefix; pdvAddActive(); return; } const rq=document.getElementById('pdv-rq'); if(rq){ rq.focus(); rq.select(); } } }
+  else if(e.key==='Enter'){ e.preventDefault();
+    // LEITOR DE CÓDIGO DE BARRAS: o leitor digita o código e manda Enter. Se o que está no campo é
+    // exatamente um código de barras cadastrado, lança o produto com quantidade 1 (ou a do prefixo "3*") e volta
+    // para a busca — sem parar no campo de quantidade. Busca por nome continua igual (Enter vai para a quantidade).
+    try{ const pb=pdvProdutoPorBarra(((document.getElementById('pdv-q')||{}).value||'')); if(pb){ pdvLancarBarra(pb); return; } }catch(ex){}
+    if(PDVS.qtyPrefix && PDVS.activePid){ const rq=document.getElementById('pdv-rq'); if(rq)rq.value=PDVS.qtyPrefix; pdvAddActive(); return; } const rq=document.getElementById('pdv-rq'); if(rq){ rq.focus(); rq.select(); } } }
+function pdvProdutoPorBarra(raw){ const parsed=pdvParseQty(raw); const q=(parsed.rest||'').trim(); if(!/^\d{6,14}$/.test(q)) return null;
+  const cands=DB.all('produtos').filter(p=>p && prodVendavel(p) && [p.codigoBarras].concat(p.codigosBarrasAdic||[]).some(c=>String(c==null?'':c).replace(/\D/g,'')===q));
+  if(!cands.length) return null;
+  if(cands.length>1){ const at=cands.find(p=>p.id===PDVS.activePid); return at||cands[0]; }   // mesmo código em 2 cadastros: o que está marcado na lista
+  return cands[0]; }
+function pdvLancarBarra(p){ PDVS.activePid=p.id;
+  const rq=document.getElementById('pdv-rq'); if(rq) rq.value=PDVS.qtyPrefix||1;
+  const rp=document.getElementById('pdv-rp'); if(rp) rp.value='';
+  pdvAddActive();
+  setTimeout(()=>{ try{ const i=document.getElementById('pdv-q'); if(i){ i.value=''; i.focus(); } }catch(e){} },30); }
 /* O texto do campo é um código de barras cadastrado (principal ou adicional)? Devolve o produto. */
 
 
@@ -4379,7 +4429,7 @@ function cartRows(){ try{ servRecalcItens(CART.itens,'id'); }catch(e){}
         <label class="cr2-retira" title="Cliente levou na hora (retira na loja)" style="display:flex;align-items:center;gap:5px;cursor:pointer;white-space:nowrap;padding-right:8px;color:${it.retiradoLoja?'var(--pos)':'var(--muted)'}">
           <input type="checkbox" ${it.retiradoLoja?'checked':''} onchange="cartRetira(${idx})" style="width:15px;height:15px;cursor:pointer">
           <span style="font-size:11px;font-weight:${it.retiradoLoja?'700':'500'}">Retira</span></label>
-        <div class="cr-name"><div class="n">${esc(it.nome)}${it.kitId?` <span style="background:#7c3aed;color:#fff;font-size:9px;font-weight:700;padding:1px 5px;border-radius:8px;vertical-align:middle">KIT</span>`:''}${it.madeira?` <span style="background:#7c3aed;color:#fff;font-size:9px;font-weight:700;padding:1px 5px;border-radius:8px;vertical-align:middle">MADEIRA</span>`:''}${it.retiradoLoja?` <span style="background:#dc2626;color:#fff;font-size:9px;font-weight:800;padding:1px 5px;border-radius:8px;vertical-align:middle" title="Marcado no pedido como retirado na loja">RETIRADO</span>`:''}</div>
+        <div class="cr-name"><div class="n">${esc(it.nome)}${it.kitId?` <span style="background:#7c3aed;color:#fff;font-size:9px;font-weight:700;padding:1px 5px;border-radius:8px;vertical-align:middle">KIT</span>`:''}${it.madeira?` <span style="background:#7c3aed;color:#fff;font-size:9px;font-weight:700;padding:1px 5px;border-radius:8px;vertical-align:middle">MADEIRA</span>`:''}${it.promo?` <span style="background:var(--pos);color:#fff;font-size:9px;font-weight:700;padding:1px 5px;border-radius:8px;vertical-align:middle">PROMOÇÃO</span>`:''}${it.retiradoLoja?` <span style="background:#dc2626;color:#fff;font-size:9px;font-weight:800;padding:1px 5px;border-radius:8px;vertical-align:middle" title="Marcado no pedido como retirado na loja">RETIRADO</span>`:''}</div>
           <div class="p tnum">${it.madeira?`peça ${fmtQ(it.tamanho||0.5)} m · ${BRL(it.precoMetro||0)}/m · total ${fmtQ(Math.round((it.qtd*(it.tamanho||0))*1000)/1000)} m`:`${it.embalagem?`${fmtQ(it.qtd)} ${un} · `:''}lista ${BRL(lista)}/${un}${it.preco<lista?` · <span style="color:var(--pos)">−${PCT(pct)}</span>`:''}`}</div></div>
         <b class="tnum cr2-sub">${BRL(it.qtd*it.preco)}</b>
       </div>
@@ -4392,9 +4442,9 @@ function cartRows(){ try{ servRecalcItens(CART.itens,'id'); }catch(e){}
       </div>
     </div>`; }).join('');
 }
-function cartPrice(idx,v){ const it=CART.itens[idx]; if(!it)return; it.preco=Math.max(0,Math.round((+v||0)*100)/100);
+function cartPrice(idx,v){ const it=CART.itens[idx]; if(!it)return; it.precoManual=true; it.preco=Math.max(0,Math.round((+v||0)*100)/100);
   if(it.madeira && (+it.tamanho>0)) it.precoMetro=Math.round((it.preco/it.tamanho)*100)/100; cartChanged(); }
-function cartDisc(idx,v){ const it=CART.itens[idx]; if(!it)return; const lista=itemLista(it); const dp=Math.max(0,Math.min(100,+v||0));
+function cartDisc(idx,v){ const it=CART.itens[idx]; if(!it)return; it.precoManual=true; const lista=itemLista(it); const dp=Math.max(0,Math.min(100,+v||0));
   it.precoLista=lista; it.preco=Math.round(lista*(1-dp/100)*100)/100;
   if(it.madeira && (+it.tamanho>0)) it.precoMetro=Math.round((it.preco/it.tamanho)*100)/100; cartChanged(); }
 /* Ajusta o tamanho da peça de madeira serrada em passos de 0,5 m (mínimo 0,5). */
@@ -4417,11 +4467,12 @@ function cartTotals(){
 }
 function renderCartTotals(){ if(CART.descModo==='pct') pdvDescAplicaPct(); /* percentual acompanha mudanças nos itens */
   const el=document.getElementById('cart-totals'); if(el) el.innerHTML=cartTotals();
-  const inf=document.getElementById('cart-desc-info'); if(inf) inf.innerHTML=pdvDescInfo(); }
+  const inf=document.getElementById('cart-desc-info'); if(inf) inf.innerHTML=pdvDescInfo();
+  try{ pdvAjustarAlturaItens(); }catch(e){} }
 /* ---- múltiplas formas de pagamento ---- */
 function normalizePays(){ if(!CART.itens.length) return; const total=cartTotalValue();
   if(!CART.pagamentos||!CART.pagamentos.length) CART.pagamentos=[{forma:'',valor:total}];
-  else if(CART.pagamentos.length===1) CART.pagamentos[0].valor=total; }
+  else if(CART.pagamentos.length===1 && !CART.pagamentos[0].parcial) CART.pagamentos[0].valor=total; }
 /* Na tela de pagamento o valor é do operador: uma forma só PODE valer menos que o total
    (pagamento parcial), e o que falta vira Pagamento Futuro. Por isso aqui a gente só
    garante que exista uma linha — sem reescrever o valor digitado. */
@@ -4432,7 +4483,7 @@ function paysHTML(){ return CART.pagamentos.map((p,i)=>{ const credito=p.forma==
    <select onchange="payForma(${i},this.value)" class="${!p.forma?'pay-empty':''}">
      <option value="" disabled ${!p.forma?'selected':''}>Forma de pagamento…</option>
      ${FORMAS_PAG_ESCOLHA.map(f=>`<option value="${f}" ${p.forma===f?'selected':''}>${f}</option>`).join('')}</select>
-   <div class="pay-val"><span>R$</span><input type="number" step="0.01" min="0" value="${p.valor}" data-pay-idx="${i}" oninput="payValor(${i},this.value)" onchange="renderPays()"></div>
+   <div class="pay-val"><span>R$</span><input type="text" inputmode="decimal" value="${fmtMoeda(p.valor)}" data-pay-idx="${i}" oninput="payValor(${i},this.value)" onchange="payValorFim(${i},this.value)"></div>
    <button class="btn-icon btn-ghost" onclick="payDel(${i})" ${CART.pagamentos.length<=1?'style="visibility:hidden"':''}>${ico('trash')}</button>
    ${p.forma==='Crédito de troca'?(function(){ const sc=pdvCreditoDisponivel();
      if(!creditoClienteResolvido(CART.clienteId, cartClienteNome())) return `<div style="flex:1 0 100%;font-size:12px;background:var(--amber-soft);border:1px solid var(--amber);border-radius:8px;padding:7px 9px;color:var(--amber-d)"><b>${ico('alert')} Selecione o cliente.</b> Crédito de troca só pode ser usado por um cliente incluído na venda — venda para Consumidor não pode usar crédito.</div>`;
@@ -4465,7 +4516,7 @@ function paysHTML(){ return CART.pagamentos.map((p,i)=>{ const credito=p.forma==
      return `<div class="pay-dinheiro">
        <div class="pd-tit">${ico('money')} Valor recebido do cliente</div>
        <div class="pd-row">
-         <div class="pay-val"><span>R$</span><input id="pay-rec-${i}" type="number" step="0.01" min="0" placeholder="0,00" value="${rec>0?rec:''}" oninput="payRecebido(${i},this.value)" title="Quanto o cliente entregou em dinheiro — o troco sai sozinho"></div>
+         <div class="pay-val"><span>R$</span><input id="pay-rec-${i}" type="text" inputmode="decimal" placeholder="0,00" value="${rec>0?fmtMoeda(rec):''}" oninput="payRecebido(${i},this.value)" title="Quanto o cliente entregou em dinheiro — o troco sai sozinho"></div>
          <div class="pd-troco" id="pay-troco-${i}">${payTrocoTxt(p)}</div>
        </div>
      </div>`; })():''}
@@ -4713,7 +4764,7 @@ function prodVendavel(p){ return !!p && !p.usoConsumo && (p.situacao||'ativo')!=
 function cartDupMerge(nome){ return confirm('O produto "'+(nome||'')+'" já está lançado no carrinho.\n\n• OK = SOMAR ao item que já está no carrinho\n• Cancelar = adicionar como um NOVO item separado'); }
 function addToCart(id){ const p=DB.get('produtos',id); if(!p) return;
   if(p.usoConsumo){ toast('"'+(p.nome||'Produto')+'" é de uso e consumo interno — não disponível para venda','err'); return; }
-  if(p.estoque<=0 && !permiteVendaSemEstoque()){ toast('Produto sem estoque','err'); return; }
+  if(p.estoque<=0 && !p.servico && !permiteVendaSemEstoque()){ toast('Produto sem estoque','err'); return; }
   if(ehMadeiraSerrada(p)){                                          // madeira serrada: pergunta o tamanho (0,5 em 0,5 m)
     const tam=madeiraTamanhoPrompt(p.nome); if(tam===null) return;
     const precoMetro=+p.preco||0; const custoMetro=+p.custo||0;
