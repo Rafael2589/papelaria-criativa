@@ -48,7 +48,7 @@ const CONFIG_EMPRESA = {
      Aparece no topo do menu e no rodapé das Configurações. Troque a cada publicação.
      MANTENHA O FORMATO 'vDD/MM-X' — é ele que o sistema usa para comparar as máquinas
      da loja e avisar quando alguma ficou para trás.                                  */
-  versao: 'v19/10-D',
+  versao: 'v19/10-E',
 
   /* 4) NUVEM (Supabase)  ------------------------------------------------------------
      Cole aqui a Project URL e a chave PUBLISHABLE do projeto Supabase DESTA empresa
@@ -5189,7 +5189,7 @@ function finalizarVenda(){
       if(comPag>saldo+0.001){ toast('Comissão insuficiente: '+ind.nome+' tem '+BRL(saldo)+' e você lançou '+BRL(comPag),'err'); return; }
       CART.comissaoIndicadorId=ind.id; } }
   // (a conferência fiscal do cliente NÃO é feita ao fechar a venda: cupom fiscal como Consumidor nunca pede cliente; NF-e confere o cadastro na hora de emitir)
-  if(permiteVendaSemEstoque() && !CART._semEstOk){ const semEst=CART.itens.filter(i=>vendaItemSemEstoque(i)); if(semEst.length){ vendaSemEstoqueConfirm(semEst); return; } }
+  // (sem confirmação de venda sem estoque: se a empresa permite vender sem estoque, a venda segue direto)
   CART._semEstOk=false;
   const total=cartTotalValue();
   const custoTotal=CART.itens.reduce((s,i)=>s+i.qtd*i.custo,0);
