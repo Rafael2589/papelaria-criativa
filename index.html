@@ -48,7 +48,7 @@ const CONFIG_EMPRESA = {
      Aparece no topo do menu e no rodapé das Configurações. Troque a cada publicação.
      MANTENHA O FORMATO 'vDD/MM-X' — é ele que o sistema usa para comparar as máquinas
      da loja e avisar quando alguma ficou para trás.                                  */
-  versao: 'v19/10-O',
+  versao: 'v20/10-B',
 
   /* 4) NUVEM (Supabase)  ------------------------------------------------------------
      Cole aqui a Project URL e a chave PUBLISHABLE do projeto Supabase DESTA empresa
@@ -4500,7 +4500,7 @@ function normalizePays(){ if(!CART.itens.length) return; const total=cartTotalVa
    (pagamento parcial), e o que falta vira Pagamento Futuro. Por isso aqui a gente só
    garante que exista uma linha — sem reescrever o valor digitado. */
 
-function paysHTML(){ return CART.pagamentos.map((p,i)=>{ const fb=formaBase(p.forma); const credito=fb==='Cartão Crédito'; const debito=fb==='Cartão Débito'; const parc=Math.min(10,Math.max(1,+p.parcelas||1)); const base=+p.valor||0; const vparc=parc>0?base/parc:0; const tx=((credito||debito)&&p.maquina)?taxaCartaoForma(p.forma,base,parc,p.maquina):0;
+function paysHTML(){ pagsMaquinaConfig(CART.pagamentos); return CART.pagamentos.map((p,i)=>{ const fb=formaBase(p.forma); const credito=fb==='Cartão Crédito'; const debito=fb==='Cartão Débito'; const parc=Math.min(10,Math.max(1,+p.parcelas||1)); const base=+p.valor||0; const vparc=parc>0?base/parc:0; const tx=(credito||debito)?taxaCartaoForma(p.forma,base,parc,p.maquina||undefined):0;
   const boleto=p.forma==='Boleto/Prazo'; const bparc=Math.max(1,+p.boletoParc||1); const bdias=(p.boletoDias!=null?+p.boletoDias:30);
   return `<div class="pay-row" style="flex-wrap:wrap">
    <select onchange="payForma(${i},this.value)" class="${!p.forma?'pay-empty':''}">
@@ -4547,9 +4547,9 @@ function paysHTML(){ return CART.pagamentos.map((p,i)=>{ const fb=formaBase(p.fo
        <span class="t-mut" style="font-size:12px">Parcelas</span>
        <select onchange="payParcelas(${i},this.value)" style="padding:7px 9px;border:1px solid var(--line);border-radius:9px;background:var(--surface);color:var(--ink)">${Array.from({length:10},(_,k)=>k+1).map(n=>`<option value="${n}" ${parc===n?'selected':''}>${n===1?'À vista':n+'x'} ${BRL(base/n)}</option>`).join('')}</select>
        <span style="font-size:12.5px"><b>${parc===1?'À vista':parc+'x'}</b> <b style="color:var(--ink)">${BRL(vparc)}</b> <span class="t-mut">sem juros</span>${tx>0?` <span class="t-mut">· taxa ${BRL(tx)}</span>`:''}</span>
-       ${maquinaSelectHTML(p.maquina,'payMaquina('+i+',this.value)')}
+       ${maquinaSelectHTML(p.maquina,'payMaquina('+i+',this.value)',p.forma)}
    </div>`:''}
-   ${debito?`<div style="flex-basis:100%;display:flex;align-items:center;gap:8px;margin-top:7px;flex-wrap:wrap">${maquinaSelectHTML(p.maquina,'payMaquina('+i+',this.value)')}${tx>0?`<span class="t-mut" style="font-size:12px">taxa ${BRL(tx)}</span>`:''}</div>`:''}
+   ${debito?`<div style="flex-basis:100%;display:flex;align-items:center;gap:8px;margin-top:7px;flex-wrap:wrap">${maquinaSelectHTML(p.maquina,'payMaquina('+i+',this.value)',p.forma)}${tx>0?`<span class="t-mut" style="font-size:12px">taxa ${BRL(tx)}</span>`:''}</div>`:''}
    ${fb==='PIX'&&pixTemMaquininha()?`<div style="flex-basis:100%;display:flex;align-items:center;gap:8px;margin-top:7px;flex-wrap:wrap">${pixMaquinaSelectHTML(p.maquina,'payMaquina('+i+',this.value)')}${(function(){ const t=taxaCartaoForma(p.forma,base,1,p.maquina); return t>0?`<span class="t-mut" style="font-size:12px">taxa ${BRL(t)}</span>`:''; })()}</div>`:''}
    ${boleto?`<div style="flex-basis:100%;display:flex;align-items:center;gap:8px;margin-top:7px;flex-wrap:wrap">
        <span class="t-mut" style="font-size:12px">Parcelas</span>
@@ -5365,8 +5365,7 @@ function finalizarVenda(){
       else if(r==='bloqueado'){ try{ closeModal(); }catch(e){window.__es&&__es(e)} clearCart(); try{ buildNav(); }catch(e){window.__es&&__es(e)} } })
     .catch(function(){ CART._conferindo=false; CART._nuvemConferido=true; try{ finalizarVenda(); } finally{ CART._nuvemConferido=false; } });
     return; }
-  { const semMaq=(CART.pagamentos||[]).find(p=>(formaBase(p.forma)==='Cartão Crédito'||formaBase(p.forma)==='Cartão Débito') && (+p.valor||0)>0 && !p.maquina);
-    if(semMaq){ toast('Escolha a maquininha em que o '+semMaq.forma.toLowerCase()+' foi passado','err'); try{ renderPays(); const el=document.querySelector('#pdv-pay-list select.pay-empty, #cart-pays select.pay-empty'); if(el){ el.focus(); el.scrollIntoView({block:'center'}); } }catch(e){window.__es&&__es(e)} return; } }
+  // (maquininha NÃO é obrigatória no PDV: já vem a configurada para a forma em Vendas › Configurações; o operador pode trocar)
   { const credPag=Math.round((CART.pagamentos||[]).filter(p=>p.forma==='Crédito de troca').reduce((s,p)=>s+(+p.valor||0),0)*100)/100;
     if(credPag>0){
       // Cliente digitado sem escolher o cadastro? Se o nome bate com um cadastro só, amarra sozinho.
@@ -5405,9 +5404,10 @@ function finalizarVenda(){
       if(!confirm('LIMITE DE CRÉDITO EXCEDIDO\n\nCliente: '+cli.nome+'\nLimite: '+BRL(cli.limiteCredito)+'\nJá em aberto: '+BRL(emAberto)+'\nEsta venda a prazo: '+BRL(aberto)+'\nNovo saldo devedor: '+BRL(novoSaldo)+'\n\nAutorizar a venda mesmo assim?')) { toast('Venda não concluída — limite de crédito do cliente','err'); return; }
     }
   }
+  pagsMaquinaConfig(CART.pagamentos);   // sem escolha na linha: vai a maquininha configurada para a forma
   const pagamentos=CART.pagamentos.map(p=>{ const o={forma:p.forma,valor:Math.round((+p.valor||0)*100)/100}; if(formaBase(p.forma)==='Cartão Crédito') o.parcelas=Math.min(10,Math.max(1,+p.parcelas||1));
     if(p.forma==='Dinheiro' && (+p.recebido||0)>0){ o.recebido=Math.round((+p.recebido)*100)/100; o.troco=Math.max(0,payTrocoLinha(p)); }
-    if(p.maquina!=null && p.maquina!=='' && ['Cartão Crédito','Cartão Débito','PIX'].indexOf(formaBase(p.forma))>=0) o.maquina=p.maquina;   // a maquininha escolhida vai junto: é a taxa dela que entra no caixa
+    if(p.maquina!=null && (p.maquina!=='' || formaBase(p.forma)==='PIX') && ['Cartão Crédito','Cartão Débito','PIX'].indexOf(formaBase(p.forma))>=0) o.maquina=p.maquina;   // PIX com '' = conta direta escolhida   // a maquininha escolhida vai junto: é a taxa dela que entra no caixa
     return o; });
   const taxaCartao=Math.round(pagamentos.reduce((s,p)=>s+taxaCartaoForma(p.forma,p.valor,p.parcelas,p.maquina),0)*100)/100;
   const formaResumo=pagamentos.length===1?pagamentos[0].forma:'Múltiplas';
@@ -23281,8 +23281,16 @@ function pixMaquinaSelectHTML(atual, onchange){ if(!pixTemMaquininha()) return '
 /* Seletor de maquininha para a linha de pagamento (só aparece quando há mais de uma). */
 /* Seletor de maquininha da linha de cartão no PDV: começa VAZIO e é obrigatório — o operador diz
    em qual máquina passou, e a taxa descontada no caixa é a dela. */
-function maquinaSelectHTML(atual, onchange){ const ms=maquinasCartao(); const vazio=!atual;
-  return `<span class="t-mut" style="font-size:12px">Maquininha${vazio?' <b style="color:var(--amber-d)">*</b>':''}</span><select onchange="${onchange}" class="${vazio?'pay-empty':''}" style="padding:7px 9px;border:1px solid var(--line);border-radius:9px;background:var(--surface);color:var(--ink)"><option value="" disabled ${vazio?'selected':''}>Escolha a maquininha…</option>${ms.map(m=>`<option value="${esc(m.id)}" ${atual===m.id?'selected':''}>${esc(m.nome)}</option>`).join('')}</select>`; }
+/* Maquininha CONFIGURADA para a forma (Vendas › Configurações › Formas de pagamento): é ela que já vem
+   escolhida no PDV. Forma cadastrada (ex.: "FP - CRÉDITO") usa a maquininha do seu cadastro. PIX pode ser '' (conta direta). */
+function maquinaConfigDe(forma){ try{ const fb=formaBase(forma); if(['Cartão Crédito','Cartão Débito','PIX'].indexOf(fb)<0) return undefined;
+    const x=(fb!==forma)?formaPagExtra(forma):null;
+    if(x && x.maquina!=null && (x.maquina==='' ? fb==='PIX' : maquinasCartao().some(m=>m.id===x.maquina))) return x.maquina;
+    return maquinaPadraoDe(fb); }catch(e){ return undefined; } }
+/* Preenche a maquininha das linhas de cartão/PIX que ainda não têm (vale para F1–F11, Adicionar, pedido importado). */
+function pagsMaquinaConfig(lista){ try{ (lista||[]).forEach(p=>{ if(p && p.forma && p.maquina===undefined){ const m=maquinaConfigDe(p.forma); if(m!==undefined) p.maquina=m; } }); }catch(e){} }
+function maquinaSelectHTML(atual, onchange, forma){ const ms=maquinasCartao(); if(!atual && forma){ const m=maquinaConfigDe(forma); if(m) atual=m; }
+  return `<span class="t-mut" style="font-size:12px">Maquininha</span><select onchange="${onchange}" style="padding:7px 9px;border:1px solid var(--line);border-radius:9px;background:var(--surface);color:var(--ink)" title="Já vem a maquininha configurada para esta forma em Vendas › Configurações — troque se passou em outra">${ms.map(m=>`<option value="${esc(m.id)}" ${atual===m.id?'selected':''}>${esc(m.nome)}</option>`).join('')}</select>`; }
 function taxaCartaoVenda(v){ if(v&&v.taxaCartao!=null) return +v.taxaCartao||0; return ((v&&v.pagamentos)||[]).reduce((s,p)=>s+taxaCartaoForma(p.forma,p.valor,p.parcelas,p.maquina),0); }
 function cobrancaConfig(){ const c=DB._load().cobrancaConfig||{}; return Object.assign({multaPct:2,jurosMesPct:1},c); }
 function cobrancaSave(c){ const d=DB._load(); d.cobrancaConfig=c; try{ nuvemConfMarcar(d.cobrancaConfig); }catch(e){window.__es&&__es(e)} DB._persist(); }
@@ -25992,18 +26000,24 @@ function orcTicketRender(id){ const o=DB.get('orcamentos',id); const el=document
 }
 /* v14/10-E: impressão mais ESCURA na térmica — tudo em preto puro e em negrito, fonte sem serifa e um pouco
    maior, traço reforçado. A 'Courier New' fina saía cinza/apagada na bobina. */
-const TICKET_CSS=`@page{size:80mm auto;margin:0}
+/* LARGURA DO CUPOM: a bobina tem 80 mm, mas a cabeça da impressora térmica imprime só ~72 mm.
+   Com a folha de 80 mm o driver cortava as laterais (o código do item à esquerda e os valores à direita).
+   Agora a folha e o cupom têm a largura ÚTIL (padrão 72 mm, ajustável em Vendas › Configurações). */
+function cupomLarguraMm(){ try{ const v=+((DB._load().empresa||{}).cupomLarguraMm)||0; return [48,66,70,72,76].indexOf(v)>=0?v:72; }catch(e){ return 72; } }
+function cupomLarguraSet(v){ const d=DB._load(); d.empresa=d.empresa||{}; d.empresa.cupomLarguraMm=+v||72; try{ nuvemConfMarcar(d.empresa); }catch(e){window.__es&&__es(e)} DB._persist(); toast('Largura do cupom: '+(+v||72)+' mm','ok'); }
+function ticketCss(){ const W=cupomLarguraMm(); const pad=W<=50?1:1.5; const fs=W<=50?11:12; return TICKET_CSS.replace(/__W__/g,W+'mm').replace(/__PAD__/g,pad+'mm').replace(/__FS__/g,fs+'px'); }
+const TICKET_CSS=`@page{size:__W__ auto;margin:0}
 *{box-sizing:border-box;-webkit-print-color-adjust:exact;print-color-adjust:exact}
 html,body{margin:0;padding:0;background:#fff;color:#000}
-body{width:80mm}
-.thermal-ticket{width:80mm;margin:0;padding:2mm 3mm;font-family:Arial,Helvetica,'Liberation Sans',sans-serif;font-size:13px;line-height:1.4;color:#000;font-weight:700;-webkit-text-stroke:0.25px #000;word-break:break-word;overflow-wrap:anywhere}
+body{width:__W__;overflow:hidden}
+.thermal-ticket{width:__W__!important;max-width:__W__!important;margin:0;padding:2mm __PAD__;font-family:Arial,Helvetica,'Liberation Sans',sans-serif;font-size:__FS__;line-height:1.35;color:#000;font-weight:700;-webkit-text-stroke:0.25px #000;word-break:break-word;overflow-wrap:anywhere}
 .thermal-ticket *{max-width:100%;color:#000!important;opacity:1!important;font-weight:700!important}
 .tk-c{text-align:center}.tk-b{font-weight:900!important}.tk-s{font-size:11.5px}
 .tk-sep{border-top:2px dashed #000;margin:6px 0}
 .tk-row{display:flex;justify-content:space-between;gap:6px;padding:1px 0}
 .tk-row span:first-child{min-width:0;flex:1 1 auto}
 .tk-row span:last-child{flex:0 0 auto;white-space:nowrap;text-align:right}
-.tk-total{font-size:17px;font-weight:900!important}
+.tk-total{font-size:16px;font-weight:900!important}
 img,canvas{max-width:40mm;height:auto;display:block;margin:4px auto}
 .no-print{display:none!important}`;
 /* Imprime o cupom térmico num iframe ISOLADO: só o cupom + folha 80mm própria.
@@ -26024,12 +26038,12 @@ function printTicket(elId){
   }catch(e){ clone=el; }
   const prev=document.getElementById('tk-print-frame'); if(prev){ try{prev.remove();}catch(e){window.__es&&__es(e)} }
   const ifr=document.createElement('iframe'); ifr.id='tk-print-frame';
-  ifr.setAttribute('aria-hidden','true'); ifr.style.cssText='position:fixed;left:-9999px;top:0;width:80mm;height:10px;border:0;opacity:0';
+  ifr.setAttribute('aria-hidden','true'); ifr.style.cssText='position:fixed;left:-9999px;top:0;width:'+cupomLarguraMm()+'mm;height:10px;border:0;opacity:0';
   document.body.appendChild(ifr);
   let w; try{ w=ifr.contentWindow; }catch(e){window.__es&&__es(e)}
   if(!w){ try{ ifr.remove(); }catch(e){window.__es&&__es(e)} return printTicketFallback(elId); }
   const d=w.document; d.open();
-  d.write('<!DOCTYPE html><html><head><meta charset="utf-8"><title>Cupom</title><style>'+TICKET_CSS+'</style></head><body>'+(clone.outerHTML||el.innerHTML)+'</body></html>');
+  d.write('<!DOCTYPE html><html><head><meta charset="utf-8"><title>Cupom</title><style>'+ticketCss()+'</style></head><body>'+(clone.outerHTML||el.innerHTML)+'</body></html>');
   d.close();
   const done=()=>{ try{ w.focus(); w.print(); }catch(e){window.__es&&__es(e)} setTimeout(()=>{ try{ ifr.remove(); }catch(e){window.__es&&__es(e)} }, 1500); };
   const imgs=Array.prototype.slice.call(d.images||[]);
@@ -26041,7 +26055,7 @@ function printTicket(elId){
 /* Reserva: se o iframe não estiver disponível, usa o método antigo (folha 80mm via @page). */
 function printTicketFallback(elId){
   let st=document.getElementById('thermal-page-style');
-  if(!st){ st=document.createElement('style'); st.id='thermal-page-style'; st.textContent='@page{size:80mm auto;margin:0}'; document.head.appendChild(st); }
+  if(!st){ st=document.createElement('style'); st.id='thermal-page-style'; st.textContent='@page{size:'+cupomLarguraMm()+'mm auto;margin:0}'; document.head.appendChild(st); }
   document.body.classList.add('printing-thermal');
   printArea(elId);
   setTimeout(()=>{ document.body.classList.remove('printing-thermal'); const s=document.getElementById('thermal-page-style'); if(s)s.remove(); }, 1600);
@@ -27900,10 +27914,18 @@ function nuvemSnapCarregarSilencioso(){ try{
   if(DB.all('produtos').length>0) return false;   // já há dados na tela
   const raw=localStorage.getItem(DB.K+'_snap'); if(!raw) return false;
   const b=JSON.parse(raw); if(!b || !Array.isArray(b.produtos) || !b.produtos.length) return false;
-  delete b._v2;
-  NUVEM_LOADING=true; DB.cache=b; DB._ensure(); DB._persist(); NUVEM_LOADING=false;   // a nuvem faz merge por cima depois
+  // CORREÇÃO v20/10-B: antes a cópia (de até 20 h atrás) SUBSTITUÍA a base inteira deste navegador — e com ela
+  // sumiam os lançamentos de nota salvos, o rascunho da nota avulsa, o caixa e as configurações feitas depois
+  // da cópia. Agora ela só PREENCHE as coleções que estão vazias aqui (para abrir rápido); tudo o que este
+  // navegador já tem (configurações, rascunhos, caixa) fica como está.
+  const cur=DB._load(); let n=0;
+  Object.keys(b).forEach(k=>{ if(k==='_meta'||k==='_v2') return; const v=b[k];
+    if(Array.isArray(v)){ if(!v.length) return; if(Array.isArray(cur[k]) && cur[k].length) return; cur[k]=v; n++; }
+    else if(!(k in cur) && !nuvemConfLocal(k)) cur[k]=v; });
+  if(!n) return false;
+  NUVEM_LOADING=true; DB._ensure(); DB._persist(); NUVEM_LOADING=false;   // a nuvem faz merge por cima depois
   return true;
-}catch(e){ return false; } }
+}catch(e){ NUVEM_LOADING=false; return false; } }
 let _v2Sig={}, _v2RemoteTs={}, _v2ConfHash=null; window._v2Checked=false; window._v3Checked=false;
 function nuvemHashStr(s){ let h=5381; for(let i=0;i<s.length;i++){ h=((h*33)^s.charCodeAt(i))>>>0; } return h; }
 function nuvemV2Cols(d){ const set={}; NUVEM_COLS.forEach(c=>set[c]=1);
@@ -28694,7 +28716,7 @@ const COFRE_MAX=7;
 function cofreTotais(d){ const t={}; ['produtos','clientes','vendas','financeiro','funcionarios','vendedores','fornecedores','orcamentos','notasFiscais','movEstoque'].forEach(c=>{ t[c]=(Array.isArray(d[c])?d[c]:[]).length; }); return t; }
 function cofreListar(){ return idbAbrir().then(db=>new Promise(res=>{ if(!db || !db.objectStoreNames.contains(IDB_COFRE)) return res([]); try{
     const rq=db.transaction(IDB_COFRE,'readonly').objectStore(IDB_COFRE).getAll();
-    rq.onsuccess=()=>res((rq.result||[]).map(r=>({k:r.k, ts:r.ts, motivo:r.motivo, tenant:r.tenant, tot:r.tot||{}, bytes:(r.raw||'').length})).sort((a,b)=>String(b.ts).localeCompare(String(a.ts))));
+    rq.onsuccess=()=>res((rq.result||[]).filter(r=>r && !r.rasc && String(r.k||'').indexOf('rasc|')!==0).map(r=>({k:r.k, ts:r.ts, motivo:r.motivo, tenant:r.tenant, tot:r.tot||{}, bytes:(r.raw||'').length})).sort((a,b)=>String(b.ts).localeCompare(String(a.ts))));
     rq.onerror=()=>res([]); }catch(e){ res([]); } })); }
 function cofreLer(k){ return idbAbrir().then(db=>new Promise(res=>{ if(!db || !db.objectStoreNames.contains(IDB_COFRE)) return res(null); try{
     const rq=db.transaction(IDB_COFRE,'readonly').objectStore(IDB_COFRE).get(k);
@@ -29049,6 +29071,7 @@ function nuvemEntrarSistema(email, usuarioPronto){
   /* Virada do dia: NÃO pede mais fechamento automático. O caixa permanece aberto até o usuário
      fechar manualmente (preferência do lojista). O fechamento continua disponível no botão
      "Fechar Caixa" da tela Gestão de Caixa. */
+  try{ setTimeout(function(){ try{ rascRestaurarDoIDB(); }catch(e){} }, 1500); }catch(e){}
   try{ logAcao('Login no sistema','Acesso seguro'); }catch(e){window.__es&&__es(e)}
   try{ authRenderChip(); }catch(e){window.__es&&__es(e)}
   try{ syncVendedores(); }catch(e){window.__es&&__es(e)}
@@ -29877,8 +29900,12 @@ function cfgPrefVendaCardHTML(){ return `
           <label style="display:flex;align-items:flex-start;gap:10px;cursor:pointer">
             <input type="checkbox" id="cfg-vsemest" ${(DB._load().empresa||{}).permitirVendaSemEstoque?'checked':''} onchange="toggleVendaSemEstoque(this.checked)" style="width:18px;height:18px;margin-top:2px;flex:0 0 auto">
             <span><b>Liberar venda de produtos sem estoque</b>
-            <div class="t-mut" style="font-size:12.5px;margin-top:3px">Quando ativado, é possível vender produtos com estoque zerado ou insuficiente. Ao finalizar, o sistema mostra um aviso com <b>todos os itens sem estoque</b> do pedido e exige confirmação.</div></span>
+            <div class="t-mut" style="font-size:12.5px;margin-top:3px">Quando ativado, é possível vender produtos com estoque zerado ou insuficiente. A venda segue direto, sem pedir confirmação.</div></span>
           </label>
+          <div style="border-top:1px solid var(--line-2);margin:14px 0 10px"></div>
+          <div class="field" style="margin:0"><label>${ico('print')} Largura de impressão do cupom (impressora térmica)</label>
+            <select onchange="cupomLarguraSet(this.value)" style="max-width:340px">${[[72,'72 mm — bobina 80 mm (padrão)'],[70,'70 mm — bobina 80 mm, se ainda cortar'],[66,'66 mm — bobina 80 mm, margem maior'],[76,'76 mm — impressora com área maior'],[48,'48 mm — bobina 58 mm']].map(([v,l])=>`<option value="${v}" ${cupomLarguraMm()===v?'selected':''}>${l}</option>`).join('')}</select>
+            <div class="t-mut" style="font-size:12px;margin-top:4px">A impressora térmica de bobina 80 mm imprime só ~72 mm. Se o cupom sair cortado nas laterais, diminua aqui.</div></div>
         </div>
       </div>
 
@@ -33545,7 +33572,44 @@ function wizAddSubgrupo(){ const gNome=(prompt('Grupo do novo subgrupo (ex.: Des
    computador; em Notas Recebidas aparece o quadro "Lançamentos salvos" com o botão para continuar
    exatamente do ponto em que parou. O XML não é duplicado: fica na nota recebida e é religado ao retomar. */
 function nfentRascLer(){ try{ const d=DB._load(); const r=d.nfeEntRascunhos; return (r&&typeof r==='object'&&!Array.isArray(r))?r:{}; }catch(e){ return {}; } }
-function nfentRascGravar(map){ try{ const d=DB._load(); d.nfeEntRascunhos=map; DB._persist(); }catch(e){window.__es&&__es(e)} }
+function nfentRascGravar(map){ try{ const d=DB._load(); d.nfeEntRascunhos=map; DB._persist(); }catch(e){window.__es&&__es(e)} try{ rascEspelharIDB(); }catch(e){window.__es&&__es(e)} }
+/* ESPELHO DOS RASCUNHOS no IndexedDB (cabe muito mais que o armazenamento comum do navegador e não é
+   reescrito pela sincronização): lançamentos de nota de entrada salvos e o rascunho da nota avulsa.
+   Se a base do navegador perder algum (falta de espaço, releitura), ele volta daqui ao abrir. */
+function rascIdbChave(){ let t=''; try{ t=nuvemTenant(); }catch(e){} return 'rasc|'+(t||''); }
+function rascEspelharIDB(){ try{ const d=DB._load(); const payload={ nfeEntRascunhos:(d.nfeEntRascunhos&&typeof d.nfeEntRascunhos==='object')?d.nfeEntRascunhos:{}, nfaRascunho:d.nfaRascunho||null };
+    const raw=JSON.stringify(payload); const k=rascIdbChave();
+    return idbAbrir().then(db=>{ if(!db || !db.objectStoreNames.contains(IDB_COFRE)) return false; try{ const tx=db.transaction(IDB_COFRE,'readwrite'); tx.objectStore(IDB_COFRE).put({k, ts:new Date().toISOString(), motivo:'rascunhos', rasc:true, raw}); return true; }catch(e){ return false; } }); }catch(e){ return Promise.resolve(false); } }
+let _rascRestaurado=false;
+async function rascRestaurarDoIDB(){ try{ const reg=await cofreLer(rascIdbChave()); if(!reg||!reg.raw) { _rascRestaurado=true; try{ rascEspelharIDB(); }catch(e){} return 0; }
+    const o=JSON.parse(reg.raw)||{}; const d=DB._load(); let n=0;
+    const cur=(d.nfeEntRascunhos&&typeof d.nfeEntRascunhos==='object'&&!Array.isArray(d.nfeEntRascunhos))?d.nfeEntRascunhos:{};
+    const esp=(o.nfeEntRascunhos&&typeof o.nfeEntRascunhos==='object')?o.nfeEntRascunhos:{};
+    Object.keys(esp).forEach(k=>{ const a=cur[k], b=esp[k]; if(!b||!b.wiz) return;
+      if(!a || String(b.salvoEm||'')>String(a.salvoEm||'')){ cur[k]=b; n++; } });
+    if(!d.nfaRascunho && o.nfaRascunho && o.nfaRascunho.nfa){ d.nfaRascunho=o.nfaRascunho; n++; }
+    if(n){ d.nfeEntRascunhos=cur; DB._persist(); try{ toast(n+' lançamento(s) salvo(s) recuperado(s) da cópia de segurança deste computador','ok'); }catch(e){} }
+    _rascRestaurado=true; try{ rascEspelharIDB(); }catch(e){} return n; }catch(e){ _rascRestaurado=true; return 0; } }
+/* PROCURAR LANÇAMENTOS PERDIDOS: varre as cópias do cofre local (1 por dia, até 7 dias) e a cópia rápida do
+   navegador atrás de lançamentos de nota salvos que não estão mais na lista — e deixa o operador trazer de volta. */
+async function nfentRascProcurar(){ const achados={}; const atual=nfentRascLer();
+  const juntar=(map, origem)=>{ if(!map||typeof map!=='object') return; Object.keys(map).forEach(k=>{ const r=map[k]; if(!r||!r.wiz||!r.wiz.nf) return;
+      const a=atual[k]; if(a && String(a.salvoEm||'')>=String(r.salvoEm||'')) return;
+      const ja=achados[k]; if(!ja || String(r.salvoEm||'')>String(ja.r.salvoEm||'')) achados[k]={r, origem}; }); };
+  try{ const reg=await cofreLer(rascIdbChave()); if(reg&&reg.raw){ const o=JSON.parse(reg.raw); juntar(o.nfeEntRascunhos,'espelho dos rascunhos'); } }catch(e){}
+  try{ const lista=await cofreListar(); for(const it of lista){ try{ const reg=await cofreLer(it.k); if(!reg||!reg.raw) continue; const b=JSON.parse(reg.raw); juntar(b.nfeEntRascunhos,'cópia de '+fDate((it.ts||'').slice(0,10))); }catch(e){} } }catch(e){}
+  try{ const raw=localStorage.getItem(DB.K+'_snap'); if(raw){ const b=JSON.parse(raw); juntar(b.nfeEntRascunhos,'cópia rápida do navegador'); } }catch(e){}
+  window._rascAchados=achados; const ks=Object.keys(achados);
+  const q=iso=>{ try{ const d=new Date(iso); return d.toLocaleDateString('pt-BR')+' '+d.toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'}); }catch(e){ return ''; } };
+  openModal(`<div class="modal-head"><h3>${ico('search')} Procurar lançamentos perdidos</h3><button class="btn-icon btn-ghost" onclick="closeModal()">${ico('x')}</button></div>
+   <div class="modal-body">${ks.length?`<p class="t-mut" style="font-size:12.5px;margin:0 0 10px">Encontrados nas cópias de segurança deste computador. Escolha o que voltar para "Lançamentos salvos" — vem a versão mais recente encontrada.</p>
+     <div class="tbl-wrap"><table><thead><tr><th>NF</th><th>Fornecedor</th><th class="t-right">Itens</th><th>Parou em</th><th>Salvo em</th><th>Origem</th><th></th></tr></thead><tbody>
+     ${ks.map(k=>{ const r=achados[k].r; return `<tr><td class="tnum t-strong">${esc(r.numero||'—')}${r.serie?('/'+esc(r.serie)):''}</td><td>${esc(r.fornecedor||'—')}</td><td class="t-right tnum">${NUM(r.itens||0)}</td><td>Passo ${esc(String(r.step||2))}</td><td>${esc(q(r.salvoEm))}</td><td class="t-mut" style="font-size:12px">${esc(achados[k].origem)}</td><td><button class="btn btn-amber btn-sm" onclick="nfentRascTrazer('${esc(k)}')">${ico('check')} Recuperar</button></td></tr>`; }).join('')}
+     </tbody></table></div>`:`<div class="empty" style="padding:24px">${ico('search')}<h4>Nada encontrado</h4><p class="t-mut">Nenhuma cópia de segurança deste computador tem lançamento salvo que não esteja na lista.</p></div>`}</div>
+   <div class="modal-foot"><button class="btn btn-ghost" onclick="closeModal()">Fechar</button></div>`); }
+function nfentRascTrazer(k){ const a=(window._rascAchados||{})[k]; if(!a) return; const m=nfentRascLer(); m[k]=a.r; nfentRascGravar(m);
+  try{ logAcao('Lançamento de nota recuperado', 'NF '+(a.r.numero||'')+' · '+(a.r.fornecedor||'')+' · '+a.origem); }catch(e){}
+  closeModal(); toast('Lançamento recuperado — está em "Lançamentos salvos"','ok'); try{ viewNfeEntrada(); }catch(e){} }
 function nfentRascChave(w){ w=w||WIZ; const nf=w&&w.nf; if(!nf) return ''; const k=chaveNorm(nf.chave||''); return k||('nf-'+(nf.emitCNPJ||'').replace(/\D/g,'')+'-'+(nf.nNF||'')+'-'+(nf.serie||nf.serieNF||'')); }
 function nfentRascLista(){ const m=nfentRascLer(); return Object.keys(m).map(k=>Object.assign({_k:k},m[k])).filter(x=>x&&x.wiz&&x.wiz.nf).sort((a,b)=>String(b.salvoEm||'').localeCompare(String(a.salvoEm||''))); }
 function wizSalvarRascunho(sair){
@@ -33559,8 +33623,10 @@ function wizSalvarRascunho(sair){
   const m=nfentRascLer();
   m[k]={ wiz:w, salvoEm:new Date().toISOString(), usuario:(typeof CURRENT_USER!=='undefined'&&CURRENT_USER&&CURRENT_USER.nome)||'', numero:WIZ.nf.nNF||'', serie:WIZ.nf.serie||WIZ.nf.serieNF||'', fornecedor:WIZ.fornNome||WIZ.nf.emitNome||'', valor:+WIZ.nf.vNF||0, itens:(WIZ.itens||[]).length, step:WIZ.step };
   nfentRascGravar(m);
+  let _gravou=false; try{ const bruto=localStorage.getItem(DB.K)||''; _gravou=bruto.indexOf(JSON.stringify(k).slice(1,-1))>=0 && bruto.indexOf('nfeEntRascunhos')>=0; }catch(e){}
   try{ logAcao('Lançamento de nota salvo', 'NF '+(WIZ.nf.nNF||'')+' · '+(WIZ.fornNome||WIZ.nf.emitNome||'')+' · passo '+WIZ.step); }catch(e){window.__es&&__es(e)}
-  toast('Lançamento salvo — continue depois em Notas Recebidas › Lançamentos salvos','ok');
+  if(_gravou) toast('Lançamento salvo — continue depois em Notas Recebidas › Lançamentos salvos','ok');
+  else toast('Lançamento guardado na cópia de segurança deste computador (o armazenamento principal do navegador está cheio) — ele volta sozinho ao abrir. Libere espaço em Sistema › Armazenamento.','err');
   if(sair){ wizReset(); NFENT.tab='recebidas'; viewNfeEntrada(); }
   return true; }
 function nfentRascRemover(k){ const m=nfentRascLer(); if(m[k]){ delete m[k]; nfentRascGravar(m); } }
@@ -33576,10 +33642,10 @@ function nfentRascContinuar(k){ const m=nfentRascLer(); const r=m[k]; if(!r||!r.
       if(!confirm('Esta nota JÁ CONSTA como lançada no histórico de entradas. Abrir o lançamento salvo mesmo assim?')) return; } }catch(e){window.__es&&__es(e)}
   WIZ=w; WIZ._rascK=k; NFENT.tab='entrada'; WIZ.step=Math.max(1,Math.min(6,+w.step||2)); if(WIZ.step<2) WIZ.step=2;
   viewNfeEntrada(); toast('Lançamento retomado no passo '+WIZ.step,'ok'); }
-function nfentRascCardHTML(){ const L=nfentRascLista(); if(!L.length) return '';
+function nfentRascCardHTML(){ const L=nfentRascLista(); if(!L.length) return `<div style="display:flex;justify-content:flex-end;margin:-4px 0 10px"><button class="btn btn-ghost btn-sm" onclick="nfentRascProcurar()" title="Procura nas cópias de segurança deste computador lançamentos de nota salvos que sumiram da lista">${ico('search')} Procurar lançamentos salvos perdidos</button></div>`;
   const q=iso=>{ try{ const d=new Date(iso); return d.toLocaleDateString('pt-BR')+' '+d.toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'}); }catch(e){ return ''; } };
   return `<div class="card" id="nfent-rasc-card" style="margin-bottom:16px;border-left:4px solid var(--amber)">
-    <div class="card-head"><div><h3>${ico('clock')} Lançamentos salvos (${NUM(L.length)})</h3><div class="ch-sub">Notas que você começou a lançar e salvou para continuar depois — neste computador.</div></div></div>
+    <div class="card-head"><div><h3>${ico('clock')} Lançamentos salvos (${NUM(L.length)})</h3><div class="ch-sub">Notas que você começou a lançar e salvou para continuar depois — neste computador.</div></div><button class="btn btn-ghost btn-sm" onclick="nfentRascProcurar()">${ico('search')} Procurar perdidos</button></div>
     <div class="tbl-wrap"><table><thead><tr><th>NF</th><th>Fornecedor</th><th class="t-right">Itens</th><th class="t-right">Valor</th><th>Parou em</th><th>Salvo em</th><th></th></tr></thead><tbody>
     ${L.map(r=>`<tr><td class="tnum t-strong">${esc(r.numero||'—')}${r.serie?('/'+esc(r.serie)):''}</td><td>${esc(r.fornecedor||'—')}</td><td class="t-right tnum">${NUM(r.itens||0)}</td><td class="t-right tnum">${BRL(r.valor||0)}</td><td>Passo ${esc(String(r.step||2))} — ${esc(WIZ_STEPS[(+r.step||2)-1]||'')}</td><td class="t-mut" style="font-size:12px">${esc(q(r.salvoEm))}${r.usuario?(' · '+esc(r.usuario)):''}</td>
       <td class="t-right" style="white-space:nowrap"><button class="btn btn-amber btn-sm" onclick="nfentRascContinuar('${esc(r._k)}')">${ico('check')} Retornar ao lançamento</button> <button class="btn btn-ghost btn-sm" style="color:var(--neg)" onclick="nfentRascDescartar('${esc(r._k)}')" title="Descartar o que foi salvo">${ico('x')}</button></td></tr>`).join('')}
@@ -35791,8 +35857,8 @@ function nfaClone(o){ try{ return JSON.parse(JSON.stringify(o||{})); }catch(e){ 
 function nfaTemConteudo(o){ o=o||NFA; return !!(o && ((o.itens&&o.itens.length) || o.clienteId || ((o.obs||'')+'').trim())); }
 function nfaRascSalvar(){ try{ const d=DB._load();
   if(!nfaTemConteudo(NFA)){ delete d.nfaRascunho; } else { d.nfaRascunho={ ts:new Date().toISOString(), nfa:nfaClone(NFA) }; }
-  DB._persist(); }catch(e){window.__es&&__es(e)} }
-function nfaRascLimpar(){ try{ const d=DB._load(); delete d.nfaRascunho; DB._persist(); }catch(e){window.__es&&__es(e)} }
+  DB._persist(); }catch(e){window.__es&&__es(e)} try{ rascEspelharIDB(); }catch(e){} }
+function nfaRascLimpar(){ try{ const d=DB._load(); delete d.nfaRascunho; DB._persist(); }catch(e){window.__es&&__es(e)} try{ rascEspelharIDB(); }catch(e){} }
 function nfaRascRestaurar(){ try{ const d=DB._load(); const r=d&&d.nfaRascunho;
   if(!r||!r.nfa||!nfaTemConteudo(r.nfa)) return false;
   NFA=Object.assign(nfaClone(NFA_VAZIA), r.nfa); return true; }catch(e){ return false; } }
@@ -37857,6 +37923,7 @@ function centralChave(id){ const c=DB.get('clientesSaaS',id); if(!c)return;
   try{ planoContasSeed(); }catch(e){window.__es&&__es(e)}
   try{ lixeiraPurge(); }catch(e){window.__es&&__es(e)}
   setTimeout(function(){ try{ backupAutoCheck(); }catch(e){window.__es&&__es(e)} }, 4000);
+  setTimeout(function(){ try{ rascRestaurarDoIDB(); }catch(e){window.__es&&__es(e)} }, 2500);   // v20/10-B: lançamentos salvos voltam do espelho se a base do navegador os perdeu
   setTimeout(function(){ try{ nuvemSnapSalvar(); }catch(e){window.__es&&__es(e)} }, 8000);
   setTimeout(function(){ try{ nuvemCofreGuardar('abertura do sistema'); }catch(e){window.__es&&__es(e)} }, 12000);   // v14/10-N: cofre local (mesmo sem nuvem)
   setInterval(function(){ try{ nuvemCofreGuardar('durante o uso'); }catch(e){window.__es&&__es(e)} }, 30*60000);
