@@ -48,7 +48,7 @@ const CONFIG_EMPRESA = {
      Aparece no topo do menu e no rodapé das Configurações. Troque a cada publicação.
      MANTENHA O FORMATO 'vDD/MM-X' — é ele que o sistema usa para comparar as máquinas
      da loja e avisar quando alguma ficou para trás.                                  */
-  versao: 'v19/10-L',
+  versao: 'v19/10-O',
 
   /* 4) NUVEM (Supabase)  ------------------------------------------------------------
      Cole aqui a Project URL e a chave PUBLISHABLE do projeto Supabase DESTA empresa
@@ -4101,10 +4101,26 @@ const FORMAS_PAG=FORMAS_PAG_FIXAS.slice();
 const FORMAS_PAG_ESCOLHA=FORMAS_PAG.filter(f=>f!=='Receber no local');
 /* Guardado como OBJETO (formasPagCfg) para viajar na nuvem junto com as outras configurações. */
 function formasPagExtras(){ try{ const d=DB._load(); const c=d.formasPagCfg||{}; return Array.isArray(c.lista)?c.lista.filter(x=>x&&x.nome):[]; }catch(e){ return []; } }
-function formasPagExtrasSave(lista){ const d=DB._load(); d.formasPagCfg=Object.assign({}, d.formasPagCfg||{}, {lista:lista}); try{ nuvemConfMarcar(d.formasPagCfg); }catch(e){window.__es&&__es(e)} DB._persist(); formasPagAplicar(); }
+/* CÓPIA DE SEGURANÇA das formas cadastradas: chave própria e minúscula no navegador (grava mesmo que o
+   banco principal esteja pesado) com as formas e as que foram removidas DE PROPÓSITO. Se uma
+   sincronização/atualização trouxer uma lista sem alguma forma cadastrada, ela é recolocada daqui. */
+function formasPagBkpLer(){ try{ const o=JSON.parse(localStorage.getItem(LSK('formas_pag_bkp'))||'null'); return {lista:Array.isArray(o&&o.lista)?o.lista.filter(x=>x&&x.nome):[], removidas:Array.isArray(o&&o.removidas)?o.removidas:[]}; }catch(e){ return {lista:[],removidas:[]}; } }
+function formasPagBkpGravar(lista, removidas){ try{ localStorage.setItem(LSK('formas_pag_bkp'), JSON.stringify({lista:lista, removidas:removidas, em:new Date().toISOString()})); return true; }catch(e){ return false; } }
+let _fpRestaurando=false;
+function formasPagRestaurarDoBackup(){ if(_fpRestaurando) return 0; try{ const b=formasPagBkpLer(); if(!b.lista.length) return 0;
+    const atual=formasPagExtras(); const tem=new Set(atual.map(x=>normTxt(x.nome))); const rem=new Set(b.removidas.map(x=>normTxt(x)));
+    const falta=b.lista.filter(x=>!tem.has(normTxt(x.nome)) && !rem.has(normTxt(x.nome)) && !FORMAS_PAG_FIXAS.some(f=>normTxt(f)===normTxt(x.nome)));
+    if(!falta.length) return 0; _fpRestaurando=true; try{ formasPagExtrasSave(atual.concat(falta)); } finally{ _fpRestaurando=false; } return falta.length; }catch(e){ _fpRestaurando=false; return 0; } }
+function formasPagExtrasSave(lista){ const d=DB._load();
+  try{ const ant=formasPagExtras().map(x=>x.nome); const novos=new Set(lista.map(x=>normTxt(x.nome))); const b=formasPagBkpLer(); let rem=b.removidas.filter(n=>!novos.has(normTxt(n)));
+    ant.forEach(n=>{ if(!novos.has(normTxt(n)) && !rem.some(r=>normTxt(r)===normTxt(n))) rem.push(n); });   // saiu da lista (removida ou renomeada): não volta pelo backup
+    formasPagBkpGravar(lista, rem); }catch(e){window.__es&&__es(e)}
+  d.formasPagCfg=Object.assign({}, d.formasPagCfg||{}, {lista:lista}); try{ nuvemConfMarcar(d.formasPagCfg); }catch(e){window.__es&&__es(e)} DB._persist(); formasPagAplicar();
+  try{ nuvemPushJa(); }catch(e){window.__es&&__es(e)} }   // sobe na hora: os outros computadores recebem sem esperar a janela de envio
 /* Recoloca as formas cadastradas dentro das listas usadas por todas as telas (os arrays são
    mutados no lugar porque o resto do sistema os lê direto). */
 function formasPagAplicar(){
+  try{ formasPagRestaurarDoBackup(); }catch(e){window.__es&&__es(e)}
   const extras=formasPagExtras().map(x=>x.nome); const fix=new Set(FORMAS_PAG_FIXAS);
   const monta=(arr, base, depois)=>{ arr.length=0; base.forEach(f=>{ arr.push(f); if(f===depois) extras.forEach(e=>{ if(!fix.has(e)&&!arr.includes(e)) arr.push(e); }); }); if(!base.includes(depois)) extras.forEach(e=>{ if(!arr.includes(e)) arr.push(e); }); };
   monta(FORMAS_PAG, FORMAS_PAG_FIXAS, 'Boleto/Prazo');
@@ -4120,6 +4136,13 @@ function formaTipoCartao(forma){ if(forma==='Cartão Crédito') return 'credito'
   return formaTipoPeloNome(x.nome); }
 /* Sem tipo informado, o NOME diz: "cartão crédito FP" é crédito, "débito loja" é débito. */
 function formaTipoPeloNome(nome){ const n=normTxt(nome||''); if(/cred/.test(n)) return 'credito'; if(/deb/.test(n)) return 'debito'; return ''; }
+/* "Base" de uma forma: as cadastradas como crédito / débito / PIX se comportam como as fixas (taxa da maquininha,
+   parcelas, escolha da maquininha). Sem tipo informado, o NOME decide ("FP - CRÉDITO" = crédito).
+   Tipo "à vista" força pagamento comum. */
+function formaBase(forma){ if(forma==='PIX'||forma==='Cartão Crédito'||forma==='Cartão Débito') return forma;
+  const x=formaPagExtra(forma||''); if(!x) return forma;
+  const t=x.tipo||''; if(t==='credito') return 'Cartão Crédito'; if(t==='debito') return 'Cartão Débito'; if(t==='pix') return 'PIX'; if(t==='avista') return forma;
+  const n=normTxt(x.nome||''); if(/cred/.test(n)) return 'Cartão Crédito'; if(/deb/.test(n)) return 'Cartão Débito'; if(/\bpix\b/.test(n)) return 'PIX'; return forma; }
 /* Maquininha de uma forma cadastrada do tipo cartão (a escolhida no cadastro). */
 function formaExtraMaquina(forma){ const x=formaPagExtra(forma||''); if(!x||!formaTipoCartao(forma)) return ''; return (x.maquina && maquinasCartao().some(m=>m.id===x.maquina))?x.maquina:'padrao'; }
 const CART={ itens:[], clienteId:null, clienteNome:'', desconto:0, descModo:'valor', descPct:0, pagamento:'PIX', pagamentos:[], canal:'', entrega:false, frete:0, distanciaKm:0, enderecoEntrega:'', obs:'', fromOrcId:null, fromOrcNumero:null, faturaPedidoId:null, faturaPedidoNumero:null, vendedorId:null, vendedorNome:null, contratoId:null };
@@ -4477,7 +4500,7 @@ function normalizePays(){ if(!CART.itens.length) return; const total=cartTotalVa
    (pagamento parcial), e o que falta vira Pagamento Futuro. Por isso aqui a gente só
    garante que exista uma linha — sem reescrever o valor digitado. */
 
-function paysHTML(){ return CART.pagamentos.map((p,i)=>{ const credito=p.forma==='Cartão Crédito'; const debito=p.forma==='Cartão Débito'; const parc=Math.min(10,Math.max(1,+p.parcelas||1)); const base=+p.valor||0; const vparc=parc>0?base/parc:0; const tx=((credito||debito)&&p.maquina)?taxaCartaoForma(p.forma,base,parc,p.maquina):0;
+function paysHTML(){ return CART.pagamentos.map((p,i)=>{ const fb=formaBase(p.forma); const credito=fb==='Cartão Crédito'; const debito=fb==='Cartão Débito'; const parc=Math.min(10,Math.max(1,+p.parcelas||1)); const base=+p.valor||0; const vparc=parc>0?base/parc:0; const tx=((credito||debito)&&p.maquina)?taxaCartaoForma(p.forma,base,parc,p.maquina):0;
   const boleto=p.forma==='Boleto/Prazo'; const bparc=Math.max(1,+p.boletoParc||1); const bdias=(p.boletoDias!=null?+p.boletoDias:30);
   return `<div class="pay-row" style="flex-wrap:wrap">
    <select onchange="payForma(${i},this.value)" class="${!p.forma?'pay-empty':''}">
@@ -4527,7 +4550,7 @@ function paysHTML(){ return CART.pagamentos.map((p,i)=>{ const credito=p.forma==
        ${maquinaSelectHTML(p.maquina,'payMaquina('+i+',this.value)')}
    </div>`:''}
    ${debito?`<div style="flex-basis:100%;display:flex;align-items:center;gap:8px;margin-top:7px;flex-wrap:wrap">${maquinaSelectHTML(p.maquina,'payMaquina('+i+',this.value)')}${tx>0?`<span class="t-mut" style="font-size:12px">taxa ${BRL(tx)}</span>`:''}</div>`:''}
-   ${p.forma==='PIX'&&pixTemMaquininha()?`<div style="flex-basis:100%;display:flex;align-items:center;gap:8px;margin-top:7px;flex-wrap:wrap">${pixMaquinaSelectHTML(p.maquina,'payMaquina('+i+',this.value)')}${(function(){ const t=taxaCartaoForma('PIX',base,1,p.maquina); return t>0?`<span class="t-mut" style="font-size:12px">taxa ${BRL(t)}</span>`:''; })()}</div>`:''}
+   ${fb==='PIX'&&pixTemMaquininha()?`<div style="flex-basis:100%;display:flex;align-items:center;gap:8px;margin-top:7px;flex-wrap:wrap">${pixMaquinaSelectHTML(p.maquina,'payMaquina('+i+',this.value)')}${(function(){ const t=taxaCartaoForma(p.forma,base,1,p.maquina); return t>0?`<span class="t-mut" style="font-size:12px">taxa ${BRL(t)}</span>`:''; })()}</div>`:''}
    ${boleto?`<div style="flex-basis:100%;display:flex;align-items:center;gap:8px;margin-top:7px;flex-wrap:wrap">
        <span class="t-mut" style="font-size:12px">Parcelas</span>
        <input type="number" min="1" value="${bparc}" onchange="payBoletoParc(${i},this.value)" style="width:58px;padding:7px 9px;border:1px solid var(--line);border-radius:9px;background:var(--surface);color:var(--ink)">
@@ -4598,7 +4621,8 @@ function pdvTemDesconto(){ return (+CART.desconto||0)>0 || CART.itens.some(it=>i
 function pdvRemoverDescontos(){ CART.itens.forEach(it=>{ if(it.madeira) return; const lista=itemLista(it); it.preco=Math.round((+lista||0)*100)/100; it.precoLista=it.preco; }); CART.desconto=0; CART.descPct=0; CART.descModo='valor'; if(CART.pagamentos.length===1) CART.pagamentos[0].valor=cartTotalValue(); toast('Descontos removidos — nenhum desconto será aplicado até você informar um novo','ok'); renderPDV(); }
 function payAdd(){ try{ pdvPagAcertarDinheiro(); }catch(e){} const rest=Math.max(0,cartTotalValue()-cartPago()); const usadas=CART.pagamentos.map(p=>p.forma); const forma=FORMAS_PAG_ESCOLHA.find(f=>!usadas.includes(f))||'Dinheiro'; CART.pagamentos.push({forma,valor:Math.round(rest*100)/100}); renderPays(); }
 function payDel(i){ CART.pagamentos.splice(i,1); if(!CART.pagamentos.length)CART.pagamentos=[{forma:'',valor:cartTotalValue()}]; renderPays(); }
-function payForma(i,v){ CART.pagamentos[i].forma=v; CART.pagamentos[i].maquina=undefined; if(v==='Cartão Crédito'&&!CART.pagamentos[i].parcelas) CART.pagamentos[i].parcelas=1;
+function payForma(i,v){ CART.pagamentos[i].forma=v; CART.pagamentos[i].maquina=undefined; if(formaBase(v)==='Cartão Crédito'&&!CART.pagamentos[i].parcelas) CART.pagamentos[i].parcelas=1;
+  try{ const x=formaPagExtra(v); if(x && formaBase(v)!==v && x.maquina && maquinasCartao().some(m=>m.id===x.maquina)) CART.pagamentos[i].maquina=x.maquina; }catch(e){}   // forma cadastrada já traz a maquininha escolhida (dá para trocar na linha)
   if(v!=='Dinheiro') delete CART.pagamentos[i].recebido;
   try{ pdvPagAcertarDinheiro(); }catch(e){}
   if(!(+CART.pagamentos[i].valor>0)){ const outros=CART.pagamentos.reduce((s,p,k)=>s+(k===i?0:(+p.valor||0)),0); CART.pagamentos[i].valor=Math.max(0,Math.round((cartTotalValue()-outros)*100)/100); }
@@ -5341,7 +5365,7 @@ function finalizarVenda(){
       else if(r==='bloqueado'){ try{ closeModal(); }catch(e){window.__es&&__es(e)} clearCart(); try{ buildNav(); }catch(e){window.__es&&__es(e)} } })
     .catch(function(){ CART._conferindo=false; CART._nuvemConferido=true; try{ finalizarVenda(); } finally{ CART._nuvemConferido=false; } });
     return; }
-  { const semMaq=(CART.pagamentos||[]).find(p=>(p.forma==='Cartão Crédito'||p.forma==='Cartão Débito') && (+p.valor||0)>0 && !p.maquina);
+  { const semMaq=(CART.pagamentos||[]).find(p=>(formaBase(p.forma)==='Cartão Crédito'||formaBase(p.forma)==='Cartão Débito') && (+p.valor||0)>0 && !p.maquina);
     if(semMaq){ toast('Escolha a maquininha em que o '+semMaq.forma.toLowerCase()+' foi passado','err'); try{ renderPays(); const el=document.querySelector('#pdv-pay-list select.pay-empty, #cart-pays select.pay-empty'); if(el){ el.focus(); el.scrollIntoView({block:'center'}); } }catch(e){window.__es&&__es(e)} return; } }
   { const credPag=Math.round((CART.pagamentos||[]).filter(p=>p.forma==='Crédito de troca').reduce((s,p)=>s+(+p.valor||0),0)*100)/100;
     if(credPag>0){
@@ -5381,8 +5405,10 @@ function finalizarVenda(){
       if(!confirm('LIMITE DE CRÉDITO EXCEDIDO\n\nCliente: '+cli.nome+'\nLimite: '+BRL(cli.limiteCredito)+'\nJá em aberto: '+BRL(emAberto)+'\nEsta venda a prazo: '+BRL(aberto)+'\nNovo saldo devedor: '+BRL(novoSaldo)+'\n\nAutorizar a venda mesmo assim?')) { toast('Venda não concluída — limite de crédito do cliente','err'); return; }
     }
   }
-  const pagamentos=CART.pagamentos.map(p=>{ const o={forma:p.forma,valor:Math.round((+p.valor||0)*100)/100}; if(p.forma==='Cartão Crédito') o.parcelas=Math.min(10,Math.max(1,+p.parcelas||1));
-    if(p.forma==='Dinheiro' && (+p.recebido||0)>0){ o.recebido=Math.round((+p.recebido)*100)/100; o.troco=Math.max(0,payTrocoLinha(p)); } return o; });
+  const pagamentos=CART.pagamentos.map(p=>{ const o={forma:p.forma,valor:Math.round((+p.valor||0)*100)/100}; if(formaBase(p.forma)==='Cartão Crédito') o.parcelas=Math.min(10,Math.max(1,+p.parcelas||1));
+    if(p.forma==='Dinheiro' && (+p.recebido||0)>0){ o.recebido=Math.round((+p.recebido)*100)/100; o.troco=Math.max(0,payTrocoLinha(p)); }
+    if(p.maquina!=null && p.maquina!=='' && ['Cartão Crédito','Cartão Débito','PIX'].indexOf(formaBase(p.forma))>=0) o.maquina=p.maquina;   // a maquininha escolhida vai junto: é a taxa dela que entra no caixa
+    return o; });
   const taxaCartao=Math.round(pagamentos.reduce((s,p)=>s+taxaCartaoForma(p.forma,p.valor,p.parcelas,p.maquina),0)*100)/100;
   const formaResumo=pagamentos.length===1?pagamentos[0].forma:'Múltiplas';
   // NÚMERO DA VENDA: quando vem de um pedido, herda o número do pedido — mas nunca
@@ -8349,7 +8375,7 @@ function pagNumParcelas(l){ const n=+((l&&l.parcelas)||0); return n>1?n:0; }
 /* Larguras fixas das colunas da tabela de itens do pedido/orçamento impresso.
    Sem isso, um nome de produto comprido empurrava a coluna TOTAL para fora da folha. */
 function opTblCols(){ return `<colgroup><col class="c-cod"><col class="c-prod"><col class="c-marca"><col class="c-qtd"><col class="c-emb"><col class="c-preco"><col class="c-desc"><col class="c-total"></colgroup>`; }
-function pagFormaParcelavel(f){ return /cart[aã]o cr[eé]dito|boleto|prazo|credi[aá]rio/i.test(f||''); }
+function pagFormaParcelavel(f){ return /cart[aã]o cr[eé]dito|boleto|prazo|credi[aá]rio/i.test(f||'') || formaBase(f)==='Cartão Crédito'; }
 function recLocalBannerHTML(linhas, total){
   let arr=(linhas&&linhas.length)?linhas.map(l=>({forma:l.forma, valor:Math.round((+l.valor||0)*100)/100, parcelas:+l.parcelas||0})):[{forma:'A combinar no local', valor:Math.round((+total||0)*100)/100, parcelas:0}];
   const tot=(total!=null)?Math.round((+total||0)*100)/100:arr.reduce((s,l)=>s+(+l.valor||0),0);
@@ -22136,7 +22162,9 @@ function servForm(id){ const p=id?DB.get('produtos',id):null;
 function servFormHTML(){ const S=SERVF; let ini=1;
   return `<div class="modal-head"><h3>${ico('print')} ${S.id?'Editar serviço':'Novo serviço'}</h3><button class="btn-icon btn-ghost" onclick="closeModal()">${ico('x')}</button></div>
    <div class="modal-body">
-     <div class="field"><label>Nome do serviço *</label><input class="cad-upper" value="${esc(S.nome)}" placeholder="Ex.: CÓPIA P/B A4" oninput="SERVF.nome=this.value"></div>
+     ${S.converter?`<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;background:var(--amber-soft);border:1px solid var(--amber);border-radius:8px;padding:8px 10px;margin-bottom:10px;font-size:12.5px">${ico('alert')}<span style="flex:1"><b>Produto do cadastro${S.convSku?(' · SKU '+esc(S.convSku)):''}</b> — ao salvar vira SERVIÇO (sai do estoque e da contagem; o histórico de vendas continua igual).</span><button class="btn btn-ghost btn-sm" onclick="SERVF.id=null;SERVF.converter=false;SERVF.convSku='';servFormRedesenhar()">Desfazer</button></div>`:''}
+     <div class="field" style="position:relative"><label>Nome do serviço * <span class="t-mut" style="font-weight:400">${S.id?'':'— ou digite o SKU / nome de um produto já cadastrado para transformá-lo em serviço'}</span></label><input id="servf-nome" class="cad-upper" value="${esc(S.nome)}" placeholder="Ex.: CÓPIA P/B A4  ·  ou SKU: 11578" autocomplete="off" oninput="SERVF.nome=this.value;servFormBusca(this.value)" onkeydown="servFormBuscaKey(event)">
+       <div id="servf-res" style="display:none;position:absolute;left:0;right:0;top:100%;z-index:50;background:var(--surface);border:1px solid var(--line);border-radius:8px;box-shadow:0 8px 24px rgba(0,0,0,.14);max-height:260px;overflow:auto"></div></div>
      <div class="field-row"><div class="field"><label>Unidade</label><input value="${esc(S.unidade)}" oninput="SERVF.unidade=this.value" placeholder="UN"></div>
        <div class="field"><label>NCM (para a nota fiscal)</label><input value="${esc(S.ncm)}" oninput="SERVF.ncm=this.value" placeholder="use o indicado pelo contador"></div></div>
      <label style="font-size:12px;color:var(--muted);font-weight:600">Preço por quantidade</label>
@@ -22151,13 +22179,35 @@ function servFormHTML(){ const S=SERVF; let ini=1;
      <div class="switch-row" style="margin-top:12px" onclick="SERVF.atalho=!SERVF.atalho;this.querySelector('.switch').classList.toggle('on',SERVF.atalho)"><div><b>Botão rápido no PDV</b><p class="t-mut">Aparece abaixo da busca de produtos.</p></div><span class="switch ${S.atalho?'on':''}"></span></div>
    </div>
    <div class="modal-foot"><button class="btn btn-ghost" onclick="closeModal()">Cancelar</button><div style="flex:1"></div><button class="btn btn-amber" onclick="servSalvar()">${ico('check')} Salvar</button></div>`; }
+/* Busca no cadastro de produtos pelo SKU (um exato vem primeiro), código de barras ou nome — para
+   transformar um produto existente em serviço sem digitar tudo de novo. */
+let _servfRes=[];
+function servFormBusca(v){ const box=document.getElementById('servf-res'); if(!box) return; const S=SERVF;
+  const q=(''+(v||'')).trim(); if(!S || S.id || q.length<2){ _servfRes=[]; box.style.display='none'; box.innerHTML=''; return; }
+  let lista=[]; try{ lista=prodSearchSort(DB.all('produtos').filter(p=>p && (p.situacao||'ativo')!=='inativo' && matchTokens((p.nome||'')+' '+(p.sku||'')+' '+(p.codigoBarras||'')+' '+(p.marca||''), q)), q).slice(0,8); }catch(e){ lista=[]; }
+  _servfRes=lista; if(!lista.length){ box.style.display='none'; box.innerHTML=''; return; }
+  box.innerHTML=lista.map((p,i)=>`<div class="orc-row" style="cursor:pointer;padding:8px 10px;display:flex;gap:10px;align-items:center;border-bottom:1px solid var(--line-2)" onmousedown="event.preventDefault();servFormEscolher('${p.id}')">
+      <div style="flex:1;min-width:0"><div style="font-weight:600;font-size:13px">${esc(p.nome)}</div><div class="t-mut" style="font-size:11.5px">SKU: <b>${esc(p.sku||'—')}</b>${p.servico?' · <b style="color:var(--blue)">já é serviço</b>':` · Est: ${fmtQ(p.estoque||0)} ${esc(p.unidade||'UN')}`}</div></div>
+      <div class="tnum" style="font-size:12.5px;font-weight:700">${BRL(+p.preco||0)}</div></div>`).join('');
+  box.style.display='block'; }
+function servFormBuscaKey(e){ if(e.key==='Escape'){ const b=document.getElementById('servf-res'); if(b) b.style.display='none'; return; }
+  if(e.key==='Enter' && _servfRes.length){ const q=normTxt((e.target.value||'').trim()); const ex=_servfRes.find(p=>normTxt(p.sku||'')===q) || (_servfRes.length===1?_servfRes[0]:null);
+    if(ex){ e.preventDefault(); servFormEscolher(ex.id); } } }
+function servFormEscolher(id){ const p=DB.get('produtos',id); if(!p) return;
+  if(p.servico){ servForm(id); return; }   // já é serviço: abre para editar
+  const F=(p.faixasPreco&&p.faixasPreco.length)?servFaixasOrd(p):[];
+  SERVF=Object.assign(SERVF||{}, { id:p.id, converter:true, convSku:p.sku||'', nome:p.nome||'', unidade:p.unidade||'UN', ncm:p.ncm||'', atalho:true,
+    faixas:F.length?F:[{ate:0,preco:+p.preco||0}] });
+  servFormRedesenhar(); }
 function servFormRedesenhar(){ const m=document.querySelector('.modal'); const box=document.getElementById('modal')||m; try{ openModal(servFormHTML(), true); }catch(e){} }
 function servSalvar(){ const S=SERVF; if(!S) return; const nome=(S.nome||'').trim().toUpperCase(); if(!nome){ toast('Informe o nome do serviço','err'); return; }
   const F=S.faixas.map(f=>({ate:+f.ate||0, preco:Math.round((+f.preco||0)*100)/100})).filter(f=>f.preco>0);
   if(!F.length){ toast('Informe o preço (pelo menos uma faixa com valor)','err'); return; }
   const fx=F.sort((a,b)=>(a.ate||Infinity)-(b.ate||Infinity));
   const dados={ nome, unidade:(S.unidade||'UN').toUpperCase(), ncm:(S.ncm||'').replace(/\D/g,''), servicoAtalho:!!S.atalho, faixasPreco:fx, preco:fx[0].preco };
-  if(S.id) DB.update('produtos',S.id,Object.assign(dados,{servico:true, estoqueMinimo:0})); else servNovoProduto(nome, fx, dados);
+  if(S.id && S.converter){ try{ catRegistrar('SERVIÇOS','produto'); }catch(e){}
+    DB.update('produtos',S.id,Object.assign(dados,{servico:true, categoria:'SERVIÇOS', grupo:'SERVIÇOS', subgrupo:'', estoque:0, estoqueMinimo:0})); try{ logAcao('Produto marcado como serviço', nome); }catch(e){} }
+  else if(S.id) DB.update('produtos',S.id,Object.assign(dados,{servico:true, estoqueMinimo:0})); else servNovoProduto(nome, fx, dados);
   try{ nuvemPushJa(); }catch(e){} closeModal(); toast('Serviço salvo','ok'); viewServPap(); }
 /* ---- PDV: botões rápidos ---- */
 function servPdvBarraHTML(){ let L=[]; try{ L=servLista().filter(p=>p.servicoAtalho!==false).slice(0,10); }catch(e){} if(!L.length) return '';
@@ -23209,6 +23259,7 @@ function maquinasCartao(){ const c=DB._load().taxasCartao||{}; const extras=(Arr
 function taxasCartaoSave(c){ const d=DB._load(); const ant=d.taxasCartao||{}; d.taxasCartao=Object.assign({}, ant, c); try{ nuvemConfMarcar(d.taxasCartao); }catch(e){window.__es&&__es(e)} DB._persist(); }
 function taxaCartaoPct(parcelas, maquinaId){ const c=taxasCartao(maquinaId); const p=Math.min(12,Math.max(1,+parcelas||1)); const f=c.credito.find(x=>x.p===p)||c.credito[0]; return f?f.pct:0; }
 function taxaCartaoForma(forma,valor,parcelas,maquinaId){ valor=+valor||0; if(valor<=0)return 0;
+  { const bs=formaBase(forma); if(bs!==forma){ const x=formaPagExtra(forma); if(maquinaId==null && x && x.maquina!=null && (x.maquina!==''||bs==='PIX')) maquinaId=x.maquina; forma=bs; } }   // forma cadastrada como cartão/PIX: usa a maquininha escolhida no cadastro
   if(maquinaId==null && (forma==='PIX'||forma==='Cartão Crédito'||forma==='Cartão Débito')) maquinaId=maquinaPadraoDe(forma);   // sem escolha na linha: a maquininha associada à forma
   if(forma==='PIX'){ if(!maquinaId) return 0; const c=taxasCartao(maquinaId); return Math.round(valor*(+c.pix||0))/100; }   // PIX: só pela maquininha tem taxa; na conta direta não
   const c=taxasCartao(maquinaId);
@@ -23224,7 +23275,7 @@ function maquinaAssociar(forma, id){ const c=DB._load().taxasCartao||{}; const m
 function maquinaAssocSelectHTML(forma){ const ms=maquinasCartao(); const atual=maquinaPadraoDe(forma); const pix=forma==='PIX';
   return `<select onchange="maquinaAssociar('${forma}',this.value)" style="max-width:220px" title="Maquininha usada por padrão nesta forma — a taxa dela é descontada no caixa">${pix?`<option value="" ${!atual?'selected':''}>Conta direta (sem taxa)</option>`:''}${ms.map(m=>`<option value="${esc(m.id)}" ${atual===m.id?'selected':''}>${esc(m.nome)}${pix?(' ('+(+m.pix||0).toLocaleString('pt-BR')+'%)'):''}</option>`).join('')}</select>`; }
 /* Alguma maquininha cobra taxa no PIX? Só então a linha de PIX pergunta por onde entrou. */
-function pixTemMaquininha(){ return maquinasCartao().some(m=>(+m.pix||0)>0); }
+function pixTemMaquininha(){ try{ return maquinasCartao().length>0; }catch(e){ return false; } }
 function pixMaquinaSelectHTML(atual, onchange){ if(!pixTemMaquininha()) return ''; const ms=maquinasCartao(); if(atual==null) atual=maquinaPadraoDe('PIX');
   return `<span class="t-mut" style="font-size:12px">PIX por</span><select onchange="${onchange}" style="padding:7px 9px;border:1px solid var(--line);border-radius:9px;background:var(--surface);color:var(--ink)"><option value="" ${!atual?'selected':''}>Conta direta (sem taxa)</option>${ms.map(m=>`<option value="${esc(m.id)}" ${atual===m.id?'selected':''}>${esc(m.nome)} (${(+m.pix||0).toLocaleString('pt-BR')}%)</option>`).join('')}</select>`; }
 /* Seletor de maquininha para a linha de pagamento (só aparece quando há mais de uma). */
@@ -23246,7 +23297,7 @@ function orcPaysHTML(){ const cred=+ORC.creditoUsar||0; const cobre=orcCreditoCo
   return (cred>0?`<div class="pay-row" style="background:#ecfdf5;border:1px dashed #10b981;border-radius:10px;padding:8px 10px;justify-content:space-between">
       <span style="font-size:12.5px;color:#047857;font-weight:700">${ico('money')} Crédito do cliente (quadro acima)</span><b class="tnum" style="color:#047857">${BRL(cred)}</b></div>`:'')
   + (cobre?`<div class="t-mut" style="font-size:12px;padding:4px 2px">${ico('check')} O crédito cobre o valor inteiro — nenhuma forma de pagamento é necessária.</div>`:'')
-  + ORC.pagamentos.map((p,i)=>{ if(cobre && !(p.forma && (+p.valor||0)>0)) return ''; const credito=p.forma==='Cartão Crédito'; const debito=p.forma==='Cartão Débito'; const parc=Math.min(10,Math.max(1,+p.parcelas||1)); const base=+p.valor||0; const vparc=parc>0?base/parc:0; const tx=credito?taxaCartaoForma('Cartão Crédito',base,parc,p.maquina):(debito?taxaCartaoForma('Cartão Débito',base,1,p.maquina):0);
+  + ORC.pagamentos.map((p,i)=>{ if(cobre && !(p.forma && (+p.valor||0)>0)) return ''; const credito=formaBase(p.forma)==='Cartão Crédito'; const debito=formaBase(p.forma)==='Cartão Débito'; const parc=Math.min(10,Math.max(1,+p.parcelas||1)); const base=+p.valor||0; const vparc=parc>0?base/parc:0; const tx=credito?taxaCartaoForma(p.forma,base,parc,p.maquina):(debito?taxaCartaoForma(p.forma,base,1,p.maquina):0);
   return `<div class="pay-row" style="flex-wrap:wrap">
    <select onchange="orcPayForma(${i},this.value)" class="${!p.forma?'pay-empty':''}">
      <option value="" disabled ${!p.forma?'selected':''}>Forma de pagamento…</option>
@@ -23271,11 +23322,11 @@ function orcRenderPays(){ const el=document.getElementById('orc-pays'); if(el)el
 function orcRenderPaySummary(){ const el=document.getElementById('orc-pay-summary'); if(el)el.innerHTML=orcPaySummaryHTML(); }
 function orcPayAdd(){ const rest=Math.max(0,orcAPagar()-orcPagoSum()); const usadas=ORC.pagamentos.map(p=>p.forma); const forma=FORMAS_PAG_ESCOLHA.filter(f=>f!=='Crédito de troca').find(f=>!usadas.includes(f))||'Dinheiro'; ORC.pagamentos.push({forma,valor:Math.round(rest*100)/100}); orcRenderPays(); }
 function orcPayDel(i){ ORC.pagamentos.splice(i,1); if(!ORC.pagamentos.length)ORC.pagamentos=[{forma:'',valor:orcAPagar()}]; orcRenderPays(); }
-function orcPayForma(i,v){ ORC.pagamentos[i].forma=v; if(v==='Cartão Crédito'&&!ORC.pagamentos[i].parcelas) ORC.pagamentos[i].parcelas=1;
+function orcPayForma(i,v){ ORC.pagamentos[i].forma=v; if(formaBase(v)==='Cartão Crédito'&&!ORC.pagamentos[i].parcelas) ORC.pagamentos[i].parcelas=1;
   if(!(+ORC.pagamentos[i].valor>0)){ const outros=ORC.pagamentos.reduce((s,p,k)=>s+(k===i?0:(+p.valor||0)),0); const rest=Math.max(0,Math.round((orcAPagar()-outros)*100)/100); ORC.pagamentos[i].valor=rest; }
   orcRenderPaySummary(); const el=document.getElementById('orc-pays'); if(el)el.innerHTML=orcPaysHTML(); }
 function orcPayParcelas(i,v){ ORC.pagamentos[i].parcelas=Math.min(10,Math.max(1,+v||1)); const el=document.getElementById('orc-pays'); if(el)el.innerHTML=orcPaysHTML(); }
-function orcPayMaquina(i,v){ ORC.pagamentos[i].maquina=(ORC.pagamentos[i].forma==='PIX')?(v||''):(v||'padrao'); const el=document.getElementById('orc-pays'); if(el)el.innerHTML=orcPaysHTML(); }
+function orcPayMaquina(i,v){ ORC.pagamentos[i].maquina=(formaBase(ORC.pagamentos[i].forma)==='PIX')?(v||''):(v||'padrao'); const el=document.getElementById('orc-pays'); if(el)el.innerHTML=orcPaysHTML(); }
 function orcPayValor(i,v){ ORC.pagamentos[i].valor=+v||0; paysAjustarUltima(ORC.pagamentos, orcAPagar(), i, 'orc-pays'); orcRenderPaySummary(); }
 /* Resumo das formas de pagamento do orçamento/pedido.
    IMPORTANTE: mantém a forma ESCOLHIDA mesmo quando o valor não foi digitado — nesse caso vale o
@@ -29890,13 +29941,18 @@ function viewVendasCfg(){
       <div class="card-body">
         <div class="tbl-wrap"><table><thead><tr><th>Forma</th><th>Como funciona</th><th title="Maquininha usada por padrão nesta forma: a taxa dela é descontada nos lançamentos do caixa">Maquininha</th><th title="Marque quando o dinheiro dessa forma entra na conta bancária: a venda passa a ser oferecida na Conciliação Bancária para casar com o extrato">Vai para conciliação bancária</th><th>Código na NF-e</th><th class="t-right">Ações</th></tr></thead><tbody>
           ${FORMAS_PAG_FIXAS.map(f=>`<tr><td><b>${esc(f)}</b> <span class="tag gray" style="font-size:10px">fixa</span></td><td class="t-mut" style="font-size:12.5px">${esc(FORMAS_FIXAS_INFO[f]||'')}</td><td>${(f==='Cartão Crédito'||f==='Cartão Débito'||f==='PIX')?maquinaAssocSelectHTML(f):'<span class="t-mut">—</span>'}</td><td>${concFormaBanco(f)?'Sim':'—'}</td><td class="tnum">${esc(focusFormaPag(f))}</td><td></td></tr>`).join('')}
-          ${extras.map((x,i)=>`<tr><td><b>${esc(x.nome)}</b></td><td class="t-mut" style="font-size:12.5px">Pagamento à vista — entra no caixa como "${esc(x.nome)}".</td><td><span class="t-mut">—</span></td>
+          ${extras.map((x,i)=>{ const fb=formaBase(x.nome); const ehMaq=(fb!==x.nome); const ms=maquinasCartao();
+            return `<tr><td><b>${esc(x.nome)}</b></td><td class="t-mut" style="font-size:12.5px">${ehMaq?(fb==='PIX'?'PIX':fb)+' — desconta a taxa da maquininha escolhida.':'Pagamento à vista — entra no caixa como "'+esc(x.nome)+'".'}
+              <div style="margin-top:4px"><select onchange="formaPagExtraSet(${i},'tipo',this.value)" style="max-width:220px;font-size:12px" title="Como esta forma se comporta no PDV e no caixa"><option value="" ${!x.tipo?'selected':''}>Tipo: automático (pelo nome)</option><option value="avista" ${x.tipo==='avista'?'selected':''}>Tipo: à vista (comum)</option><option value="credito" ${x.tipo==='credito'?'selected':''}>Tipo: cartão crédito</option><option value="debito" ${x.tipo==='debito'?'selected':''}>Tipo: cartão débito</option><option value="pix" ${x.tipo==='pix'?'selected':''}>Tipo: PIX</option></select></div></td>
+            <td>${ehMaq?`<select onchange="formaPagExtraSet(${i},'maquina',this.value)" style="max-width:220px" title="Maquininha desta forma — a taxa dela é descontada no caixa">${fb==='PIX'?`<option value="" ${!x.maquina?'selected':''}>Conta direta (sem taxa)</option>`:`<option value="" disabled ${!x.maquina?'selected':''}>Escolha a maquininha…</option>`}${ms.map(m=>`<option value="${esc(m.id)}" ${x.maquina===m.id?'selected':''}>${esc(m.nome)}</option>`).join('')}</select>`:'<span class="t-mut">—</span>'}</td>
             <td><label style="display:flex;align-items:center;gap:6px;cursor:pointer"><input type="checkbox" ${x.banco?'checked':''} onchange="formaPagExtraSet(${i},'banco',this.checked)" style="width:16px;height:16px"> ${x.banco?'Sim':'Não'}</label></td>
             <td><select onchange="formaPagExtraSet(${i},'sefaz',this.value)" style="max-width:220px">${FORMAS_SEFAZ.map(([c,l])=>`<option value="${c}" ${(x.sefaz||'99')===c?'selected':''}>${c} — ${esc(l)}</option>`).join('')}</select></td>
-            <td class="t-right" style="white-space:nowrap"><button class="btn-icon btn-ghost" title="Renomear" onclick="formaPagExtraRenomear(${i})">${ico('edit')}</button><button class="btn-icon btn-ghost" title="Remover" style="color:var(--neg)" onclick="formaPagExtraRemover(${i})">${ico('trash')}</button></td></tr>`).join('')}
+            <td class="t-right" style="white-space:nowrap"><button class="btn-icon btn-ghost" title="Renomear" onclick="formaPagExtraRenomear(${i})">${ico('edit')}</button><button class="btn-icon btn-ghost" title="Remover" style="color:var(--neg)" onclick="formaPagExtraRemover(${i})">${ico('trash')}</button></td></tr>`; }).join('')}
         </tbody></table></div>
         <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:flex-end;margin-top:12px">
-          <div class="field" style="margin:0;min-width:220px"><label>Nova forma de pagamento</label><input id="fp-novo-nome" placeholder="Ex.: Transferência, Cheque, Vale alimentação" onkeydown="if(event.key==='Enter'){event.preventDefault();formaPagExtraAdd()}"></div>
+          <div class="field" style="margin:0;min-width:220px"><label>Nova forma de pagamento</label><input id="fp-novo-nome" placeholder="Ex.: Transferência, Cheque, Vale alimentação" oninput="formaPagNovoTipoMudou()" onkeydown="if(event.key==='Enter'){event.preventDefault();formaPagExtraAdd()}"></div>
+          <div class="field" style="margin:0"><label>Tipo</label><select id="fp-novo-tipo" onchange="formaPagNovoTipoMudou()"><option value="">Automático (pelo nome)</option><option value="avista">À vista (comum)</option><option value="credito">Cartão crédito</option><option value="debito">Cartão débito</option><option value="pix">PIX</option></select></div>
+          <div class="field" style="margin:0"><label>Maquininha <span class="t-mut" style="font-weight:400">(crédito, débito e PIX)</span></label><select id="fp-novo-maq">${formaPagMaqOpcoesHTML('')}</select></div>
           <label style="display:flex;align-items:center;gap:6px;font-size:12.5px;margin-bottom:9px;cursor:pointer"><input type="checkbox" id="fp-novo-banco" style="width:16px;height:16px"> vai para conciliação bancária</label>
           <div class="field" style="margin:0"><label>Código na NF-e</label><select id="fp-novo-sefaz">${FORMAS_SEFAZ.map(([c,l])=>`<option value="${c}" ${c==='99'?'selected':''}>${c} — ${esc(l)}</option>`).join('')}</select></div>
           <button class="btn btn-amber" onclick="formaPagExtraAdd()">${ico('plus')} Cadastrar forma</button>
@@ -29982,13 +30038,33 @@ function diasMesSalvar(){ const ym=(document.getElementById('dm-mes')||{}).value
 
 /* Tipo cartão escolhido: mostra a maquininha (obrigatória) e sugere o código da NF-e (03 crédito / 04 débito). */
 
+/* tipo efetivo de uma forma (explícito ou pelo nome): 'credito' | 'debito' | 'pix' | '' */
+function formaPagTipoEfetivo(nome, tipo){ if(tipo==='avista') return ''; if(tipo==='credito'||tipo==='debito'||tipo==='pix') return tipo;
+  const n=normTxt(nome||''); if(/cred/.test(n)) return 'credito'; if(/deb/.test(n)) return 'debito'; if(/\bpix\b/.test(n)) return 'pix'; return ''; }
+function formaPagMaqOpcoesHTML(tipoEf, atual){ const ms=maquinasCartao();
+  return (tipoEf==='pix'?'<option value="">Conta direta (sem taxa)</option>':'<option value="">'+(tipoEf?'Escolha a maquininha…':'— (forma à vista)')+'</option>')+ms.map(m=>`<option value="${esc(m.id)}" ${atual===m.id?'selected':''}>${esc(m.nome)}</option>`).join(''); }
+function formaPagNovoTipoMudou(){ const sel=document.getElementById('fp-novo-maq'); if(!sel) return;
+  const tipo=(document.getElementById('fp-novo-tipo')||{}).value||''; const nome=(document.getElementById('fp-novo-nome')||{}).value||'';
+  const ef=formaPagTipoEfetivo(nome,tipo); const atual=sel.value; sel.innerHTML=formaPagMaqOpcoesHTML(ef, atual); sel.disabled=!ef; sel.style.opacity=ef?'1':'.5'; }
 function formaPagExtraAdd(){ const nome=((document.getElementById('fp-novo-nome')||{}).value||'').trim().replace(/\s+/g,' ');
   if(!nome){ toast('Informe o nome da forma de pagamento','err'); return; }
   if(FORMAS_PAG_FIXAS.some(f=>normTxt(f)===normTxt(nome)) || formasPagExtras().some(x=>normTxt(x.nome)===normTxt(nome))){ toast('Já existe uma forma com esse nome','err'); return; }
-  const lista=formasPagExtras().concat([{nome, banco:!!(document.getElementById('fp-novo-banco')||{}).checked, sefaz:(document.getElementById('fp-novo-sefaz')||{}).value||'99'}]);
-  formasPagExtrasSave(lista); try{ logAcao('Forma de pagamento cadastrada', nome); }catch(e){window.__es&&__es(e)} toast('Forma "'+nome+'" cadastrada — já aparece no PDV e no orçamento','ok'); viewVendasCfg(); }
+  const tipo=(document.getElementById('fp-novo-tipo')||{}).value||''; const maquina=(document.getElementById('fp-novo-maq')||{}).value||''; const ef=formaPagTipoEfetivo(nome,tipo);
+  if((ef==='credito'||ef==='debito') && !maquina){ toast('Forma de cartão: escolha a maquininha utilizada','err'); try{ document.getElementById('fp-novo-maq').focus(); }catch(e){} return; }
+  const novo={nome, banco:!!(document.getElementById('fp-novo-banco')||{}).checked, sefaz:(document.getElementById('fp-novo-sefaz')||{}).value||'99'};
+  if(tipo) novo.tipo=tipo; if(ef) novo.maquina=maquina;
+  const lista=formasPagExtras().concat([novo]);
+  formasPagExtrasSave(lista);
+  // CONFERE se gravou de verdade (na memória e no armazenamento do navegador) — nunca diz "cadastrada" sem ter gravado
+  let gravou=formasPagExtras().some(x=>normTxt(x.nome)===normTxt(nome));
+  let noDisco=true; try{ const bruto=localStorage.getItem(DB.K)||''; noDisco = bruto.indexOf(JSON.stringify(nome).slice(1,-1))>=0; }catch(e){ noDisco=false; }
+  if(!gravou){ toast('NÃO foi possível gravar a forma "'+nome+'" — tente de novo e, se repetir, avise o suporte','err'); viewVendasCfg(); return; }
+  try{ logAcao('Forma de pagamento cadastrada', nome); }catch(e){window.__es&&__es(e)}
+  if(!noDisco) toast('Forma "'+nome+'" cadastrada, mas o navegador está sem espaço para guardar tudo — faça um backup/limpe imagens antigas (a forma foi guardada numa cópia de segurança)','err');
+  else toast('Forma "'+nome+'" cadastrada e salva — já aparece no PDV e no orçamento','ok');
+  viewVendasCfg(); }
 
-function formaPagExtraSet(i, campo, v){ const lista=formasPagExtras(); if(!lista[i]) return; lista[i][campo]=v; formasPagExtrasSave(lista); viewVendasCfg(); }
+function formaPagExtraSet(i, campo, v){ const lista=formasPagExtras(); if(!lista[i]) return; if(campo==='tipo'){ if(v) lista[i].tipo=v; else delete lista[i].tipo; } else lista[i][campo]=v; formasPagExtrasSave(lista); viewVendasCfg(); }
 function formaPagExtraRenomear(i){ const lista=formasPagExtras(); if(!lista[i]) return; const novo=(prompt('Novo nome da forma "'+lista[i].nome+'":', lista[i].nome)||'').trim(); if(!novo||novo===lista[i].nome) return;
   if(FORMAS_PAG_FIXAS.some(f=>normTxt(f)===normTxt(novo)) || lista.some((x,k)=>k!==i&&normTxt(x.nome)===normTxt(novo))){ toast('Já existe uma forma com esse nome','err'); return; }
   lista[i].nome=novo; formasPagExtrasSave(lista); toast('Forma renomeada. Vendas antigas continuam com o nome anterior.','ok'); viewVendasCfg(); }
