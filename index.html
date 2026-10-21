@@ -48,7 +48,7 @@ const CONFIG_EMPRESA = {
      Aparece no topo do menu e no rodapé das Configurações. Troque a cada publicação.
      MANTENHA O FORMATO 'vDD/MM-X' — é ele que o sistema usa para comparar as máquinas
      da loja e avisar quando alguma ficou para trás.                                  */
-  versao: 'v20/10-B',
+  versao: 'v20/10-F',
 
   /* 4) NUVEM (Supabase)  ------------------------------------------------------------
      Cole aqui a Project URL e a chave PUBLISHABLE do projeto Supabase DESTA empresa
@@ -2233,6 +2233,12 @@ function seed(){
 }
 /* ---------- ícones ---------- */
 const IC={
+  copy:'<path d="M8 4a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2h-8a2 2 0 0 1-2-2V4Zm2 0v10h8V4h-8ZM4 8a2 2 0 0 1 2-2v2H6v12h8v-1h2v1a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V8Z"/>',
+  fone:'<path d="M6.6 2.8a2 2 0 0 1 2 .5l2.1 2.1a2 2 0 0 1 .2 2.6l-1.2 1.6a12 12 0 0 0 4.7 4.7l1.6-1.2a2 2 0 0 1 2.6.2l2.1 2.1a2 2 0 0 1 .1 2.7l-1.3 1.5a3 3 0 0 1-3 .9C10.5 19.1 4.9 13.5 3.5 7.5a3 3 0 0 1 .9-3l1.5-1.3a2 2 0 0 1 .7-.4Z"/>',
+  sync:'<path d="M12 4a8 8 0 0 1 6.9 4H16v2h6V4h-2v2.3A10 10 0 0 0 2.1 11h2A8 8 0 0 1 12 4Zm7.9 9A8 8 0 0 1 5.1 16H8v-2H2v6h2v-2.3A10 10 0 0 0 21.9 13h-2Z"/>',
+  calc:'<path d="M6 2h12a2 2 0 0 1 2 2v16a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2Zm0 2v4h12V4H6Zm1 7a1.5 1.5 0 1 0 0 3 1.5 1.5 0 0 0 0-3Zm5 0a1.5 1.5 0 1 0 0 3 1.5 1.5 0 0 0 0-3Zm5 0a1.5 1.5 0 1 0 0 3 1.5 1.5 0 0 0 0-3ZM7 16a1.5 1.5 0 1 0 0 3 1.5 1.5 0 0 0 0-3Zm5 0a1.5 1.5 0 1 0 0 3 1.5 1.5 0 0 0 0-3Zm5 0a1.5 1.5 0 1 0 0 3 1.5 1.5 0 0 0 0-3Z"/>',
+  cat:'<path d="M4 4h7v7H4V4Zm9 0h7v7h-7V4ZM4 13h7v7H4v-7Zm9 0h7v7h-7v-7Z"/>',
+  forn:'<path d="M3 7a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2v1h2.5a2 2 0 0 1 1.6.8l1.5 2a2 2 0 0 1 .4 1.2V16a1 1 0 0 1-1 1h-1.2a2.5 2.5 0 0 1-4.6 0H9.3a2.5 2.5 0 0 1-4.6 0H4a1 1 0 0 1-1-1V7Zm12 3v3h4.2l-.2-.3-1.5-2a0 0 0 0 0 0 0H15ZM7 16.5a1 1 0 1 0 0 2 1 1 0 0 0 0-2Zm9 0a1 1 0 1 0 0 2 1 1 0 0 0 0-2Z"/>',
   tag:'<path d="M3 3h8l10 10-8 8L3 11V3Zm4 3a1.5 1.5 0 1 0 0 3 1.5 1.5 0 0 0 0-3Z"/>',
   eye:'<path d="M12 5c-5 0-9 4.5-9 7s4 7 9 7 9-4.5 9-7-4-7-9-7Zm0 11a4 4 0 1 1 0-8 4 4 0 0 1 0 8Zm0-6a2 2 0 1 0 0 4 2 2 0 0 0 0-4Z"/>',
   eyeoff:'<path d="M12 5c-5 0-9 4.5-9 7 0 1.5 1.4 3.6 3.6 5.2M9.9 9.9a3 3 0 0 0 4.2 4.2M12 5c5 0 9 4.5 9 7 0 1.2-.9 2.8-2.4 4.2M4 4l16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>',
@@ -4484,7 +4490,7 @@ function cartTotals(){
   const frete=cartFrete(); const total=Math.max(0,sub-CART.desconto)+frete; const lucro=Math.max(0,sub-CART.desconto)-custo;
   const margem=(total-frete)?lucro/(total-frete)*100:0; const cor=lucro<0?'var(--neg)':margem<12?'var(--amber-d)':'var(--pos)';
   return `${resumoValoresLinhas({cls:'cart-total-line',tagV:'span',bruto:brutoLista,frete:frete,descItens:descItens,descGeral:(+CART.desconto||0)})}
-    <div class="cart-total-line" style="font-size:12px"><span class="t-mut">Lucro / Margem</span><span class="tnum" style="color:${cor}">${BRL(lucro)} · ${PCT(margem)}</span></div>
+    <div class="cart-total-line" style="font-size:12px"><span class="t-mut">Margem</span><span class="tnum" style="color:${cor}">${PCT(margem)}</span></div>
     ${lucro<0?`<div class="margem-alert err" style="margin:6px 0">${ico('alert')} Venda abaixo do custo</div>`:''}
     <div class="cart-total-line grand"><span>Total</span><span class="tnum">${BRL(total)}</span></div>`;
 }
@@ -4896,7 +4902,8 @@ function pdvImportDoc(){
   // venda-pedido em aberto. Esses só aparecem em "Importar pedido"; os orçamentos puros ficam
   // em "Importar orçamento".
   const virouPed=o=>(o.tipo==='Pedido' || !!aberto[o.id]);
-  const lista=DB.all('orcamentos').filter(o=>o.status!=='desistencia' && !fechado.has(o.id) && (virouPed(o)===ped)).sort((a,b)=>(+b.numero||0)-(+a.numero||0));
+  let lista=DB.all('orcamentos').filter(o=>o.status!=='desistencia' && !fechado.has(o.id) && (virouPed(o)===ped)).sort((a,b)=>(+b.numero||0)-(+a.numero||0));
+  if(ped) lista=lista.concat(impPedVendasExtras(lista)).sort((a,b)=>(+b.numero||0)-(+a.numero||0));
   const formasSet={}; DB.all('orcamentos').forEach(o=>{ if((virouPed(o)===ped)){ if(o.formaPagamento) formasSet[o.formaPagamento]=1; (o.pagamentos||[]).forEach(p=>{ if(p&&p.forma) formasSet[p.forma]=1; }); } });
   const formasOpts=Object.keys(formasSet).sort().map(f=>`<option value="${esc(f)}">${esc(f)}</option>`).join('');
   const doc=ped?'pedido':'orçamento';
@@ -4927,10 +4934,28 @@ async function impOrcConferirNuvem(){
   else { el().innerHTML='<span style="color:#991b1b"><b>Não consegui conferir com a nuvem</b> — esta lista pode estar desatualizada.</span> <a href="javascript:void(0)" onclick="impOrcConferirNuvem()">Tentar de novo</a>'; }
   try{ const av=document.getElementById('imp-orc-aviso'); if(av) av.innerHTML=nuvemDesatualizadoHTML()+(_impEhPed()?pedidosAbertosComNotaHTML():''); renderImpOrc(); }catch(e){window.__es&&__es(e)}
 }
+/* PEDIDOS-VENDA em aberto que NÃO estão ligados a um documento da lista (pedido cujo orçamento não existe
+   neste computador, foi apagado, ou ficou marcado de outro jeito). Antes eles contavam em "Pedidos em
+   aberto" mas não apareciam em "Importar pedido" — agora aparecem também, com o mesmo número. */
+function impPedVendasExtras(listaDocs){ try{
+    const {aberto,fechado}=pdvOrcPedidoMap(); const naLista=new Set((listaDocs||[]).map(o=>o&&o.id));
+    return pedidosVendaAbertos().filter(v=>{ if(!v) return false; const o=v.fromOrcId; if(o && naLista.has(o) && aberto[o] && aberto[o].id===v.id) return false;
+      if(o && fechado.has(o)) return false;   // documento já faturado: não oferece de novo (evita faturar em dobro) — aparece em "Conferir pelo histórico"
+      return true; })
+      .map(v=>({ id:'venda:'+v.id, _vendaId:v.id, _receberLocal:v.status==='receber_local', numero:v.numero, tipo:'Pedido', status:v.status, itens:v.itens||[], data:v.data, total:+v.total||0,
+        clienteId:v.clienteId||null, clienteNome:v.clienteNome||'', vendedorNome:v.vendedorNome||'', formaPagamento:v.formaPagamento||'', pagamentos:v.pagamentos||[] }));
+  }catch(e){ return []; } }
 function impOrcList(lista){
   if(!lista.length){ const doc=_impEhPed()?'pedido':'orçamento'; return `<div class="empty" style="padding:30px">${ico('quote')}<h4>Nenhum ${doc} disponível</h4><p class="t-mut">${_impEhPed()?'Crie pedidos em Pedidos Vendedores.':'Crie orçamentos na aba Orçamentos.'}</p></div>`; }
   const {aberto}=pdvOrcPedidoMap();
-  return lista.map(o=>{ const ped=aberto[o.id];
+  return lista.map(o=>{ if(o && o._vendaId){   // pedido-venda em aberto sem documento na lista
+      const click=o._receberLocal?`pdvReceberLocalCarregar('${o._vendaId}')`:`closeModal();pdvLoadPedido('${o._vendaId}')`;
+      const mb=(o._matchPct!=null)?`<span class="badge" style="background:${o._matchPct>=100?'var(--pos-soft)':'var(--amber-soft)'};color:${o._matchPct>=100?'var(--pos)':'var(--amber-d)'};font-weight:700;font-size:10px;padding:1px 6px;border-radius:5px;margin-left:6px">${o._matchPct}%</span>`:'';
+      return `<button class="orc-res" onclick="${click}">
+     <div style="flex:1;text-align:left;min-width:0"><div class="t-strong"><span class="badge" style="background:#0f172a;color:#fff;font-weight:800;font-size:11px;padding:1px 8px;border-radius:5px;margin-right:6px">PEDIDO Nº ${esc(''+(o.numero||'—'))}</span>${esc(o.clienteNome||'Consumidor')}<span class="badge" style="background:var(--amber-soft);color:var(--amber-d);font-weight:700;font-size:10.5px;padding:1px 6px;border-radius:5px;margin-left:6px">${o._receberLocal?'receber no local':'em aberto — faturar'}</span>${mb}</div>
+       <div class="t-mut" style="font-size:11.5px">${fDate(o.data)} · ${(o.itens||[]).length} item(ns) · ${esc(o.vendedorNome||'—')}</div></div>
+     <div class="tnum t-strong">${BRL(o.total)}</div>${ico('plus','plus-sm')}</button>`; }
+    const ped=aberto[o.id];
     const click=ped?`closeModal();pdvLoadPedido('${ped.id}')`:`pdvLoadOrc('${o.id}')`;
     // Número como aparece na aba PEDIDOS: se o pedido já virou uma venda-pedido (em aberto), o número
     // que o vendedor vê na aba Pedidos é o #número da venda; senão, é o próprio Nº do pedido.
@@ -4957,6 +4982,9 @@ function renderImpOrc(){ const q=(document.getElementById('imp-orc-q').value||''
   let lista=DB.all('orcamentos').filter(o=>o.status!=='desistencia'&&!fechado.has(o.id)&&(virouPed(o)===ped)
     &&(!q||(orcNomeCli(o)||o.clienteNome||'').toLowerCase().includes(q)||(!!qd&&String(o.numero||'').includes(qd)))
     &&(!pag || (o.formaPagamento||'')===pag || (o.pagamentos||[]).some(p=>((p&&p.forma)||'')===pag)));
+  if(ped){ const base=DB.all('orcamentos').filter(o=>o.status!=='desistencia'&&!fechado.has(o.id)&&virouPed(o));
+    lista=lista.concat(impPedVendasExtras(base).filter(o=>(!q||(o.clienteNome||'').toLowerCase().includes(q)||(!!qd&&String(o.numero||'').includes(qd)))
+      &&(!pag || (o.formaPagamento||'')===pag || (o.pagamentos||[]).some(p=>((p&&p.forma)||'')===pag)))); }
   if(val>0){
     lista=lista.map(o=>{ const diff=Math.abs((+o.total||0)-val); const pct=diff===0?100:Math.max(0,Math.round(100*(1-diff/val)));
         return Object.assign({},o,{_matchPct:pct}); })
@@ -6793,7 +6821,7 @@ function salesTotaisHTML(vendas){ const p=salesTotaisPeriodo(); const vs=salesTo
     </div>`; }
 function salesTotaisRender(){ const el=document.getElementById('sales-totais'); if(!el) return; const vend=SALESF.scope==='vend';
   const vendas=pedidosFaturados().slice().filter(v=> !vend || pedidoStatusInfo(v).k==='faturado'); el.innerHTML=salesTotaisHTML(vendas); }
-function viewSales(scope){ SALESF.scope=(scope==='vend')?'vend':'all'; const vend=SALESF.scope==='vend'; if(!vend) SALESF.vend='';
+function viewSales(scope){ SALES_LIM=SALES_PASSO; SALESF.scope=(scope==='vend')?'vend':'all'; const vend=SALESF.scope==='vend'; if(!vend) SALESF.vend='';
   const vendas=pedidosFaturados().slice().filter(v=> !vend || pedidoStatusInfo(v).k==='faturado').sort(docLancCmp);
   document.getElementById('view').innerHTML=`
     <div class="bi-banner" style="margin-bottom:16px"><div>${ico('sales')}</div>
@@ -7037,10 +7065,23 @@ function pedidoAbertoCancelar(id){ const o=DB.get('orcamentos',id); if(!o) retur
   if(typeof confirm==='function' && !confirm('Cancelar o Pedido Nº '+(o.numero||'')+'?\n\nEle sai da lista de PEDIDOS EM ABERTO, mas NÃO some do sistema: continua em Orçamentos, marcado como desistência, e pode ser consultado ou reaberto a qualquer momento.')) return;
   DB.update('orcamentos',id,{status:'desistencia'}); toast('Pedido cancelado','ok');
   try{ viewSalesVendedor(); }catch(e){window.__es&&__es(e)} }
+/* A lista de pedidos carrega em blocos de 200 (os mais recentes primeiro) para a tela
+   nao travar com milhares de pedidos. Os botoes abaixo da tabela liberam o resto. */
+const SALES_PASSO=200;
+let SALES_LIM=SALES_PASSO;
+function salesMostrarMais(){ SALES_LIM+=SALES_PASSO; try{ renderSalesTable(); }catch(e){} }
+function salesMostrarTodos(){ SALES_LIM=Number.MAX_SAFE_INTEGER; try{ renderSalesTable(); }catch(e){} }
+function salesNotaLimite(mostrando, total){
+  if(total<=mostrando) return '';
+  return `<div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;padding:10px 13px;font-size:12.5px;border-top:1px solid var(--line);color:var(--ink-2)">
+    ${ico('alert')}<span>Mostrando os <b>${NUM(mostrando)}</b> pedidos mais recentes de <b>${NUM(total)}</b> — os mais antigos continuam no sistema. Use a busca por número ou cliente, o período, ou:</span>
+    <button class="btn btn-ghost btn-sm" onclick="salesMostrarMais()">Mostrar mais ${NUM(Math.min(SALES_PASSO, total-mostrando))}</button>
+    <button class="btn btn-ghost btn-sm" onclick="salesMostrarTodos()">Mostrar todos (${NUM(total)})</button>
+  </div>`; }
 function salesTable(vendas){
   if(!vendas.length) return `<div class="empty">${ico('sales')}<h4>Nenhum pedido faturado ainda</h4><p>Crie um orçamento e finalize-o no PDV (importando o orçamento) para o pedido aparecer aqui.</p></div>`;
   return `<table><thead><tr><th>Pedido</th>${thSort('vendas','data','Data','renderSalesTable')}<th>Cliente</th><th>Itens</th><th>Pagamento</th>${thSort('vendas','total','Total','renderSalesTable','t-right')}${thSort('vendas','lucro','Lucro','renderSalesTable','t-right')}<th class="t-center">Status</th><th></th></tr></thead><tbody>
-    ${vendas.slice(0,200).map(v=>{ const lucro=vendaLucro(v); const nit=v.itens.reduce((s,i)=>s+i.qtd,0);
+    ${vendas.slice(0,SALES_LIM).map(v=>{ const lucro=vendaLucro(v); const nit=v.itens.reduce((s,i)=>s+i.qtd,0);
     const isRL = v.status==='receber_local' || pedidoStatusInfo(v).k==='receber_local';   // destaque para "receber no local"
     return `<tr style="${isRL?'background:#fff7ed;box-shadow:inset 4px 0 0 #f59e0b':''}">
       <td class="tnum t-strong">${v.numero?('#'+v.numero):(v.fromOrcNumero?('orç. '+v.fromOrcNumero):'—')}${isRL?` <span class="tag warn" style="font-size:9.5px;letter-spacing:.3px;display:inline-block;margin-top:2px">${ico('money')} RECEBER NO LOCAL</span>`:''}</td>
@@ -7053,7 +7094,7 @@ function salesTable(vendas){
       <td class="t-center">${(()=>{ const si=pedidoStatusInfo(v); const sep=sepStatus(v); return `<span class="tag ${si.cls}">${si.label}</span>${sep&&sep.k!=='pendente'?`<div style="margin-top:3px"><span class="tag ${sep.k==='completa'?'pos':'warn'}" style="font-size:10.5px">${ico('box')} ${sep.label}</span></div>`:''}`; })()}</td>
       <td class="t-right sales-acoes">${(v.itens||[]).length&&v.status!=='cancelada'?`<button class="btn-icon btn-ghost" onclick="orcMargem('${v.id}','vendas')" title="Análise de margem e simulador de desconto" style="color:#7c3aed">${ico('chart')}</button>`:''}${(SALESF.scope==='vend'&&pedidoStatusInfo(v).k==='pendente')?`<button class="btn-icon btn-ghost" onclick="pedidoEditarVend('${v.id}')" title="Editar pedido" style="color:#2563eb">${ico('edit')}</button>`:''}${(SALESF.scope!=='vend'&&v.faturadoPDV)?`<button class="btn-icon btn-ghost" onclick="vendaEstornar('${v.id}','renderSalesTable',true)" title="Estornar pedido: devolve o estoque, apaga as contas a receber, tira do caixa e volta para Pendente. Se houver nota fiscal, leva ao cancelamento dela na SEFAZ — o estorno vem em seguida." style="color:var(--neg)">${ico('ret')}</button>`:''}${(SALESF.scope!=='vend'&&v.status==='pendente')?`<button class="btn-icon btn-ghost" onclick="pedidoFaturar('${v.id}')" title="Faturar pedido (baixa estoque)" style="color:var(--pos)">${ico('check')}</button>`:''}${(SALESF.scope!=='vend'&&v.status==='receber_local')?`<button class="btn-icon btn-ghost" onclick="pedidoConfirmarReceb('${v.id}')" title="Confirmar recebimento no local" style="color:var(--pos)">${ico('money')}</button>`:''}${['faturado','pago'].includes(v.status)?`<button class="btn-icon btn-ghost" onclick="pedidoSeparar('${v.id}')" title="Separação / retirada parcial" style="color:#2563eb">${ico('box')}</button>`:''}${(SALESF.scope!=='vend'&&v.status!=='cancelada')?`<button class="btn-icon btn-ghost" onclick="pedidoVoltarOrcamento('${v.id}')" title="Retornar para orçamento" style="color:#b45309">${ico('back')}</button>`:''}${(SALESF.scope!=='vend'&&v.status!=='cancelada')?`<button class="btn-icon btn-ghost" onclick="pedidoCancelar('${v.id}')" title="Cancelar pedido (estorna estoque e financeiro)" style="color:var(--neg)">${ico('x')}</button>`:''}${(SALESF.scope!=='vend'&&v.fiscalPendente)?`<button class="btn-icon btn-ghost" onclick="nfeLiberarPendenciaModal('${v.id}')" title="Liberar no caixa sem emitir a nota fiscal" style="color:var(--pos)">${ico('check')}</button>`:''}<button class="btn-icon btn-ghost" onclick="vendaResumo('${v.id}')" title="Ver dados da venda">${ico('eye')}</button><button class="btn-icon btn-ghost" onclick="vendaDetalhe('${v.id}')" title="Ver pedido">${ico('rep')}</button><button class="btn-icon btn-ghost" onclick="pedEtiqAbrir('venda','${v.id}')" title="Imprimir etiqueta do pedido">${ico('scan')}</button><button class="btn-icon btn-ghost" onclick="reciboEscolher('${v.id}')" title="Imprimir pedido / recibo">${ico('print')}</button>${SALESF.scope==='vend'?(['faturado','pago'].includes(v.status)?`<button class="btn-icon btn-ghost" onclick="pedidoNFe('${v.id}')" title="Imprimir nota fiscal" style="color:var(--pos)">${ico('nfeout')}</button>`:''):`<button class="btn-icon btn-ghost" onclick="pedidoNFe('${v.id}')" title="${v.notaEmitida?'Ver nota fiscal':'Emitir cupom fiscal (NFC-e) ou NF-e'}" style="color:${v.notaEmitida?'var(--pos)':'var(--amber-d)'}">${ico('nfeout')}</button>`}</td>
     </tr>`;}).join('')}
-  </tbody></table>`;
+  </tbody></table>${salesNotaLimite(Math.min(vendas.length,SALES_LIM), vendas.length)}`;
 }
 /* Botão "nota fiscal" da lista de pedidos/vendas (v14/10-B): já existe nota → abre; senão pergunta
    qual documento emitir — Cupom Fiscal (NFC-e, modelo 65) ou NF-e (modelo 55). Venda no boleto só NF-e. */
@@ -16320,7 +16361,7 @@ async function sefazSincronizar(opts){ opts=opts||{}; saveSefazConfig(sefazReadI
   try{ nfentJuntarDuplicadas({silencioso:true}); }catch(e){window.__es&&__es(e)}   // nada de nota repetida depois da busca
   const cfgFim=sefazConfig();
   // Notas listadas contra o CNPJ, mas com XML ainda bloqueado pela SEFAZ (recém-manifestadas por ciência).
-  const semXmlPend=DB.all('notasRecebidas').filter(r=>r.status!=='lancada'&&r.status!=='descartada'&&!r.xml).length;
+  const semXmlPend=DB.all('notasRecebidas').filter(r=>r.status!=='lancada'&&r.status!=='descartada'&&!r.xml&&!nfentJaLancada(r)).length;
   const avisoVazio = (!cfgFim.modoDemo && !xmls.length && !resumos.length && !novosResumos) ? `<div class="card card-pad" style="margin-top:8px;background:var(--amber-soft)"><b>${ico('alert')} Nenhum documento retornado.</b> A consulta foi refeita inclusive desde o início (NSU 0) e o integrador não devolveu documentos. Confirme se o endpoint está respondendo e se o CNPJ configurado é o da empresa. A SEFAZ disponibiliza apenas os últimos 90 dias.</div>` : '';
   const avisoCiencia = (manifestadas>0 || (semXmlPend>0 && xmls.length===0)) ? `<div class="card card-pad" style="margin-top:8px;background:var(--amber-soft)"><b>${ico('clock')} ${manifestadas>0?(manifestadas+' nota(s) tiveram a "Ciência da Operação" manifestada agora.'):'Há nota(s) aguardando o XML da SEFAZ.'}</b> <div class="t-mut" style="font-size:12.5px;margin-top:4px">A SEFAZ libera o XML completo em alguns instantes após a ciência. As notas aparecem abaixo como <b>"Só resumo"</b> — vou buscar o XML automaticamente em instantes; você também pode clicar em <b>"Buscar no SEFAZ"</b> de novo em 1–2 minutos.</div></div>` : '';
   const _i=_sefazInfo||{};
@@ -16481,7 +16522,7 @@ function nfentJuntarDuplicadas(opts){ opts=opts||{};
 function nfentAcharExistente(ref){ const k=nfentIdent(ref); if(!k) return null;
   try{ return DB.all('notasRecebidas').find(r=>nfentIdent(r)===k)||null; }catch(e){ return null; } }
 function nfentSemXmlPendentes(){ try{
-    return DB.all('notasRecebidas').filter(r=>r&&r.status!=='lancada'&&r.status!=='descartada'&&!r.xml&&r.chave&&!r.cancelada);
+    return DB.all('notasRecebidas').filter(r=>r&&r.status!=='lancada'&&r.status!=='descartada'&&!r.xml&&r.chave&&!r.cancelada&&!nfentJaLancada(r));
   }catch(e){ return []; } }
 async function sefazManifestarChave(chave, tipo){
   const f=fiscalCfg(); const url=(f.focusUrl||'').trim();
@@ -29828,7 +29869,7 @@ function viewNuvem(){ const c=nuvemCfg(); const conf=!!(c.url&&c.key); const lib
      <div class="card card-pad" style="margin-top:10px;border-left:4px solid var(--neg)">
        <b style="font-size:13.5px">Recuperação (faça backup antes — Configurações → Fazer backup)</b>
        ${linha('Juntar os dados de OUTRO computador','No outro computador faça o backup (.json) e traga o arquivo para cá. A mesclagem adiciona o que falta e mantém o mais novo em conflito — não apaga nem duplica. Depois, "Enviar para a nuvem".',`<label class="btn btn-ghost btn-sm" style="cursor:pointer;margin:0">${ico('dl')} Mesclar backup (.json)<input type="file" accept="application/json,.json" style="display:none" onchange="mesclarBackupArquivo(this.files[0]);this.value=''"></label>`)}
-       ${linha('A nuvem ficou errada e ESTE computador está certo','Só no computador que tem TODOS os dados corretos, com os outros fechados. Reenvia tudo daqui e sobrepõe a nuvem; depois, nos outros, "Baixar da nuvem".',`<button class="btn btn-amber btn-sm" onclick="nuvemV3RepovoarNuvem()" ${conf?'':'disabled'} title="Lê a nuvem por cima (nada daqui é apagado) e depois sobe TODOS os registros deste computador para a acervo_reg">${ico('up')} Reenviar tudo por registro (nuvem vazia)</button><button class="btn btn-ghost btn-sm" onclick="nuvemForcarNuvemDeste()" ${conf?'':'disabled'}>${ico('up')} Corrigir a nuvem a partir DESTE computador</button><button class="btn btn-ghost btn-sm" onclick="if(confirm('SUBSTITUIR tudo na nuvem pelos dados DESTE aparelho?\n\nUse SOMENTE no aparelho que tem os dados completos e corretos.'))nuvemSalvarSubstituir()" ${conf?'':'disabled'} title="Reenvia todas as coleções deste aparelho, mesmo as que parecem iguais">${ico('up')} Reenviar tudo (forçado)</button>`)}
+       ${linha('A nuvem ficou errada e ESTE computador está certo','Só no computador que tem TODOS os dados corretos, com os outros fechados. Reenvia tudo daqui e sobrepõe a nuvem; depois, nos outros, "Baixar da nuvem".',`<button class="btn btn-amber btn-sm" onclick="nuvemV3RepovoarNuvem()" ${conf?'':'disabled'} title="Lê a nuvem por cima (nada daqui é apagado) e depois sobe TODOS os registros deste computador para a acervo_reg">${ico('up')} Reenviar tudo por registro (nuvem vazia)</button><button class="btn btn-ghost btn-sm" onclick="nuvemForcarNuvemDeste()" ${conf?'':'disabled'}>${ico('up')} Corrigir a nuvem a partir DESTE computador</button><button class="btn btn-ghost btn-sm" onclick="if(confirm('SUBSTITUIR tudo na nuvem pelos dados DESTE aparelho?\\n\\nUse SOMENTE no aparelho que tem os dados completos e corretos.'))nuvemSalvarSubstituir()" ${conf?'':'disabled'} title="Reenvia todas as coleções deste aparelho, mesmo as que parecem iguais">${ico('up')} Reenviar tudo (forçado)</button>`)}
        ${linha('Os dados sumiram depois de uma atualização','Restaura uma cópia de segurança: a do modelo antigo guardada na nuvem, ou a cópia local deste aparelho. Mostra as quantidades antes de aplicar.',`<button class="btn btn-amber btn-sm" onclick="nuvemCofreModal()">${ico('shield')} Cofre local (cópias por dia)</button><button class="btn btn-ghost btn-sm" style="color:var(--neg)" onclick="nuvemV1Restaurar()" ${conf?'':'disabled'}>${ico('down')} Base de segurança (nuvem)</button><button class="btn btn-ghost btn-sm" onclick="nuvemSnapRestaurar()">${ico('down')} Cópia local deste aparelho</button>`)}
        ${linha('Reler TODA a nuvem sem apagar nada daqui','Lê todos os registros da nuvem por cima dos deste computador: o que falta é adicionado, o mais novo vence. Nada local é apagado. Use quando algo sumiu aqui mas existe na nuvem.',`<button class="btn btn-ghost btn-sm" onclick="nuvemCarregar(false)" ${conf?'':'disabled'}>${ico('dl')} Reler toda a nuvem</button><button class="btn btn-ghost btn-sm" onclick="cadRecuperarNuvemModal(['produtos'])" ${conf?'':'disabled'}>${ico('dl')} Procurar produtos na nuvem</button>`)}
      </div>
@@ -33513,7 +33554,7 @@ function entradasOrfasEstornar(){ const o=entradasOrfas(); if(!o.length){ closeM
   try{ nuvemPushJa(); }catch(e){}
   closeModal(); toast(n+' entrada(s) estornada(s) do estoque'+(marc?(' · '+marc+' já estavam acertadas pela contagem'):''),'ok');
   try{ go(STATE.route); }catch(e){} }
-function viewNfeEntrada(){ if(!WIZ) wizReset();
+function viewNfeEntrada(){ if(!WIZ) wizReset(); try{ nfentConciliarLancadas(); }catch(e){window.__es&&__es(e)}
   try{ nfentJuntarDuplicadas({silencioso:false}); }catch(e){window.__es&&__es(e)}   // nota repetida nunca chega à lista
   document.getElementById('view').innerHTML=`<div id="nfent-orfas">${(function(){ try{ return entradasOrfasBannerHTML(); }catch(e){ return ''; } })()}</div><div id="nfent-body"></div>`;
   // Sem abas: a tela mostra "Notas Recebidas" por padrão. O assistente de entrada só aparece
@@ -34512,7 +34553,18 @@ function altpSalvar(){ let n=0; ALTP.linhas.forEach(l=>{ const p=DB.get('produto
 /* Notas recebidas ainda não lançadas. A LISTA mostra só as que já têm o XML
    baixado (as prontas para lançar); as que vieram só como resumo ficam fora,
    contadas no aviso amarelo, e aparecem só se o operador pedir. */
-function nfentPendBase(){ return DB.all('notasRecebidas').filter(r=>r.status!=='lancada'&&r.status!=='descartada').sort((a,b)=>((b.data||'')+'').localeCompare((a.data||'')+'')); }
+/* NOTA JÁ LANÇADA NUNCA VOLTA PARA A FILA (v20/10-E): além do status da nota recebida, confere se já existe
+   ENTRADA lançada (mesma chave de acesso, ou mesmo fornecedor + número + série) — o status podia ficar
+   "pendente" quando a nota foi lançada por outro caminho (XML do computador, outro computador, importação),
+   quando a sincronização trouxe uma cópia antiga do registro, ou quando a busca no SEFAZ a trouxe de novo. */
+function nfentJaLancada(r){ try{ if(!r) return null; const ex=nfeEntradaExistente(nfentRefEntrada(r)); return (ex && (ex.compra||ex.venda||(ex.recebida && ex.recebida.id!==r.id)))?ex:null; }catch(e){ return null; } }
+let _nfentConcT=0;
+function nfentConciliarLancadas(){ const agora=Date.now(); if(agora-_nfentConcT<3000) return 0; _nfentConcT=agora; let n=0;
+  try{ DB.all('notasRecebidas').forEach(r=>{ if(!r || r.status==='lancada' || r.status==='descartada') return; const ex=nfentJaLancada(r); if(!ex) return;
+      DB.update('notasRecebidas',r.id,{ status:'lancada', lancadaAuto:new Date().toISOString(), lancadaMotivo:ex.motivo||'', compraId:(ex.compra&&ex.compra.id)||r.compraId||'' }); n++; });
+    if(n){ try{ logAcao('Notas recebidas já lançadas tiradas da fila', n+' nota(s) — já tinham entrada no sistema'); }catch(e){} }
+  }catch(e){window.__es&&__es(e)} return n; }
+function nfentPendBase(){ return DB.all('notasRecebidas').filter(r=>r.status!=='lancada'&&r.status!=='descartada'&&!nfentJaLancada(r)).sort((a,b)=>((b.data||'')+'').localeCompare((a.data||'')+'')); }
 function nfentPendVisiveis(){ const t=nfentPendBase(); if(NFENT.verResumos) return t;
   // Nota CANCELADA ou com CARTA DE CORREÇÃO continua à vista mesmo sem XML:
   // são avisos que o operador precisa ver, não notas esperando liberação.
@@ -34975,7 +35027,7 @@ function nfentFiltraPend(pend){ const q=((NFENT.q||'')+'').toLowerCase().trim();
     return false; }); }
 function nfentFiltrarPend(){ const b=document.getElementById('nfent-pend-body');
   if(b) b.innerHTML=nfentPendRows(nfentFiltraPend(nfentPendVisiveis())); }
-function nfentRefresh(){ const b=document.getElementById('nfent-body'); if(b) b.innerHTML=nfentRecebidasHTML(); }
+function nfentRefresh(){ try{ nfentConciliarLancadas(); }catch(e){window.__es&&__es(e)} const b=document.getElementById('nfent-body'); if(b) b.innerHTML=nfentRecebidasHTML(); }
 /* Notas Recebidas: importar um XML de NF-e direto do computador (além do SEFAZ).
    Lê o arquivo, valida e abre o assistente de entrada já com a nota carregada. */
 function nfentXmlComputador(inp){ const f=inp&&inp.files&&inp.files[0]; if(!f) return;
