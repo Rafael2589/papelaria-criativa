@@ -48,7 +48,7 @@ const CONFIG_EMPRESA = {
      Aparece no topo do menu e no rodapé das Configurações. Troque a cada publicação.
      MANTENHA O FORMATO 'vDD/MM-X' — é ele que o sistema usa para comparar as máquinas
      da loja e avisar quando alguma ficou para trás.                                  */
-  versao: 'v21/10-B',
+  versao: 'v21/10-C',
 
   /* 4) NUVEM (Supabase)  ------------------------------------------------------------
      Cole aqui a Project URL e a chave PUBLISHABLE do projeto Supabase DESTA empresa
@@ -2381,7 +2381,7 @@ const NAV=[
     {id:'nfeent',label:'NF-e Entrada',icon:'doc',title:'NF-e de Entrada',sub:'Notas de compra/entrada importadas'},
     {id:'notasemit',label:'Notas Emitidas',icon:'check',title:'Notas Emitidas',sub:'NF-e/NFC-e emitidas pela loja'},
     {id:'nfesai',label:'NF-e Saída',icon:'nfeout',title:'NF-e de Saída',sub:'Emitir nota a partir das vendas'},
-    {id:'nfavulsa',label:'Nota Fiscal Avulsa',icon:'doc',title:'Nota Fiscal Avulsa',sub:'NF-e que move estoque sem entrar no faturamento'},
+    {id:'nfavulsa',label:'Nota Fiscal Avulsa',icon:'doc',title:'Nota Fiscal Avulsa',sub:'NF-e fora do faturamento — com ou sem baixa de estoque'},
     {id:'auditoria',label:'Auditoria Fiscal',icon:'shield',title:'Auditoria Fiscal',sub:'Divergências e conformidade'},
     {id:'contador',label:'Enviar p/ Contador',icon:'send',title:'Enviar para o Contador',sub:'Exportar notas e relatórios'},
     {id:'impostos',label:'Impostos',icon:'chart',title:'Impostos',sub:'Apuração e estimativas'},
@@ -36107,7 +36107,7 @@ function viewNFAvulsa(){ const clientes=DB.all('clientes');
   document.getElementById('view').innerHTML=`
    ${nfaErroHTML()}${nfaRascAvisoHTML()}
    <div class="bi-banner" style="margin-bottom:16px"><div>${ico('doc')}</div>
-     <div><b>Nota Fiscal Avulsa</b><p>Emite uma NF-e (modelo 55) que <b>movimenta o estoque normalmente</b>, mas <b>não é contabilizada no faturamento</b> (não gera venda). Útil para remessas, brindes, transferências e ajustes com documento fiscal. A transmissão real à SEFAZ exige certificado e backend — aqui o registro é de demonstração.</p></div></div>
+     <div><b>Nota Fiscal Avulsa</b><p>Emite uma NF-e (modelo 55) que pode <b>dar saída no estoque</b> (chave "Baixar estoque" — desligue para não mexer), mas <b>não é contabilizada no faturamento</b> (não gera venda). Útil para remessas, brindes, transferências e ajustes com documento fiscal. A transmissão real à SEFAZ exige certificado e backend — aqui o registro é de demonstração.</p></div></div>
    <div class="g2" style="gap:16px;align-items:start">
      <div class="card card-pad">
        <h3 style="margin-bottom:10px">Dados da nota</h3>
@@ -36119,7 +36119,7 @@ function viewNFAvulsa(){ const clientes=DB.all('clientes');
        <div class="field"><label>Forma de pagamento</label><select id="nfa-forma" onchange="nfaSetForma(this.value)">
          ${NFA_FORMAS.map(f=>`<option ${NFA.formaPagamento===f?'selected':''}>${esc(f)}</option>`).join('')}</select></div>
        <div id="nfa-parcelas">${nfaParcelasUI()}</div>
-       ${NFA._vendaId?`<div class="switch-row" style="opacity:.75"><div><b>Baixar estoque</b><p class="t-mut">Nota gerada a partir de uma venda — o estoque já foi movimentado na venda e <b>não será baixado novamente</b>.</p></div><span class="switch" id="sw-nfa"></span></div>`:`<div class="switch-row" onclick="NFA.baixaEstoque=!NFA.baixaEstoque;document.getElementById('sw-nfa').classList.toggle('on',NFA.baixaEstoque)"><div><b>Baixar estoque</b><p class="t-mut">Dá saída no estoque dos itens ao emitir.</p></div><span class="switch ${NFA.baixaEstoque?'on':''}" id="sw-nfa"></span></div>`}
+       ${NFA._vendaId?`<div class="switch-row" style="opacity:.75"><div><b>Baixar estoque</b><p class="t-mut">Nota gerada a partir de uma venda — o estoque já foi movimentado na venda e <b>não será baixado novamente</b>.</p></div><span class="switch" id="sw-nfa"></span></div>`:`<div class="switch-row" onclick="NFA.baixaEstoque=!NFA.baixaEstoque;document.getElementById('sw-nfa').classList.toggle('on',NFA.baixaEstoque);try{nfaRascSalvar();}catch(e){} const _t=document.getElementById('sw-nfa-txt'); if(_t) _t.textContent=NFA.baixaEstoque?'Ligado: dá saída no estoque dos itens ao emitir.':'Desligado: a nota sai SEM mexer no estoque.';"><div><b>Baixar estoque</b><p class="t-mut" id="sw-nfa-txt">${NFA.baixaEstoque?'Ligado: dá saída no estoque dos itens ao emitir.':'Desligado: a nota sai SEM mexer no estoque.'}</p></div><span class="switch ${NFA.baixaEstoque?'on':''}" id="sw-nfa"></span></div>`}
        <div class="field" style="margin-top:10px"><label>Incluir produto</label>
          <div style="position:relative">
            <input id="nfa-search" autocomplete="off" placeholder="Buscar produto por nome, SKU ou código…" style="width:100%"
@@ -36249,7 +36249,8 @@ async function nfaEmitirDoc(modelo, transmitir){ const isCupom=modelo==='65';
   const boleto=!isCupom && NFA.formaPagamento==='Boleto/Prazo' && !NFA._vendaId; const parcelas=boleto?NFA.parcelas.slice():[];
   if(boleto){ const somaP=parcelas.reduce((s,p)=>s+(+p.valor||0),0); if(Math.abs(somaP-nfaTotal())>0.05){ if(!confirm('A soma das parcelas ('+BRL(somaP)+') é diferente do total da nota ('+BRL(nfaTotal())+'). Emitir mesmo assim?')) return; } }
   const _semDest = isCupom && !NFA.clienteId ? '\n• Sem destinatário informado — o cupom sai para CONSUMIDOR' : '';
-  const _msg = transmitir ? ('Emitir e TRANSMITIR à SEFAZ via Focus NFe ('+(cfg.ambiente==='producao'?'PRODUÇÃO':'homologação')+')?\n\n• Move o estoque dos itens'+_semDest+'\n• Gera o documento fiscal real'+(boleto?'\n• Gera '+parcelas.length+' parcela(s) em contas a receber':'')) : ('Emitir Nota Fiscal Avulsa?\n\n• Move o estoque dos itens\n• NÃO entra no faturamento (não gera venda)'+(boleto?'\n• Gera '+parcelas.length+' parcela(s) em contas a receber':'')+'\n\n(registro local — para valer, use \"Emitir e transmitir\")');
+  const _movEst = (NFA.baixaEstoque && !NFA._vendaId) ? '• Dá saída no estoque dos itens' : (NFA._vendaId ? '• NÃO mexe no estoque (já saiu na venda)' : '• NÃO movimenta o estoque (opção "Baixar estoque" desligada)');
+  const _msg = transmitir ? ('Emitir e TRANSMITIR à SEFAZ via Focus NFe ('+(cfg.ambiente==='producao'?'PRODUÇÃO':'homologação')+')?\n\n'+_movEst+_semDest+'\n• Gera o documento fiscal real'+(boleto?'\n• Gera '+parcelas.length+' parcela(s) em contas a receber':'')) : ('Emitir Nota Fiscal Avulsa?\n\n'+_movEst+'\n• NÃO entra no faturamento (não gera venda)'+(boleto?'\n• Gera '+parcelas.length+' parcela(s) em contas a receber':'')+'\n\n(registro local — para valer, use \"Emitir e transmitir\")');
   if(!confirm(_msg)) return;
   // NF-e 55: pergunta o Pedido de Compra do Cliente (xPed) e o item (nItemPed) para o XML.
   let _xpNfa=null;
@@ -36263,7 +36264,7 @@ async function nfaEmitirDoc(modelo, transmitir){ const isCupom=modelo==='65';
   let nota=null;
   try{
   if(NFA.baixaEstoque && !NFA._vendaId){ NFA.itens.forEach(it=>{ const p=DB.get('produtos',it.produtoId); if(p){ DB.update('produtos',it.produtoId,{estoque:p.estoque-(+it.qtd||0)}); const _mv=DB.insert('movEstoque',{produtoId:it.produtoId,tipo:'saida',qtd:+it.qtd||0,data:today(),motivo:'NF avulsa'}); _ctx.movs.push({produtoId:it.produtoId,qtd:+it.qtd||0,movId:_mv&&_mv.id}); } }); }
-  nota=DB.insert('notasFiscais',{numero:num,serie:(modelo==='55'?(cfg.serieNFe||2):(cfg.serie||1)),modelo:modelo,tipo:'saida',avulsa:true,vendaId:NFA._vendaId||null,
+  nota=DB.insert('notasFiscais',{numero:num,serie:(modelo==='55'?(cfg.serieNFe||2):(cfg.serie||1)),modelo:modelo,tipo:'saida',avulsa:true,baixouEstoque:!!(NFA.baixaEstoque && !NFA._vendaId),vendaId:NFA._vendaId||null,
     clienteId:NFA.clienteId||null,clienteNome:(cli&&cli.nome)||'Consumidor',data:today(),subtotal:subtotal,desconto:desconto,descontoTotal:desconto,frete:0,valor:total,baseCalc:total,icms:Math.round(total*aliq)/100,
     formaPagamento:NFA.formaPagamento, parcelas:parcelas, hora:nowTime(), xPed:(_xpNfa?(_xpNfa.xPed||''):''), obs:(''+_obsNfa).trim(),
     itensSnap:NFA.itens.map((i,ix)=>{ const nip=_xpNfa?_xpNfa.itens[ix]:null; return {produtoId:i.produtoId,nome:i.nome,qtd:i.qtd,preco:i.preco,unidade:i.unidade,nItemPed:(nip!=null&&(''+nip).trim()!==''?(+nip||''):'')}; }),rt:(rtCfg().ativo?rtNotaTotais(total):undefined),status:nfeStatusInicial(),chave:nfeChaveInicial(),natureza:nat,ambiente:cfg.ambiente||'homologacao',emitidaEm:today()});
