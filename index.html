@@ -48,7 +48,7 @@ const CONFIG_EMPRESA = {
      Aparece no topo do menu e no rodapé das Configurações. Troque a cada publicação.
      MANTENHA O FORMATO 'vDD/MM-X' — é ele que o sistema usa para comparar as máquinas
      da loja e avisar quando alguma ficou para trás.                                  */
-  versao: 'v21/10-C',
+  versao: 'v21/10-D',
 
   /* 4) NUVEM (Supabase)  ------------------------------------------------------------
      Cole aqui a Project URL e a chave PUBLISHABLE do projeto Supabase DESTA empresa
@@ -83,8 +83,8 @@ const CONFIG_EMPRESA = {
      false = instalação própria, sem controle de licença.                             */
   licenca: false,
 
-  /* 7) INÍCIO DA COMISSÃO DE INDICADOR  --------------------------------------------
-     Cliente cadastrado ANTES do sistema (sem data de indicação) só gera comissão para
+  /* 7) INÍCIO DO PRÊMIO DE INDICADOR  --------------------------------------------
+     Cliente cadastrado ANTES do sistema (sem data de indicação) só gera prêmio para
      o indicador em vendas a partir desta data. Use a DATA DA VIRADA da empresa, no
      formato 'AAAA-MM-DD'. Em branco = vale para todas as vendas lançadas no sistema.  */
   inicioComissaoIndicador: '',
@@ -1871,7 +1871,7 @@ const DB = {
     else this._ensure();
     return this.cache; },
   _ensure(){ // backfill de coleções para compatibilidade ao evoluir o schema
-    const cols=['produtos','clientes','fornecedores','vendedores','transportadoras','funcionarios','servicos','contasBancarias','centroCustos','planoContas','gruposCP','vendas','financeiro','movEstoque','compras','cotacoes','servicosContratados','servicosPrestados','devolucoes','creditos','creditoMovs','orcamentos','categorias','indicadores','tarefas','caixaSessoes','caixaMovs','maquinas','contratosAluguel','notasFiscais','beneficiosFiscais','recebimentos','pedidosOnline','ordensCompra','cotacaoRespostas','clientesSaaS','mensalidades','cheques','conciliacaoTx','veiculos','abastecimentos','manutencoes','chamados','contratos','licencas','implantacoes','leads','gruposProd','subgruposProd','notasRecebidas','prospecEmpresas','calcObraServicos','listaPedidos','produtosFalta','transferencias','marcas','lixeira','ofxImportacoes','dispositivos','listasEscolares','gruposVariacao'];
+    const cols=['produtos','clientes','fornecedores','vendedores','transportadoras','funcionarios','servicos','contasBancarias','centroCustos','planoContas','gruposCP','vendas','financeiro','movEstoque','compras','cotacoes','servicosContratados','servicosPrestados','devolucoes','creditos','creditoMovs','orcamentos','categorias','indicadores','tarefas','agenda','caixaSessoes','caixaMovs','maquinas','contratosAluguel','notasFiscais','beneficiosFiscais','recebimentos','pedidosOnline','ordensCompra','cotacaoRespostas','clientesSaaS','mensalidades','cheques','conciliacaoTx','veiculos','abastecimentos','manutencoes','chamados','contratos','licencas','implantacoes','leads','gruposProd','subgruposProd','notasRecebidas','prospecEmpresas','calcObraServicos','listaPedidos','produtosFalta','transferencias','marcas','lixeira','ofxImportacoes','dispositivos','listasEscolares','gruposVariacao'];
     let changed=false; cols.forEach(c=>{ if(!Array.isArray(this.cache[c])){ this.cache[c]=[]; changed=true; } });
     if(!this.cache.empresa){ this.cache.empresa={nome:EMPRESA_NOME(),cidade:(CFG_E.cidade||'')}; changed=true; }
     // UF da loja: se não estiver preenchida, deduz (cidade "Cidade/UF" → CEP → DDD do telefone) e grava,
@@ -2306,6 +2306,7 @@ let CURRENT_USER=null;
 const NAV=[
   {g:'Início',icon:'dash',items:[
     {id:'dash',label:'Painel',icon:'dash',title:'Painel',sub:'Visão geral do negócio'},
+    {id:'agenda',label:'Agenda',icon:'cal',title:'Agenda',sub:'Compromissos e lembretes — o do dia aparece no Painel'},
     {id:'dashvend',label:'Painel do Vendedor',icon:'people',title:'Painel do Vendedor',sub:'Seus números de vendas'},
     {id:'pendencias',label:'Central de Pendências',icon:'bell',title:'Central de Pendências',sub:'Tudo que precisa de alguém hoje, numa tela só'} ]},
   {g:'Cadastros',icon:'folder',items:[
@@ -2342,7 +2343,7 @@ const NAV=[
     {id:'salesvend',label:'Pedidos Vendedores',icon:'sales',title:'Pedidos Vendedores',sub:'Somente pedidos em aberto e faturados'},
     {id:'trocas',label:'Troca / Devolução',icon:'ret',title:'Troca / Devolução',sub:'Devolução de produtos com geração de crédito'},
     {id:'caixa',label:'Gestão de Caixa',icon:'bank',title:'Gestão de Caixa',sub:'Abertura, movimentações e fechamento'},
-    {id:'comis',label:'Comissões',icon:'pct',title:'Comissionamento',sub:'Regras, metas e apuração'},
+    {id:'comis',label:'Prêmios',icon:'pct',title:'Premiação',sub:'Regras, metas e apuração'},
     {id:'vendascfg',label:'Configurações',icon:'cfg',title:'Configurações de Vendas',sub:'Formas de pagamento, taxas, preferências e avisos da venda'} ]},
   {g:'Logística / Frete',icon:'truck',items:[
     {id:'entregas',label:'Rota de Entregas',icon:'truck',title:'Rota de Entregas',sub:'Roteiro otimizado das entregas'},
@@ -2435,7 +2436,7 @@ function navGo(id){ STATE.menuId=id; go(id); }
 function navReport(id,repId){ STATE.menuId=id; toggleSidebar(false); openReport(repId); }
 /* Mapa de rota -> função que desenha a tela. Fica numa função para poder ser
    usado tanto pela navegação (go) quanto pela atualização em segundo plano. */
-function rotaViews(){ return {variacoes:viewVariacoes,servpap:viewServPap,listas:viewListas,vendascfg:viewVendasCfg,dash:viewDash,dashvend:viewDashVend,pdv:viewPDV,orc:viewOrc,sales:viewSales,prod:viewProd,cli:viewCli,func:viewFunc,contasrec:viewContasReceber,contaspag:viewContasPagar,cheques:viewCheques,concil:viewConciliacao,contasbanc:viewContasBancarias,gruposcp:viewGruposCP,deppessoal:viewDepPessoal,rep:viewRep,cfg:viewCfg,ficha:fichaAbrirNaAba,frete:viewFrete,caixa:viewCaixa,entregas:viewEntregas,maquinas:viewMaquinas,aluguel:viewAluguel,
+function rotaViews(){ return {agenda:viewAgenda,variacoes:viewVariacoes,servpap:viewServPap,listas:viewListas,vendascfg:viewVendasCfg,dash:viewDash,dashvend:viewDashVend,pdv:viewPDV,orc:viewOrc,sales:viewSales,prod:viewProd,cli:viewCli,func:viewFunc,contasrec:viewContasReceber,contaspag:viewContasPagar,cheques:viewCheques,concil:viewConciliacao,contasbanc:viewContasBancarias,gruposcp:viewGruposCP,deppessoal:viewDepPessoal,rep:viewRep,cfg:viewCfg,ficha:fichaAbrirNaAba,frete:viewFrete,caixa:viewCaixa,entregas:viewEntregas,maquinas:viewMaquinas,aluguel:viewAluguel,
     nfeent:viewNfeEntrada,notasemit:viewNotasEmit,nfesai:viewNfeSaida,auditoria:viewAuditoria,contador:viewContador,impostos:viewImpostos,aliquotas:viewAliquotas,sped:viewSped,beneficios:viewBeneficios,fiscalcfg:viewFiscalCfg,cfopmap:viewCfopMap,entrada:viewEntradaManual,
     forn:viewForn,vend:viewVend,indic:viewIndic,crmwa:viewCrmWa,waatend:viewAtendWa,prospec:viewProspec,banner:viewBanner,cat:viewCat,calc:viewCalc,calcobra:viewCalcObra,funil:viewFunil,tarefas:viewTarefas,sugcompra:viewSugCompra,pedcompra:viewListaPedidos,comis:viewComissao,impxml:viewImportXML,etiq:viewEtiquetas,cot:viewCotacoes,nfavulsa:viewNFAvulsa,ecommerce:viewEcommerce,ecalc:viewEcalc,vendmobile:viewVendMobile,freterel:viewFreteRel,aluguelrel:viewAluguelRel,central:viewCentral,veiculos:viewVeiculos,combustivel:viewCombustivel,orcrel:viewOrcRel,retiradas:viewRetiradas,salesvend:viewSalesVendedor,trocas:viewTrocas,fluxocaixa:viewFluxoCaixa,contagem:viewContagem,auditlog:viewAuditoriaLog,faltas:viewProdutosFalta,kits:viewKits,nuvem:viewNuvem,lixeira:viewLixeira,anual:viewAnual,saude:viewSaude,erros:viewErros,pendencias:viewPendencias,feedbackent:viewFeedbackEntrega};
 
@@ -2938,7 +2939,7 @@ function renderAnivList(){ const el=document.getElementById('aniv-list'); if(el)
 function abrirTodosAniv(){ const aniv=aniversariantesHoje().filter(c=>waPhone(c)); if(!aniv.length){toast('Nenhum número de WhatsApp disponível','err');return;}
   aniv.forEach((c,i)=>setTimeout(()=>window.open(waLink(c),'_blank'),i*400)); toast('Abrindo '+aniv.length+' conversa(s)…','ok'); }
 function vendedorDoUsuario(){ if(!CURRENT_USER || CURRENT_USER.perfil==='admin') return null;
-  if(!funcEhVendedor(CURRENT_USER)) return null;   // vendedor definido pelo CARGO, por ehVendedor ou por comissão
+  if(!funcEhVendedor(CURRENT_USER)) return null;   // vendedor definido pelo CARGO, por ehVendedor ou por prêmio
   try{ syncVendedoresSeNecessario(); }catch(e){window.__es&&__es(e)}    // garante que existe um cadastro em 'vendedores' ligado a este login
   const byFunc=DB.all('vendedores').find(v=>v.funcId===CURRENT_USER.id);   // vínculo firme pelo id do funcionário
   if(byFunc) return byFunc;
@@ -2953,11 +2954,11 @@ function viewDashVend(){
   let seller=meu;
   if(isAdmin){
     const vends=DB.all('vendedores');
-    if(!vends.length){ document.getElementById('view').innerHTML=`<div class="card card-pad"><div class="empty" style="padding:40px">${ico('people')}<h4>Nenhum vendedor cadastrado</h4><p class="t-mut">Cadastre vendedores em "Funcionários e Vendedores" (defina o cargo de vendedor ou uma comissão) para ver este painel.</p></div></div>`; return; }
+    if(!vends.length){ document.getElementById('view').innerHTML=`<div class="card card-pad"><div class="empty" style="padding:40px">${ico('people')}<h4>Nenhum vendedor cadastrado</h4><p class="t-mut">Cadastre vendedores em "Funcionários e Vendedores" (defina o cargo de vendedor ou um prêmio) para ver este painel.</p></div></div>`; return; }
     if(!DASHVEND_SEL || !DB.get('vendedores',DASHVEND_SEL)) DASHVEND_SEL=vends[0].id;
     seller=DB.get('vendedores',DASHVEND_SEL);
   }
-  if(!seller){ document.getElementById('view').innerHTML=`<div class="card card-pad"><div class="empty" style="padding:40px">${ico('people')}<h4>Seu login não está vinculado a um vendedor</h4><p class="t-mut">Peça ao administrador para marcar o seu cadastro como vendedor (ou definir uma comissão) em "Funcionários e Vendedores". Assim este painel passa a mostrar as suas vendas.</p></div></div>`; return; }
+  if(!seller){ document.getElementById('view').innerHTML=`<div class="card card-pad"><div class="empty" style="padding:40px">${ico('people')}<h4>Seu login não está vinculado a um vendedor</h4><p class="t-mut">Peça ao administrador para marcar o seu cadastro como vendedor (ou definir um prêmio) em "Funcionários e Vendedores". Assim este painel passa a mostrar as suas vendas.</p></div></div>`; return; }
   viewDashVendedor(seller, {admin:isAdmin});
 }
 function viewDashVendedor(seller, opts){
@@ -2980,13 +2981,14 @@ function viewDashVendedor(seller, opts){
   document.getElementById('view').innerHTML=`
     <div class="bi-banner" style="margin-bottom:16px"><div>${ico('people')}</div>
       <div>${greet}</div></div>
+    ${agendaPainelHTML()}
     <div class="toolbar">${picker}<div class="spacer"></div><span class="tag" style="align-self:center">${ico('clock')} ${mesNome}</span>
       <button class="btn btn-amber" onclick="go('orc')">${ico('plus')} Novo orçamento</button></div>
     <div class="kpis">
       ${kpiCard('Minhas vendas',NUM(t.pedidos),'cart','#2563eb')}
       ${kpiCard('Meu faturamento',BRL(t.receita),'money','#15803d')}
       ${kpiCard('Ticket médio',BRL(t.ticket),'target','#f59e0b')}
-      ${kpiCard('Comissão estimada',BRL(comissao),'pct','#7c3aed')}
+      ${kpiCard('Prêmio estimado',BRL(comissao),'pct','#7c3aed')}
     </div>
     ${meta>0?`<div class="card card-pad" style="margin-bottom:18px">
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px"><b>Minha meta do mês</b><span class="tnum">${BRL(t.receita)} / ${BRL(meta)}</span></div>
@@ -3002,10 +3004,10 @@ function diasPara(dateISO){ if(!dateISO) return null; const hoje=new Date(today(
 function produtosVencendo(dias){ dias=dias||60; return DB.all('produtos').filter(p=>p.validade).map(p=>({...p,dd:diasPara(p.validade)})).filter(p=>p.dd!=null && p.dd<=dias).sort((a,b)=>a.dd-b.dd); }
 function metaMensalLoja(){ const c=DB._load().comissaoConfig||{}; return +c.metaLoja||0; }
 function metaSetInline(v){ const d=DB._load(); d.empresa=d.empresa||{}; d.empresa.metaMensal=Math.max(0,+v||0); try{ nuvemConfMarcar(d.empresa); }catch(e){window.__es&&__es(e)} DB._persist(); toast('Meta mensal salva','ok'); }
-function metaSetPrompt(){ const atual=metaMensalLoja(); const raw=prompt('Meta de vendas mensal da loja (R$) — também editável em Comissões › Metas:', atual?String(atual):''); if(raw===null) return; const v=Math.max(0,numBR(raw)); const d=DB._load(); d.comissaoConfig=d.comissaoConfig||{}; d.comissaoConfig.metaLoja=v; d.comissaoConfig.metaLojaMod=new Date().toISOString(); cfgStamp(d.comissaoConfig); try{ nuvemConfMarcar(); }catch(e){window.__es&&__es(e)} DB._persist(); toast('Meta mensal salva: '+BRL(v),'ok'); try{ viewDash(); }catch(e){window.__es&&__es(e)} }
+function metaSetPrompt(){ const atual=metaMensalLoja(); const raw=prompt('Meta de vendas mensal da loja (R$) — também editável em Prêmios › Metas:', atual?String(atual):''); if(raw===null) return; const v=Math.max(0,numBR(raw)); const d=DB._load(); d.comissaoConfig=d.comissaoConfig||{}; d.comissaoConfig.metaLoja=v; d.comissaoConfig.metaLojaMod=new Date().toISOString(); cfgStamp(d.comissaoConfig); try{ nuvemConfMarcar(); }catch(e){window.__es&&__es(e)} DB._persist(); toast('Meta mensal salva: '+BRL(v),'ok'); try{ viewDash(); }catch(e){window.__es&&__es(e)} }
 /* Dinheiro EFETIVAMENTE recebido dos clientes dentro do mês, diferente do FATURAMENTO (que conta o
    valor cheio da venda no dia, mesmo a prazo/fiado ainda não pago). Fonte ÚNICA, sem dupla contagem:
-   (A) parte quitada no ATO de cada venda do mês (à vista/entrada = total − em aberto − crédito − comissão);
+   (A) parte quitada no ATO de cada venda do mês (à vista/entrada = total − em aberto − crédito − prêmio);
    (B) recebíveis (boleto/prazo/ficha) QUITADOS dentro do mês, pela CONTA financeira — cobre tanto os
        recebidos na aba Boletos quanto na ficha, sem depender da coleção "recebimentos" (que não registra
        os boletos). Exclui migração (pagamentos de outro sistema, fora do caixa). */
@@ -3941,6 +3943,7 @@ function viewDash(){
         <div style="flex:1;min-width:200px">${ico('alert')} <b>${NUM(ag.length)} venda(s) aguardando nota fiscal (${BRL(val)}).</b> <span class="t-mut" style="font-size:12.5px">Ficaram fora do caixa por pendência na nota fiscal. Corrija a pendência e emita a nota para faturar e lançar no caixa.</span></div>
         <button class="btn btn-amber btn-sm" onclick="go('sales')">${ico('nfeout')} Ver pedidos</button></div>`; })()}
     ${pendDashCardHTML()}
+    ${agendaPainelHTML()}
     ${metaMesCard()}
 
     <div class="kpis">
@@ -4534,13 +4537,13 @@ function paysHTML(){ pagsMaquinaConfig(CART.pagamentos); return CART.pagamentos.
        <button class="btn btn-ghost btn-sm" onclick="payValor(${i},${usar});renderPays()">Usar ${BRL(usar)}</button>
        ${falta>0.004?`<span style="color:var(--neg)">Faltam ${BRL(falta)} de crédito para este valor</span>`:''}</div>`; })():''}
    ${ehComissaoIndic(p.forma)?(function(){ const ind=indicadorDoCliente(CART.clienteId, cartClienteNome());
-     if(!ind) return `<div style="flex:1 0 100%;font-size:12px;background:var(--amber-soft);border:1px solid var(--amber);border-radius:8px;padding:7px 9px;color:var(--amber-d)"><b>${ico('alert')} ${esc(cartClienteNome()||'Este cliente')} não é indicador.</b> A comissão só pode ser usada pelo próprio indicador — selecione o cliente dele.</div>`;
+     if(!ind) return `<div style="flex:1 0 100%;font-size:12px;background:var(--amber-soft);border:1px solid var(--amber);border-radius:8px;padding:7px 9px;color:var(--amber-d)"><b>${ico('alert')} ${esc(cartClienteNome()||'Este cliente')} não é indicador.</b> O prêmio só pode ser usado pelo próprio indicador — selecione o cliente dele.</div>`;
      const sc=indicSaldo(ind); const falta=Math.round(((+p.valor||0)-sc)*100)/100; const usar=Math.round(Math.min(sc, cartTotalValue()||sc)*100)/100;
      return `<div style="flex:1 0 100%;display:flex;align-items:center;gap:8px;flex-wrap:wrap;font-size:12px;color:#047857;font-weight:700">
-       ${ico('gift')} Comissão disponível de ${esc(ind.nome||'')}: <span class="tnum">${BRL(sc)}</span>
+       ${ico('gift')} Prêmio disponível de ${esc(ind.nome||'')}: <span class="tnum">${BRL(sc)}</span>
        ${sc>0?`<button class="btn btn-ghost btn-sm" onclick="payValor(${i},${usar});renderPays()">Usar ${BRL(usar)}</button>`:''}
        <button class="btn btn-ghost btn-sm" onclick="indicHistoricoModal('${ind.id}')">${ico('clock')} Histórico</button>
-       ${falta>0.004?`<span style="color:var(--neg)">Faltam ${BRL(falta)} de comissão para este valor</span>`:''}</div>`; })():''}
+       ${falta>0.004?`<span style="color:var(--neg)">Faltam ${BRL(falta)} de prêmio para este valor</span>`:''}</div>`; })():''}
    ${p.forma==='Dinheiro'?(function(){ const rec=+p.recebido||0;
      return `<div class="pay-dinheiro">
        <div class="pd-tit">${ico('money')} Valor recebido do cliente</div>
@@ -5309,7 +5312,7 @@ function pdvPagtoHTML(){ pdvPagNormaliza(); const total=cartTotalValue(), rest=p
             <span class="tag" style="font-weight:800">${pdvPagTecla(i)}</span> <span style="font-size:13px">${esc(f)}</span></button>`).join('')}
       </div>
       <!-- mesmas linhas de pagamento da tela do PDV: valor em R$, troco do dinheiro,
-           parcelas do cartão e os avisos de crédito/comissão -->
+           parcelas do cartão e os avisos de crédito/prêmio -->
       <div class="pay-block" style="margin:0">
         <div class="pay-head"><label>Formas lançadas</label><button class="btn btn-ghost btn-sm" onclick="payAdd()">${ico('plus')} Adicionar</button></div>
         <div id="pdv-pay-list">${paysHTML()}</div>
@@ -5410,9 +5413,9 @@ function finalizarVenda(){
     if(comPag>0){
       if(!CART.clienteId && cartClienteNome()){ const achado=clienteIdPorNome(cartClienteNome()); if(achado) CART.clienteId=achado; }
       const ind=indicadorDoCliente(CART.clienteId, cartClienteNome());
-      if(!ind){ toast('A comissão só pode ser usada pelo próprio indicador — selecione o cliente dele','err'); return; }
+      if(!ind){ toast('O prêmio só pode ser usado pelo próprio indicador — selecione o cliente dele','err'); return; }
       const saldo=indicSaldo(ind);
-      if(comPag>saldo+0.001){ toast('Comissão insuficiente: '+ind.nome+' tem '+BRL(saldo)+' e você lançou '+BRL(comPag),'err'); return; }
+      if(comPag>saldo+0.001){ toast('Prêmio insuficiente: '+ind.nome+' tem '+BRL(saldo)+' e você lançou '+BRL(comPag),'err'); return; }
       CART.comissaoIndicadorId=ind.id; } }
   // (a conferência fiscal do cliente NÃO é feita ao fechar a venda: cupom fiscal como Consumidor nunca pede cliente; NF-e confere o cadastro na hora de emitir)
   // (sem confirmação de venda sem estoque: se a empresa permite vender sem estoque, a venda segue direto)
@@ -7236,7 +7239,7 @@ function migrarSangriasEstorno(){ const d=DB._load(); if(d._estornoMigrado) retu
 /* ============ ESTORNO DE VENDA ============
    Desfaz TUDO o que o PDV fez ao finalizar: estoque, contas a receber (boleto/ficha),
    recebimentos, crédito de troca usado, contrato de locação quitado, orçamento faturado
-   e a própria venda (some do caixa, das comissões e dos relatórios). */
+   e a própria venda (some do caixa, dos prêmios e dos relatórios). */
 function vendaEstornoInfo(id, ignoraNotaId){ const v=DB.get('vendas',id); if(!v) return null;
   const fin=DB.all('financeiro').filter(f=>f.vendaId===v.id);
   const recs=DB.all('recebimentos').filter(r=>r.vendaId===v.id);
@@ -7314,7 +7317,7 @@ function vendaEstornar(id, render, manterPedido, skipConfirm, ignoraNotaId){
     ((+v.creditoTrocaUsado||0)>0?'• crédito de troca de '+BRL(v.creditoTrocaUsado)+' volta para o cliente':''),
     (info.contrato?'• contrato de locação volta para "a receber"':''),
     (v.fromOrcId && !manterPedido?'• o orçamento nº '+(v.fromOrcNumero||'')+' volta a ficar disponível':''),
-    '• a venda sai do caixa, das comissões e dos relatórios',
+    '• a venda sai do caixa, dos prêmios e dos relatórios',
     (manterPedido?'• o PEDIDO permanece na lista e volta para PENDENTE (para refaturar no PDV)':''),
     '',
     (manterPedido?'Confirmar o estorno? O pedido volta para Pendente.':'Esta ação não pode ser desfeita. Confirmar?')
@@ -7787,7 +7790,7 @@ function vendaCreditoPreso(v){ if(!v) return 0; const t=+v.creditoTrocaUsado||0;
    - vendaCreditoNota(v): quanto do crédito é ABATIDO na nota fiscal (sai como desconto). No pedido de troca
      (origemTroca) o crédito já está dentro do desconto da venda, então não entra de novo. Se o crédito cobre a
      venda inteira, a nota não pode sair zerada — nesse caso nada é abatido e a tela de conferência avisa.
-   - vendaBaseComissao(v): base de comissão = mercadoria − taxa de entrega − crédito de troca (crédito não é
+   - vendaBaseComissao(v): base do prêmio = mercadoria − taxa de entrega − crédito de troca (crédito não é
      dinheiro recebido pelo vendedor). */
 function vendaCreditoNota(v){ if(!v || v.origemTroca) return 0; const c=vendaCreditoPreso(v); const t=Math.round((+v.total||0)*100)/100; if(!(c>0.004)) return 0; return (c>=t-0.004)?0:c; }
 function vendaBaseComissao(v){ if(!v) return 0; return Math.max(0, Math.round(((+v.total||0)-(+v.frete||0)-vendaCreditoPreso(v))*100)/100); }
@@ -9384,7 +9387,7 @@ function prodForm(id, prefill){ const p=id?DB.get('produtos',id):(prefill||{});
        <div class="field-row"><div class="field"><label>Preço de atacado (R$)</label><input id="f-atacado" type="number" step="0.01" value="${p.precoAtacado||''}"></div>
          <div class="field"><label>Qtd mínima p/ atacado</label><input id="f-atacadoqtd" type="number" value="${p.atacadoQtdMin||''}"></div></div>
        <div class="field-row"><div class="field"><label>Preço promocional (R$)</label><input id="f-promo" type="number" step="0.01" value="${p.precoPromo||''}"></div>
-         <div class="field"><label>Comissão do produto (%)</label><input id="f-comissao" type="number" step="0.1" value="${p.comissaoPct||''}"></div></div>
+         <div class="field"><label>Prêmio do produto (%)</label><input id="f-comissao" type="number" step="0.1" value="${p.comissaoPct||''}"></div></div>
        <div class="field-row"><div class="field"><label>Promoção — início</label><input id="f-promo-ini" type="date" value="${p.promoInicio||''}"><div class="t-mut" style="font-size:11px;margin-top:4px">Deixe em branco para promoção sem data de início.</div></div>
          <div class="field"><label>Promoção — fim</label><input id="f-promo-fim" type="date" value="${p.promoFim||''}"><div class="t-mut" style="font-size:11px;margin-top:4px">Fora do período, vale o preço normal.</div></div></div>
        <div class="field-row"><div class="field"><label>Margem de lucro (%)</label><input id="f-margem" type="number" step="0.1" value="${margem}" onchange="prodFromMargem()"><div class="t-mut" style="font-size:11.5px;margin-top:4px">Sobre o preço de venda. Ao alterar, recalcula o preço.</div></div>
@@ -10224,7 +10227,7 @@ function cliForm(id){ const c=id?DB.get('clientes',id):{};
        <div class="field"><label>Indicado por</label>${acHTML({id:'c-indic', value:c.indicadoPor||'', ph:'Digite o nome do indicador...',
          itens:()=>indicadorOpcoesCliente(c.indicadoPor||'', id||''),
          vazio:'Nenhum indicador com esse nome. Cadastre em <b>Cadastros › Indicadores</b> (o indicador também é um cliente).'})}
-         ${c.indicadoPor?`<div class="t-mut" style="font-size:11.5px;margin-top:3px">Comissão conta a partir de <b>${c.indicadoEm?(fDate(String(c.indicadoEm).slice(0,10))+' '+esc(String(c.indicadoEm).slice(11,16))):fDate(INDIC_INICIO_LEGADO.slice(0,10))}</b></div>`:''}</div>
+         ${c.indicadoPor?`<div class="t-mut" style="font-size:11.5px;margin-top:3px">O prêmio conta a partir de <b>${c.indicadoEm?(fDate(String(c.indicadoEm).slice(0,10))+' '+esc(String(c.indicadoEm).slice(11,16))):fDate(INDIC_INICIO_LEGADO.slice(0,10))}</b></div>`:''}</div>
      </div>
 
      <div class="form-sec">Endereço</div>
@@ -10550,7 +10553,7 @@ function funcVendAtualizar(){ const antes=DB.all('vendedores').filter(funcAtivo)
   toast(dep>antes?('Lista atualizada: +'+(dep-antes)+' vendedor(es)'):(dep<antes?('Lista atualizada: '+(antes-dep)+' saiu(íram)'):'Lista já estava atualizada'),'ok'); }
 function funcTable(lista){ lista=(lista||[]).slice().sort((a,b)=>(a.nome||'').localeCompare(b.nome||''));
   if(!lista.length) return `<div class="empty">${ico('people')}<h4>Nenhum funcionário</h4><p class="t-mut">Cadastre sua equipe e vendedores.</p></div>`;
-  return `<table><thead><tr><th>Nome</th><th>Cargo</th><th>Contato</th><th>Cidade</th><th class="t-right">Comissão</th><th>Admissão</th><th>Situação</th><th></th></tr></thead><tbody>
+  return `<table><thead><tr><th>Nome</th><th>Cargo</th><th>Contato</th><th>Cidade</th><th class="t-right">Prêmio</th><th>Admissão</th><th>Situação</th><th></th></tr></thead><tbody>
   ${lista.map(f=>`<tr>
     <td><div class="prod-cell"><div class="avatar" style="background:${colorFor(f.nome)}">${esc(f.nome[0])}</div><div class="t-strong">${esc(f.nome)}</div></div></td>
     <td class="t-mut">${esc(f.cargo||'—')}${(Array.isArray(f.funcoesExtras)&&f.funcoesExtras.length)?' '+f.funcoesExtras.map(c=>`<span class="tag" style="font-size:10px;margin-left:2px">${esc(c)}</span>`).join(''):''}</td>
@@ -10790,8 +10793,8 @@ function funcForm(id){ const f=id?DB.get('funcionarios',id):{};
        <div class="field"></div></div>
      <div id="ff-vend-panel" style="display:${FF.vendedor?'block':'none'};border:1px solid var(--amber);background:var(--amber-soft);border-radius:10px;padding:12px;margin:6px 0">
        <b style="font-size:13px">${ico('pct')} Dados de vendedor</b>
-       <p class="t-mut" style="font-size:11.5px;margin:2px 0 10px">Como o cargo é de vendedor, este funcionário aparece na seleção de vendedor em vendas/orçamentos e na apuração de comissões.</p>
-       <div class="field-row"><div class="field"><label>Comissão padrão (%)</label><input id="ff-com" type="number" step="0.1" value="${f.comissaoPct||0}"></div>
+       <p class="t-mut" style="font-size:11.5px;margin:2px 0 10px">Como o cargo é de vendedor, este funcionário aparece na seleção de vendedor em vendas/orçamentos e na apuração de prêmios.</p>
+       <div class="field-row"><div class="field"><label>Prêmio padrão (%)</label><input id="ff-com" type="number" step="0.1" value="${f.comissaoPct||0}"></div>
          <div class="field"><label>Meta de venda mensal (R$)</label><input id="ff-meta" type="number" step="100" value="${f.meta||''}"></div></div>
      </div>
      <div class="switch-row" onclick="FF.ativo=!FF.ativo;document.getElementById('sw-ffat').classList.toggle('on',FF.ativo)"><div><b>Ativo</b><p class="t-mut">Desative para funcionários desligados.</p></div><span class="switch ${FF.ativo?'on':''}" id="sw-ffat"></span></div>
@@ -10886,7 +10889,7 @@ async function ffCriarAcesso(){
    ficava sem a marcação e nunca aparecia na lista do PDV e do orçamento. */
 /* MESMA regra que o formulário de funcionário usa (o cargo MANDA), para as duas
    telas nunca discordarem. É vendedor quem tem cargo de vendedor OU está marcado
-   como vendedor na ficha OU tem percentual de comissão. Antes eu deixava a
+   como vendedor na ficha OU tem percentual de prêmio. Antes eu deixava a
    marcação salva na ficha ganhar do cargo — e quem tinha "ehVendedor:false"
    gravado de um cadastro antigo continuava fora da lista mesmo com cargo Vendedor. */
 /* Todas as funções do funcionário: o cargo principal + as funções adicionais. */
@@ -10895,7 +10898,7 @@ function funcCargoVendedor(f){ return funcCargosTodos(f).some(c=>/vendedor|orcam
 function funcEhVendedor(f){ if(!f) return false;
   return funcCargoVendedor(f) || f.ehVendedor===true || (+f.comissaoPct||0)>0; }
 /* Estagiário — vale tanto no cargo principal quanto nas funções adicionais.
-   Quem é estagiário E vendedor comissiona pelas REGRAS DE ESTAGIÁRIO. */
+   Quem é estagiário E vendedor recebe prêmio pelas REGRAS DE ESTAGIÁRIO. */
 function funcEhEstagiario(f){ return funcCargosTodos(f).some(c=>/estagi/i.test(c||'')); }
 /* situação pode vir gravada como 'ATIVO', 'Ativo' ou com espaços, conforme a origem do cadastro */
 function funcAtivo(f){ if(!f) return false;
@@ -11059,7 +11062,7 @@ function viewVend(){
 function vendTable(lista){ lista=(lista||[]).slice().sort((a,b)=>(a.nome||'').localeCompare(b.nome||''));
   if(!lista.length) return `<div class="empty">${ico('people')}<h4>Nenhum vendedor</h4></div>`;
   const vendas=DB.all('vendas');
-  return `<table><thead><tr><th>Vendedor</th><th class="t-right">Comissão</th><th class="t-right">Vendas</th><th class="t-right">Faturamento</th><th>Situação</th><th></th></tr></thead><tbody>
+  return `<table><thead><tr><th>Vendedor</th><th class="t-right">Prêmio</th><th class="t-right">Vendas</th><th class="t-right">Faturamento</th><th>Situação</th><th></th></tr></thead><tbody>
   ${lista.map(v=>{ const vs=vendas.filter(x=>x.vendedorId===v.id); const fat=vs.reduce((s,x)=>s+x.total,0);
     return `<tr><td><div class="prod-cell"><div class="avatar" style="background:${colorFor(v.nome)}">${esc(v.nome[0])}</div><div class="t-strong">${esc(v.nome)}</div></div></td>
     <td class="t-right tnum">${PCT(v.comissaoPct||0)}</td><td class="t-right tnum">${NUM(vs.length)}</td><td class="t-right tnum">${BRL(fat)}</td>
@@ -11072,7 +11075,7 @@ function vendForm(id){ const v=id?DB.get('vendedores',id):{};
   openModal(`<div class="modal-head"><h3>${id?'Editar':'Novo'} Vendedor</h3><button class="btn-icon btn-ghost" onclick="closeModal()">${ico('x')}</button></div>
    <div class="modal-body">
      <div class="field"><label>Nome *</label><input id="vd-nome" value="${esc(v.nome||'')}"></div>
-     <div class="field-row"><div class="field"><label>Comissão padrão (%)</label><input id="vd-com" type="number" step="0.1" value="${v.comissaoPct||0}"></div>
+     <div class="field-row"><div class="field"><label>Prêmio padrão (%)</label><input id="vd-com" type="number" step="0.1" value="${v.comissaoPct||0}"></div>
        <div class="field"><label>Meta de venda (R$/mês)</label><input id="vd-meta" type="number" step="100" value="${v.meta||0}"></div></div>
      <div class="field"><label>Situação</label><select id="vd-sit"><option ${(v.situacao||'ativo')==='ativo'?'selected':''}>ativo</option><option ${v.situacao==='inativo'?'selected':''}>inativo</option></select></div>
    </div>
@@ -11084,7 +11087,7 @@ function saveVend(id){ const nome=(document.getElementById('vd-nome').value||'')
   if(id)DB.update('vendedores',id,data); else DB.insert('vendedores',data); toast('Vendedor salvo','ok'); closeModal(); go('vend');
 }
 /* ===================================================================
-   VENDAS: COMISSIONAMENTO (regras + apuração)
+   VENDAS: PREMIAÇÃO (regras + apuração)
 =================================================================== */
 let COM={tab:'apuracao',period:'mes',periodMes:'',de:'',ate:'',regras:'padrao'}; let COMCFG=null;
 function comissaoDefault(){ return { comV:2, metaLoja:0,
@@ -11143,7 +11146,7 @@ function comEhEstagiario(x){ if(!x) return false;
   }catch(e){window.__es&&__es(e)}
   return false; }
 /* Qual conjunto de regras vale para esta pessoa. Estagiário marcado — mesmo que TAMBÉM
-   seja vendedor — comissiona pelas regras de estagiário. */
+   seja vendedor — recebe prêmio pelas regras de estagiário. */
 function comRegrasDe(x){ const cfg=comConfig(); const est=cfg.estagiario||comEstagDefault();
   if(comEhEstagiario(x) && est.ativo!==false) return {regras:est, estagiario:true};
   return {regras:cfg, estagiario:false}; }
@@ -11162,18 +11165,18 @@ function comPeriodo(){ const t=new Date(); const pad=n=>String(n).padStart(2,'0'
   else if(COM.period==='30'){ de=daysAgo(30); } else { de=daysAgo(90); }
   return {de,ate}; }
 function comSetPeriodMes(v){ COM.periodMes=v||''; if(COM.periodMes) viewComissao(); }
-/* Período livre (De / Até) na apuração de comissões. */
+/* Período livre (De / Até) na apuração de prêmios. */
 function comSetPeriodData(qual, v){ if(qual==='de') COM.de=v||''; else COM.ate=v||'';
   if(COM.de && COM.ate) viewComissao(); }
 function comPeriodoRapido(dias){ COM.period='datas'; COM.ate=today(); COM.de=daysAgo(dias); viewComissao(); }
 function apurarComissoes(){ const {de,ate}=comPeriodo();
-  // Comissão só sobre vendas CONCLUÍDAS (passadas pelo PDV). Pedido pendente/receber no local não conta.
+  // O prêmio só sobre vendas CONCLUÍDAS (passadas pelo PDV). Pedido pendente/receber no local não conta.
   const vendas=DB.all('vendas').filter(v=>v.data>=de&&v.data<=ate&&vendaConcluida(v));
   const metaLoja=+(comConfig().metaLoja)||0; const fatLoja=comFatLoja(de,ate);
   return DB.all('vendedores').filter(v=>(v.situacao||'ativo')==='ativo').map(v=>{
     const _rg=comRegrasDe(v); const cfg=_rg.regras; const estagiario=_rg.estagiario;
     const vs=vendas.filter(x=>x.vendedorId===v.id);
-    // Base da comissão = valor da MERCADORIA (sem a taxa de entrega/frete, que não é receita do vendedor).
+    // Base do prêmio = valor da MERCADORIA (sem a taxa de entrega/frete, que não é receita do vendedor).
     const fat=vs.reduce((s,x)=>s+vendaBaseComissao(x),0); const custo=vs.reduce((s,x)=>s+(x.custoTotal||0),0); const margem=fat-custo;   // versão TY: crédito de troca fora da base
     const n=vs.length; const ticket=n?fat/n:0; const margemPct=fat>0?margem/fat*100:0;
     const fv=comTier(cfg.vendasFaixas,fat,'min'); const pctVendas=fv?fv.pct:0;
@@ -11207,7 +11210,7 @@ function comMetasHTML(){ const cfg=comConfig(); const metaLoja=+cfg.metaLoja||0;
    </div>
    <div class="card card-pad" style="margin-bottom:16px">
      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px"><h3>Meta por vendedor</h3><span class="t-mut" style="font-size:12px">${vends.length} vendedor(es)</span></div>
-     <p class="t-mut" style="font-size:12px;margin-bottom:12px">Meta mensal de faturamento de cada vendedor. Usada na apuração de comissões e no painel do vendedor.</p>
+     <p class="t-mut" style="font-size:12px;margin-bottom:12px">Meta mensal de faturamento de cada vendedor. Usada na apuração de prêmios e no painel do vendedor.</p>
      ${vends.length?`<div class="tbl-wrap"><table><thead><tr><th>Vendedor</th><th style="width:200px">Meta (R$)</th></tr></thead><tbody>
        ${vends.map(v=>`<tr><td class="t-strong">${esc(v.nome)}</td>
          <td><div class="pay-val" style="margin:0"><span>R$</span><input type="number" step="100" data-vmeta="${v.id}" value="${v.meta||''}" placeholder="0"></div></td></tr>`).join('')}
@@ -11245,8 +11248,8 @@ function comApuracaoHTML(){ const rows=apurarComissoes(); const {de,ate}=comPeri
    <div class="card"><div class="tbl-wrap">${comTable(rows)}</div></div>`;
 }
 function comTable(rows){ if(!rows.length) return `<div class="empty">${ico('pct')}<h4>Sem dados no período</h4><p class="t-mut">Nenhuma venda atribuída a vendedores neste período.</p></div>`;
-  return `<table><thead><tr><th>Vendedor</th><th class="t-right">Faturamento</th><th class="t-right">Margem bruta</th><th class="t-right">Margem %</th><th class="t-right">% Vendas</th><th class="t-right">% Margem</th><th class="t-right">% Total</th><th class="t-right">Comissão base</th><th class="t-right" title="Faturamento do vendedor dividido pelo número de vendas no período">Ticket médio</th><th class="t-right">Bônus ticket</th><th class="t-right">Bônus meta</th><th class="t-right">Total</th></tr></thead><tbody>
-  ${rows.map(r=>`<tr><td><div class="prod-cell"><div class="avatar" style="background:${colorFor(r.v.nome)}">${esc(r.v.nome[0])}</div><div><div class="t-strong">${esc(r.v.nome)}</div>${r.estagiario?`<span class="tag" style="font-size:10px;background:#ede9fe;color:#6d28d9;font-weight:700" title="Comissão calculada pelas REGRAS DE ESTAGIÁRIO">Estagiário</span>`:''}</div></div></td>
+  return `<table><thead><tr><th>Vendedor</th><th class="t-right">Faturamento</th><th class="t-right">Margem bruta</th><th class="t-right">Margem %</th><th class="t-right">% Vendas</th><th class="t-right">% Margem</th><th class="t-right">% Total</th><th class="t-right">Prêmio base</th><th class="t-right" title="Faturamento do vendedor dividido pelo número de vendas no período">Ticket médio</th><th class="t-right">Bônus ticket</th><th class="t-right">Bônus meta</th><th class="t-right">Total</th></tr></thead><tbody>
+  ${rows.map(r=>`<tr><td><div class="prod-cell"><div class="avatar" style="background:${colorFor(r.v.nome)}">${esc(r.v.nome[0])}</div><div><div class="t-strong">${esc(r.v.nome)}</div>${r.estagiario?`<span class="tag" style="font-size:10px;background:#ede9fe;color:#6d28d9;font-weight:700" title="Prêmio calculado pelas REGRAS DE ESTAGIÁRIO">Estagiário</span>`:''}</div></div></td>
     <td class="t-right tnum">${BRL(r.fat)}</td>
     <td class="t-right tnum">${BRL(r.margem)}</td>
     <td class="t-right tnum">${PCT(r.margemPct)}</td>
@@ -11282,11 +11285,11 @@ function comConfigHTML(){ const c=comCfgAtual(); const est=(COM.regras==='estagi
      <label style="display:flex;gap:9px;align-items:flex-start;cursor:pointer">
        <input type="checkbox" ${c.ativo!==false?'checked':''} onchange="comEstagAtivo(this.checked)" style="margin-top:3px">
        <span style="font-size:13px;line-height:1.55"><b>Usar estas regras para quem é estagiário.</b>
-       <div class="t-mut" style="font-size:12px;margin-top:3px">Quem tiver <b>Estagiário</b> no cargo — como cargo principal ou como função adicional — comissiona por esta tabela, <b>mesmo que também esteja marcado como Vendedor</b>. Desmarcando, o estagiário volta a comissionar pelas regras padrão.</div></span>
+       <div class="t-mut" style="font-size:12px;margin-top:3px">Quem tiver <b>Estagiário</b> no cargo — como cargo principal ou como função adicional — recebe prêmio por esta tabela, <b>mesmo que também esteja marcado como Vendedor</b>. Desmarcando, o estagiário volta a receber prêmio pelas regras padrão.</div></span>
      </label></div>`:''}
-   ${tabela(est?'Vendas por estagiário':'Vendas por vendedor','Percentual de comissão por faixa de faturamento (vendas) '+(est?'do estagiário':'do vendedor')+' no período. Vale o nível mais alto atingido.',c.vendasFaixas,'vendas')}
-   ${tabela('Comissão sobre a MARGEM','Percentual conforme a margem de lucro (%) '+(est?'do estagiário':'do vendedor')+'. Pode ser negativo para margens baixas.',c.margemFaixas,'margem')}
-   <div class="card card-pad" style="margin-bottom:16px;background:var(--surface-2)"><b>Observação</b><p class="t-mut" style="font-size:12.5px;margin-top:4px">Comissionamento sobre as vendas da loja. Soma-se o percentual de <b>vendas</b> e o de <b>margem</b> para encontrar o % total aplicado sobre o faturamento do vendedor.</p></div>
+   ${tabela(est?'Vendas por estagiário':'Vendas por vendedor','Percentual de prêmio por faixa de faturamento (vendas) '+(est?'do estagiário':'do vendedor')+' no período. Vale o nível mais alto atingido.',c.vendasFaixas,'vendas')}
+   ${tabela('Prêmio sobre a MARGEM','Percentual conforme a margem de lucro (%) '+(est?'do estagiário':'do vendedor')+'. Pode ser negativo para margens baixas.',c.margemFaixas,'margem')}
+   <div class="card card-pad" style="margin-bottom:16px;background:var(--surface-2)"><b>Observação</b><p class="t-mut" style="font-size:12.5px;margin-top:4px">Premiação sobre as vendas da loja. Soma-se o percentual de <b>vendas</b> e o de <b>margem</b> para encontrar o % total aplicado sobre o faturamento do vendedor.</p></div>
    ${tabela('Bônus por META de TICKET MÉDIO','Bônus em R$ quando o ticket médio '+(est?'do estagiário':'do vendedor')+' alcança o valor. Vale o nível mais alto atingido.',c.ticketFaixas,'ticket')}
    ${tabela('Bônus por Meta de faturamento da loja',`Bônus em R$ pago a cada vendedor quando o <b>faturamento da loja</b> no período alcança o nível. O 1º nível é a <b>meta da loja</b> (${+(COMCFG&&COMCFG.metaLoja)>0?'<b>'+BRL(+COMCFG.metaLoja)+'</b>':'ainda não definida'} — definida em <a href="#" onclick="comReadConfigInputs();COM.tab='metas';viewComissao();return false">Metas de venda</a> ou no botão <b>Editar meta</b> do painel); os demais são o <b>% acima da meta</b>. Vale o nível mais alto atingido.`,c.metaFaixas,'meta')}
    <div style="display:flex;gap:10px;justify-content:flex-end"><button class="btn btn-ghost" onclick="COM.tab='apuracao';viewComissao()">Cancelar</button><button class="btn btn-amber" onclick="comSaveConfig()">${ico('check')} Salvar configuração</button></div>
@@ -11320,7 +11323,7 @@ function comFaixaDel(tipo,i){ comReadConfigInputs(); const C=comCfgAtual(); cons
   if(tipo==='meta'&&i===0){ toast('O 1º nível é a meta da loja e não pode ser excluído. Altere a meta em Metas de venda.','warn'); return; }
   (C[key]||[]).splice(i,1); viewComissao(); }
 function comSaveConfig(){ comReadConfigInputs(); COMCFG.comV=2; const d=DB._load(); const prev=d.comissaoConfig||{}; const novo=JSON.parse(JSON.stringify(COMCFG)); if(prev.metaLoja!=null && novo.metaLoja==null){ novo.metaLoja=prev.metaLoja; novo.metaLojaMod=prev.metaLojaMod; }
-  if(!novo.estagiario && prev.estagiario) novo.estagiario=prev.estagiario;   /* nunca perde as regras do estagiário */ d.comissaoConfig=cfgStamp(novo); try{ nuvemConfMarcar(); }catch(e){window.__es&&__es(e)} DB._persist(); toast('Configuração de comissionamento salva','ok'); COM.tab='apuracao'; viewComissao(); }
+  if(!novo.estagiario && prev.estagiario) novo.estagiario=prev.estagiario;   /* nunca perde as regras do estagiário */ d.comissaoConfig=cfgStamp(novo); try{ nuvemConfMarcar(); }catch(e){window.__es&&__es(e)} DB._persist(); toast('Configuração de premiação salva','ok'); COM.tab='apuracao'; viewComissao(); }
 /* ===================================================================
    CADASTROS: INDICADORES
 =================================================================== */
@@ -11343,21 +11346,21 @@ function indicadorClienteId(ind){ if(!ind) return '';
 function indicadorOpcoesCliente(atual, clienteId){
   // O próprio cliente também aparece, se ele for indicador (pode ser indicado por ele mesmo).
   const its=DB.all('indicadores').filter(i=>i && (i.situacao||'ativo')==='ativo')
-    .map(i=>({v:i.id, n:i.nome||'', s:[(clienteId && indicadorClienteId(i)===clienteId)?'este próprio cliente':'', i.profissao, (+i.comissaoPct||0)?('comissão '+PCT(i.comissaoPct)):'', i.telefone].filter(Boolean).join(' · ')}));
+    .map(i=>({v:i.id, n:i.nome||'', s:[(clienteId && indicadorClienteId(i)===clienteId)?'este próprio cliente':'', i.profissao, (+i.comissaoPct||0)?('prêmio '+PCT(i.comissaoPct)):'', i.telefone].filter(Boolean).join(' · ')}));
   if(atual && !its.some(x=>x.v===atual)){
     const ind=DB.get('indicadores',atual), c=ind?null:DB.get('clientes',atual);
     if(ind) its.push({v:ind.id, n:ind.nome||'', s:'indicador inativo'});
     else if(c) its.push({v:c.id, n:c.nome||'', s:'cliente'}); }
   return acOrdena(its.filter(x=>x.n)); }
-/* COMISSÃO ACUMULADA DO INDICADOR — conta feita a partir das VENDAS (que sincronizam
+/* PRÊMIO ACUMULADO DO INDICADOR — conta feita a partir das VENDAS (que sincronizam
    em todos os computadores), sem lista paralela que possa ficar para trás:
-   + comissão gerada: cada venda concluída de um cliente indicado por ele (% do indicador);
-   − comissão usada: cada venda em que ele (como cliente) pagou com "Comissão indicador".
-   Venda cancelada sai sozinha das duas contas — a comissão volta. */
+   + prêmio gerado: cada venda concluída de um cliente indicado por ele (% do indicador);
+   − prêmio usado: cada venda em que ele (como cliente) pagou com "Comissão indicador".
+   Venda cancelada sai sozinha das duas contas — o prêmio volta. */
 const FORMA_COMISSAO='Comissão indicador';
-/* A COMISSÃO SÓ CONTA A PARTIR DA DATA EM QUE O CLIENTE FOI LIGADO AO INDICADOR.
+/* O PRÊMIO SÓ CONTA A PARTIR DA DATA EM QUE O CLIENTE FOI LIGADO AO INDICADOR.
    Ao gravar o "Indicado por" no cliente o sistema guarda indicadoEm (data e hora).
-   Vendas anteriores a essa data não geram comissão. Ligações antigas, feitas antes
+   Vendas anteriores a essa data não geram prêmio. Ligações antigas, feitas antes
    desta regra, não têm data gravada: contam a partir de INDIC_INICIO_LEGADO (o saldo
    anterior, se houver, é lançado pelo botão "Corrigir saldo"). */
 const INDIC_INICIO_LEGADO=(/^\d{4}-\d{2}-\d{2}$/.test(CFG_E.inicioComissaoIndicador||'') ? CFG_E.inicioComissaoIndicador+' 00:00' : '2000-01-01 00:00');
@@ -11385,7 +11388,7 @@ function indicMovimentos(ind){ if(!ind) return [];
       if(c && c.indicadoPor){ const r=indicadorDoValor(c.indicadoPor);
         if(r && r.id===ind.id && indicVendaConta(v,c)){ const base=+v.total||0; const val=Math.round(base*pct/100*100)/100;
           if(val>0) L.push({ tipo:'gerada', data:v.data||'', hora:v.hora||'', vendaId:v.id, numero:v.numero||'', cliente:v.clienteNome||c.nome||'—', base, pct, valor:val }); } } }
-    // − usada: ele pagou uma compra com a comissão
+    // − usada: ele pagou uma compra com o prêmio
     const us=vendaComissaoIndic(v);
     if(us>0){ const dele = v.comissaoIndicadorId ? v.comissaoIndicadorId===ind.id
         : ((cliInd && v.clienteId===cliInd) || (!!k && normTxt(v.clienteNome||'')===k));
@@ -11429,41 +11432,41 @@ function indicCorrigirSaldoExec(id){ const ind=DB.get('indicadores',id); if(!ind
   let por=''; try{ por=(CURRENT_USER&&(CURRENT_USER.nome||CURRENT_USER.user||CURRENT_USER.login))||''; }catch(e){window.__es&&__es(e)}
   const aj={ id:'aj'+Date.now().toString(36)+Math.random().toString(36).slice(2,6), data:today(), hora:nowTime(), valor:dif, motivo, por, saldoAntes:atual, saldoDepois:Math.round((+txt)*100)/100, em:new Date().toISOString() };
   DB.update('indicadores',id,{ ajustes:(Array.isArray(ind.ajustes)?ind.ajustes:[]).concat([aj]) });
-  try{ logAcao('Saldo de comissão corrigido', (ind.nome||'')+': '+BRL(atual)+' → '+BRL(+txt)+' · '+motivo); }catch(e){window.__es&&__es(e)}
+  try{ logAcao('Saldo de prêmio corrigido', (ind.nome||'')+': '+BRL(atual)+' → '+BRL(+txt)+' · '+motivo); }catch(e){window.__es&&__es(e)}
   try{ nuvemPushJa(); }catch(e){window.__es&&__es(e)}
   closeModal(); toast('Saldo de '+(ind.nome||'')+' corrigido para '+BRL(+txt),'ok');
   if(STATE.route==='indic') viewIndic(); setTimeout(()=>{ try{ indicHistoricoModal(id); }catch(e){window.__es&&__es(e)} },150); }
 function indicHistoricoModal(id){ const ind=DB.get('indicadores',id); if(!ind){ toast('Indicador não encontrado','err'); return; }
   const t=indicTotais(ind); const L=t.movs.slice().reverse();
-  openModal(`<div class="modal-head"><h3>${ico('gift')} Comissões — ${esc(ind.nome||'')}</h3><button class="btn-icon btn-ghost" onclick="closeModal()">${ico('x')}</button></div>
+  openModal(`<div class="modal-head"><h3>${ico('gift')} Prêmios — ${esc(ind.nome||'')}</h3><button class="btn-icon btn-ghost" onclick="closeModal()">${ico('x')}</button></div>
    <div class="modal-body" style="max-height:70vh;overflow:auto">
      <div class="g3" style="gap:10px;margin-bottom:12px">
-       <div class="card card-pad"><div class="t-mut" style="font-size:12px">Comissão gerada</div><div class="tnum t-strong" style="font-size:18px;color:var(--pos)">${BRL(t.gerada)}</div></div>
+       <div class="card card-pad"><div class="t-mut" style="font-size:12px">Prêmio gerado</div><div class="tnum t-strong" style="font-size:18px;color:var(--pos)">${BRL(t.gerada)}</div></div>
        <div class="card card-pad"><div class="t-mut" style="font-size:12px">Usada como pagamento</div><div class="tnum t-strong" style="font-size:18px;color:var(--neg)">− ${BRL(t.usada)}</div></div>
        <div class="card card-pad" style="border:1px solid var(--amber)"><div class="t-mut" style="font-size:12px">Saldo disponível</div><div class="tnum t-strong" style="font-size:18px">${BRL(t.saldo)}</div>${t.ajustes?`<div class="t-mut" style="font-size:11.5px">inclui ajustes de ${t.ajustes>0?'+':'−'} ${BRL(Math.abs(t.ajustes))}</div>`:''}</div>
      </div>
      ${L.length?`<div class="tbl-wrap"><table><thead><tr><th>Data</th><th>Movimento</th><th>Pedido</th><th>Cliente</th><th class="t-right">Valor</th><th class="t-right">Saldo</th></tr></thead><tbody>
        ${L.map(m=>`<tr><td class="tnum">${fDate(m.data)}${m.hora?(' '+esc(m.hora)):''}</td>
-         <td>${m.tipo==='gerada'?`<span class="tag pos" style="font-size:10.5px">Comissão gerada</span> <span class="t-mut" style="font-size:11.5px">${PCT(m.pct)} de ${BRL(m.base)}</span>`:(m.tipo==='usada'?`<span class="tag err" style="font-size:10.5px">Usada como pagamento</span>`:`<span class="tag" style="font-size:10.5px">Ajuste de saldo</span>${m.por?` <span class="t-mut" style="font-size:11.5px">por ${esc(m.por)}</span>`:''}`)}</td>
+         <td>${m.tipo==='gerada'?`<span class="tag pos" style="font-size:10.5px">Prêmio gerado</span> <span class="t-mut" style="font-size:11.5px">${PCT(m.pct)} de ${BRL(m.base)}</span>`:(m.tipo==='usada'?`<span class="tag err" style="font-size:10.5px">Usado como pagamento</span>`:`<span class="tag" style="font-size:10.5px">Ajuste de saldo</span>${m.por?` <span class="t-mut" style="font-size:11.5px">por ${esc(m.por)}</span>`:''}`)}</td>
          <td class="tnum">${m.numero?('#'+esc(m.numero)):'—'}</td><td>${m.tipo==='ajuste'?`<i>${esc(m.motivo||'—')}</i>`:esc(m.cliente)}</td>
          <td class="t-right tnum" style="color:${(m.tipo==='gerada'||(m.tipo==='ajuste'&&m.valor>0))?'var(--pos)':'var(--neg)'}">${(m.tipo==='gerada'||(m.tipo==='ajuste'&&m.valor>0))?'+ ':'− '}${BRL(Math.abs(m.valor))}</td>
          <td class="t-right tnum t-strong">${BRL(m.saldo)}</td></tr>`).join('')}
-     </tbody></table></div>`:`<div class="empty">${ico('gift')}<h4>Nenhuma comissão ainda</h4><p class="t-mut">A comissão aparece quando um cliente indicado por ${esc(ind.nome||'este indicador')} compra.</p></div>`}
-     <div class="t-mut" style="font-size:11.5px;margin-top:8px">A comissão conta só as compras feitas <b>depois</b> que o cliente foi ligado a ${esc(ind.nome||'este indicador')} no cadastro. Compras anteriores não entram.</div>
+     </tbody></table></div>`:`<div class="empty">${ico('gift')}<h4>Nenhum prêmio ainda</h4><p class="t-mut">O prêmio aparece quando um cliente indicado por ${esc(ind.nome||'este indicador')} compra.</p></div>`}
+     <div class="t-mut" style="font-size:11.5px;margin-top:8px">O prêmio conta só as compras feitas <b>depois</b> que o cliente foi ligado a ${esc(ind.nome||'este indicador')} no cadastro. Compras anteriores não entram.</div>
    </div>
    <div class="modal-foot"><button class="btn btn-ghost" onclick="closeModal();indicCorrigirSaldoModal('${id}')">${ico('edit')} Corrigir saldo</button><div style="flex:1"></div><button class="btn btn-ghost" onclick="closeModal()">Fechar</button></div>`,true); }
 function viewIndic(){
   document.getElementById('view').innerHTML=`
-   <div class="toolbar"><div class="spacer"></div><button class="btn btn-ghost btn-sm" onclick="openReport('rep-indic-comissao')">${ico('doc')} Relatório de comissões</button><button class="btn btn-amber btn-sm" onclick="indicForm()">${ico('plus')} Novo indicador</button></div>
+   <div class="toolbar"><div class="spacer"></div><button class="btn btn-ghost btn-sm" onclick="openReport('rep-indic-comissao')">${ico('doc')} Relatório de prêmios</button><button class="btn btn-amber btn-sm" onclick="indicForm()">${ico('plus')} Novo indicador</button></div>
    <div class="card"><div class="tbl-wrap">${indicTable(DB.all('indicadores'))}</div></div>`;
 }
 function indicTable(lista){
   if(!lista.length) return `<div class="empty">${ico('gift')}<h4>Nenhum indicador</h4><p class="t-mut">Cadastre quem indica clientes para a loja.</p></div>`;
   const cli=DB.all('clientes');
-  return `<table><thead><tr><th>Indicador</th><th>Telefone</th><th class="t-right">Comissão</th><th class="t-right">Clientes indicados</th><th class="t-right">Comissão acumulada</th><th>Situação</th><th></th></tr></thead><tbody>
+  return `<table><thead><tr><th>Indicador</th><th>Telefone</th><th class="t-right">Prêmio</th><th class="t-right">Clientes indicados</th><th class="t-right">Prêmio acumulado</th><th>Situação</th><th></th></tr></thead><tbody>
   ${lista.map(x=>{ const n=cli.filter(c=>{ if(!c.indicadoPor) return false; const r=indicadorDoValor(c.indicadoPor); return r && r.id===x.id; }).length;
-    return `<tr><td class="t-strong">${esc(x.nome)}</td><td class="t-mut">${esc(x.telefone||'—')}</td><td class="t-right tnum">${PCT(x.comissaoPct||0)}</td><td class="t-right tnum">${NUM(n)}</td><td class="t-right tnum t-strong"><a href="javascript:void(0)" onclick="indicHistoricoModal('${x.id}')" title="Ver o histórico de comissões e abatimentos" style="color:${indicSaldo(x)>0?'var(--pos)':'inherit'}">${BRL(indicSaldo(x))}</a></td><td>${tagSit(x.situacao||'ativo')}</td>
-    <td class="t-right" style="white-space:nowrap"><button class="btn-icon btn-ghost" title="Histórico de comissões" onclick="indicHistoricoModal('${x.id}')">${ico('clock')}</button><button class="btn-icon btn-ghost" title="Corrigir saldo de comissão" onclick="indicCorrigirSaldoModal('${x.id}')">${ico('money')}</button><button class="btn-icon btn-ghost" onclick="indicForm('${x.id}')">${ico('edit')}</button>
+    return `<tr><td class="t-strong">${esc(x.nome)}</td><td class="t-mut">${esc(x.telefone||'—')}</td><td class="t-right tnum">${PCT(x.comissaoPct||0)}</td><td class="t-right tnum">${NUM(n)}</td><td class="t-right tnum t-strong"><a href="javascript:void(0)" onclick="indicHistoricoModal('${x.id}')" title="Ver o histórico de prêmios e abatimentos" style="color:${indicSaldo(x)>0?'var(--pos)':'inherit'}">${BRL(indicSaldo(x))}</a></td><td>${tagSit(x.situacao||'ativo')}</td>
+    <td class="t-right" style="white-space:nowrap"><button class="btn-icon btn-ghost" title="Histórico de prêmios" onclick="indicHistoricoModal('${x.id}')">${ico('clock')}</button><button class="btn-icon btn-ghost" title="Corrigir saldo de prêmio" onclick="indicCorrigirSaldoModal('${x.id}')">${ico('money')}</button><button class="btn-icon btn-ghost" onclick="indicForm('${x.id}')">${ico('edit')}</button>
       <button class="btn-icon btn-ghost" onclick="if(confirm('Excluir indicador?')){DB.remove('indicadores','${x.id}');go('indic')}" style="color:var(--neg)">${ico('trash')}</button></td></tr>`;}).join('')}
   </tbody></table>`;
 }
@@ -11476,9 +11479,9 @@ function indicForm(id){ const x=id?DB.get('indicadores',id):{};
         vazio:'Nenhum cliente com esse nome. Use <b>Cadastrar cliente</b> abaixo — o indicador também é um cliente.'})}
        ${(id && !indicadorClienteId(x))?`<div class="t-mut" style="font-size:12px;margin-top:4px">${ico('alert')} Cadastro antigo sem cliente ligado (<b>${esc(x.nome||'')}</b>). Escolha o cliente correspondente.</div>`:''}</div>
      <div class="field-row"><div class="field"><label>Telefone</label><input id="in-tel" value="${esc(x.telefone||'')}"></div>
-       <div class="field"><label>Comissão (%)</label><input id="in-com" type="number" step="0.1" value="${x.comissaoPct||0}"></div></div>
+       <div class="field"><label>Prêmio (%)</label><input id="in-com" type="number" step="0.1" value="${x.comissaoPct||0}"></div></div>
      ${id?(function(){ const t=indicTotais(x); return `<div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;background:var(--pos-soft);border:1px solid var(--pos);border-radius:8px;padding:9px 11px;margin-bottom:10px">
-        <div style="flex:1;min-width:180px"><div class="t-mut" style="font-size:12px">Comissão acumulada (disponível)</div>
+        <div style="flex:1;min-width:180px"><div class="t-mut" style="font-size:12px">Prêmio acumulado (disponível)</div>
           <div class="tnum t-strong" style="font-size:20px;color:var(--pos)">${BRL(t.saldo)}</div>
           <div class="t-mut" style="font-size:11.5px">gerada ${BRL(t.gerada)} · usada ${BRL(t.usada)}${t.ajustes?(' · ajustes '+(t.ajustes>0?'+':'−')+' '+BRL(Math.abs(t.ajustes))):''}</div></div>
         <button class="btn btn-ghost btn-sm" onclick="indicHistoricoModal('${id}')">${ico('clock')} Histórico</button>
@@ -11979,7 +11982,7 @@ function calcProdAplicar(preco){ if(!CALCPROD){ toast('Escolha um produto primei
    unidade muda conforme o volume vendido e distorce o preço). O correto é transformar as despesas
    fixas em PERCENTUAL DO FATURAMENTO e embutir esse percentual no divisor do markup:
        Despesas fixas (%) = (despesas fixas do período ÷ faturamento do período) × 100
-       Preço = Custo ÷ [1 − (DespFixas% + DespVar% + Impostos% + Comissão% + Taxas% + Lucro%)/100]
+       Preço = Custo ÷ [1 − (DespFixas% + DespVar% + Impostos% + Prêmio% + Taxas% + Lucro%)/100]
    Dividir (e não somar) é o que garante que o percentual incida sobre o PREÇO, e não sobre o custo. */
 function precoAluguelDados(meses){
   meses=Math.max(1,+meses||3);
@@ -12047,7 +12050,7 @@ function precoFormHTML(pfx, seed){ seed=seed||{}; const v=(k,d)=>seed[k]!=null&&
      <button class="btn btn-ghost btn-sm" style="margin-top:8px" onclick="precoAluguelAbrir('${pfx}')">${ico('calc2')} Calcular pelo aluguel e despesas fixas</button>
      <div class="t-mut" style="font-size:11.5px;margin-top:6px">O aluguel entra aqui: ele é uma <b>despesa fixa</b>, convertida em <b>% do faturamento</b> — nunca somado em reais no produto.</div></div>
    <div class="card card-pad" style="margin-bottom:12px"><h4 style="margin:0 0 10px">${ico('money')} Custos de venda</h4>
-     <div class="field-row"><div class="field"><label>${precoChk(pfx,'com','Comissão vendedor (%)')}</label><input id="${pfx}-com" type="number" step="0.1" value="${v('com',5)}" oninput="precoFormCalc('${pfx}')"></div>
+     <div class="field-row"><div class="field"><label>${precoChk(pfx,'com','Prêmio vendedor (%)')}</label><input id="${pfx}-com" type="number" step="0.1" value="${v('com',5)}" oninput="precoFormCalc('${pfx}')"></div>
        <div class="field"><label>${precoChk(pfx,'taxa','Taxa meio de pagamento (%)')}</label><input id="${pfx}-taxa" type="number" step="0.1" value="${v('taxa',2.5)}" oninput="precoFormCalc('${pfx}')"></div></div></div>
    <div class="card card-pad" style="margin-bottom:12px"><h4 style="margin:0 0 10px">${ico('doc')} Impostos sobre venda</h4>
      <div class="field-row"><div class="field"><label>Regime tributário</label><select id="${pfx}-regime">${reg.map(r=>`<option ${v('regime','Simples Nacional')===r?'selected':''}>${r}</option>`).join('')}</select></div>
@@ -13541,6 +13544,107 @@ function saveTarefa(id){ const tit=(document.getElementById('tk-tit').value||'')
   if(id)DB.update('tarefas',id,data); else { data.feito=false; DB.insert('tarefas',data); }
   toast('Tarefa salva','ok'); closeModal(); go('tarefas');
 }
+/* ===================================================================
+   AGENDA — compromissos e lembretes do dia (v21/10-D)
+   Coleção 'agenda' (sincroniza pela nuvem): {titulo, obs, data, hora, recorrente:'mensal'|'',
+   feito, feitoMeses:{'AAAA-MM':iso}, usuarioId, usuarioNome, todos}.
+   • Recorrente MENSAL: aparece todo mês no mesmo dia (dia 31 em mês de 30 dias cai no último dia).
+   • "Feito": no lembrete único marca o lembrete; no recorrente marca SÓ a ocorrência daquele mês.
+   • Cada usuário vê os seus; "visível para toda a equipe" mostra para todos.
+   =================================================================== */
+const AGENDA={ mes:'' };
+function agUid(){ return (CURRENT_USER&&(CURRENT_USER.id||CURRENT_USER.username))||''; }
+function agMeu(a){ if(!a) return false; if(a.todos) return true; const u=agUid(); if(!a.usuarioId) return true; return a.usuarioId===u; }
+function agUltimoDia(ym){ const p=ym.split('-'); return new Date(+p[0], +p[1], 0).getDate(); }
+function agYmAdd(ym, n){ const p=ym.split('-'); const d=new Date(+p[0], +p[1]-1+n, 1); return d.getFullYear()+'-'+pad2(d.getMonth()+1); }
+/* Data da ocorrência do lembrete no mês ym ('' se não ocorre nesse mês). */
+function agOcorrencia(a, ym){ if(!a||!a.data) return '';
+  if(a.recorrente==='mensal'){ const ini=a.data.slice(0,7); if(ym<ini) return ''; if(a.ateMes && ym>a.ateMes) return '';
+    const dia=Math.min(+a.data.slice(8,10)||1, agUltimoDia(ym)); return ym+'-'+pad2(dia); }
+  return a.data.slice(0,7)===ym ? a.data : ''; }
+function agFeito(a, dataOc){ if(!a) return false; if(a.recorrente==='mensal') return !!((a.feitoMeses||{})[(dataOc||'').slice(0,7)]); return !!a.feito; }
+/* Ocorrências entre duas datas (inclusive), dos lembretes que o usuário vê. */
+function agOcorrencias(de, ate){ const out=[]; const itens=DB.all('agenda').filter(agMeu);
+  let ym=de.slice(0,7); const fim=ate.slice(0,7); let guard=0;
+  while(ym<=fim && guard++<40){ itens.forEach(a=>{ const d=agOcorrencia(a, ym); if(d && d>=de && d<=ate) out.push({a, data:d, feito:agFeito(a,d)}); }); ym=agYmAdd(ym,1); }
+  return out.sort((x,y)=>(x.data.localeCompare(y.data))||((x.a.hora||'99').localeCompare(y.a.hora||'99'))||((x.a.titulo||'').localeCompare(y.a.titulo||''))); }
+function agToggle(id, dataOc){ const a=DB.get('agenda',id); if(!a) return;
+  if(a.recorrente==='mensal'){ const m=Object.assign({}, a.feitoMeses||{}); const k=(dataOc||today()).slice(0,7); if(m[k]) delete m[k]; else m[k]=new Date().toISOString(); DB.update('agenda',id,{feitoMeses:m}); }
+  else DB.update('agenda',id,{feito:!a.feito, feitoEm:!a.feito?new Date().toISOString():null});
+  try{ nuvemPushJa(); }catch(e){}
+  agRedesenhar(); }
+function agRedesenhar(){ try{ const r=(STATE&&STATE.route)||''; if(r==='agenda') viewAgenda(); else { const el=document.getElementById('ag-painel'); if(el) el.outerHTML=agendaPainelHTML(); } }catch(e){window.__es&&__es(e)} }
+function agLinhaHTML(o, mostrarData){ const a=o.a; const atras=!o.feito && o.data<today();
+  return `<div style="display:flex;align-items:flex-start;gap:10px;padding:8px 2px;border-bottom:1px solid var(--line-2)">
+    <button class="tar-chk ${o.feito?'on':''}" onclick="agToggle('${a.id}','${o.data}')" title="${o.feito?'Marcar como NÃO feito':'Marcar como feito'}">${o.feito?ico('check'):''}</button>
+    <div style="flex:1;min-width:0;cursor:pointer" onclick="agForm('${a.id}','${o.data}')">
+      <div style="font-weight:600;font-size:13.5px;${o.feito?'text-decoration:line-through;color:var(--muted)':''}">${a.hora?`<span class="tnum" style="color:var(--amber-d);margin-right:6px">${esc(a.hora)}</span>`:''}${esc(a.titulo||'(sem título)')}</div>
+      <div class="t-mut" style="font-size:11.5px">${mostrarData?(fDate(o.data)+' · '):''}${a.recorrente==='mensal'?`<span class="tag" style="font-size:10px">todo mês, dia ${esc(a.data.slice(8,10))}</span> `:''}${atras?'<span style="color:var(--neg);font-weight:700">atrasado</span> ':''}${a.todos?'<span class="tag gray" style="font-size:10px">equipe</span> ':''}${a.obs?esc(a.obs.slice(0,90)):''}</div></div></div>`; }
+/* Quadro do PAINEL: hoje, atrasados (até 60 dias) e próximos 7 dias. */
+function agendaPainelHTML(){ try{ if(!CURRENT_USER) return '';
+    const hoje=today(); const atras=agOcorrencias(daysAgo(60), daysAgo(1)).filter(o=>!o.feito);
+    const dia=agOcorrencias(hoje, hoje); const prox=agOcorrencias(daysAgo(-1), daysAgo(-7));
+    const pend=dia.filter(o=>!o.feito).length;
+    return `<div class="card" id="ag-painel" style="margin-bottom:16px;border-left:4px solid var(--amber)">
+      <div class="card-head"><div><h3>${ico('cal')} Agenda de hoje — ${fDate(hoje)}</h3><div class="ch-sub">${dia.length?(NUM(pend)+' pendente(s) de '+NUM(dia.length)+' para hoje'):'Nenhum compromisso para hoje'}${atras.length?(' · <b style="color:var(--neg)">'+NUM(atras.length)+' atrasado(s)</b>'):''}</div></div>
+        <div style="display:flex;gap:6px"><button class="btn btn-amber btn-sm" onclick="agForm('','${hoje}')">${ico('plus')} Lembrete</button><button class="btn btn-ghost btn-sm" onclick="go('agenda')">${ico('cal')} Abrir agenda</button></div></div>
+      <div class="card-pad" style="padding-top:4px">
+        ${atras.length?`<div style="font-size:11px;font-weight:800;color:var(--neg);letter-spacing:.04em;margin-top:6px">ATRASADOS</div>${atras.map(o=>agLinhaHTML(o,true)).join('')}`:''}
+        ${dia.length?`<div style="font-size:11px;font-weight:800;color:var(--amber-d);letter-spacing:.04em;margin-top:8px">HOJE</div>${dia.map(o=>agLinhaHTML(o,false)).join('')}`:(atras.length?'':`<div class="t-mut" style="font-size:12.5px;padding:6px 0">Nada marcado para hoje. Use <b>+ Lembrete</b> para anotar um compromisso.</div>`)}
+        ${prox.length?`<div style="font-size:11px;font-weight:800;color:var(--muted);letter-spacing:.04em;margin-top:10px">PRÓXIMOS 7 DIAS</div>${prox.slice(0,8).map(o=>agLinhaHTML(o,true)).join('')}${prox.length>8?`<div class="t-mut" style="font-size:11.5px;padding-top:6px">+ ${NUM(prox.length-8)} na agenda</div>`:''}`:''}
+      </div></div>`; }catch(e){ return ''; } }
+function viewAgenda(){ if(!AGENDA.mes) AGENDA.mes=today().slice(0,7); const ym=AGENDA.mes;
+  const p=ym.split('-'); const ini=new Date(+p[0], +p[1]-1, 1); const nd=agUltimoDia(ym); const offset=ini.getDay();
+  const ocs=agOcorrencias(ym+'-01', ym+'-'+pad2(nd)); const porDia={}; ocs.forEach(o=>{ (porDia[o.data]=porDia[o.data]||[]).push(o); });
+  const MESES=['Janeiro','Fevereiro','Março','Abril','Maio','Junho','Julho','Agosto','Setembro','Outubro','Novembro','Dezembro'];
+  let cel=''; for(let i=0;i<offset;i++) cel+='<div></div>';
+  for(let d=1; d<=nd; d++){ const ds=ym+'-'+pad2(d); const L=porDia[ds]||[]; const hj=ds===today();
+    cel+=`<div onclick="agForm('','${ds}')" style="min-height:86px;border:1px solid ${hj?'var(--amber)':'var(--line)'};border-radius:9px;padding:5px 6px;cursor:pointer;background:${hj?'var(--amber-soft)':'var(--surface)'};overflow:hidden" title="Clique para incluir um lembrete neste dia">
+      <div style="font-size:12px;font-weight:800;color:${hj?'var(--amber-d)':'var(--muted)'}">${d}</div>
+      ${L.slice(0,3).map(o=>`<div onclick="event.stopPropagation();agForm('${o.a.id}','${o.data}')" style="font-size:11px;line-height:1.3;padding:2px 5px;margin-top:3px;border-radius:5px;background:${o.feito?'var(--surface-2)':(o.data<today()?'#fee2e2':'#fef3c7')};${o.feito?'text-decoration:line-through;color:var(--muted)':''};white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${o.a.hora?esc(o.a.hora)+' ':''}${esc(o.a.titulo||'')}</div>`).join('')}
+      ${L.length>3?`<div class="t-mut" style="font-size:10.5px;margin-top:2px">+${L.length-3}</div>`:''}</div>`; }
+  document.getElementById('view').innerHTML=`
+   <div class="toolbar"><button class="btn btn-ghost btn-sm" onclick="AGENDA.mes=agYmAdd(AGENDA.mes,-1);viewAgenda()">‹</button>
+     <b style="font-size:16px;min-width:170px;text-align:center">${MESES[+p[1]-1]} de ${p[0]}</b>
+     <button class="btn btn-ghost btn-sm" onclick="AGENDA.mes=agYmAdd(AGENDA.mes,1);viewAgenda()">›</button>
+     <button class="btn btn-ghost btn-sm" onclick="AGENDA.mes=today().slice(0,7);viewAgenda()">Hoje</button>
+     <div class="spacer"></div><button class="btn btn-amber btn-sm" onclick="agForm('','${today()}')">${ico('plus')} Novo lembrete</button></div>
+   <div style="display:grid;grid-template-columns:minmax(0,2.2fr) minmax(280px,1fr);gap:16px;align-items:start" class="ag-grid">
+     <div class="card card-pad"><div style="display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:5px;margin-bottom:5px">${['Dom','Seg','Ter','Qua','Qui','Sex','Sáb'].map(x=>`<div class="t-mut" style="font-size:11px;font-weight:700;text-align:center">${x}</div>`).join('')}</div>
+       <div style="display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:5px">${cel}</div></div>
+     <div class="card"><div class="card-head"><div><h3>Compromissos do mês</h3><div class="ch-sub">${NUM(ocs.filter(o=>!o.feito).length)} pendente(s) · ${NUM(ocs.filter(o=>o.feito).length)} feito(s)</div></div></div>
+       <div class="card-pad" style="padding-top:2px;max-height:70vh;overflow:auto">${ocs.length?ocs.map(o=>agLinhaHTML(o,true)).join(''):`<div class="empty" style="padding:24px">${ico('cal')}<h4>Nada neste mês</h4><p class="t-mut">Clique num dia do calendário para incluir um lembrete.</p></div>`}</div></div>
+   </div>
+   <style>@media(max-width:900px){.ag-grid{grid-template-columns:1fr!important}}</style>`; }
+function agForm(id, dataSug){ const a=id?DB.get('agenda',id):null; const d=a?a.data:(dataSug||today()); const oc=dataSug||d;
+  const feito=a?agFeito(a, (a.recorrente==='mensal')?oc:a.data):false;
+  openModal(`<div class="modal-head"><h3>${ico('cal')} ${a?'Editar lembrete':'Novo lembrete'}</h3><button class="btn-icon btn-ghost" onclick="closeModal()">${ico('x')}</button></div>
+   <div class="modal-body">
+     <div class="field"><label>O que fazer / compromisso *</label><input id="ag-tit" value="${esc(a?a.titulo||'':'')}" placeholder="Ex.: Pagar o aluguel · Reunião com fornecedor · Ligar para cliente" maxlength="160"></div>
+     <div class="field-row"><div class="field"><label>Data *</label><input id="ag-data" type="date" value="${esc(d)}"></div>
+       <div class="field" style="max-width:150px"><label>Hora (opcional)</label><input id="ag-hora" type="time" value="${esc(a?a.hora||'':'')}"></div></div>
+     <div class="field"><label>Observação</label><textarea id="ag-obs" rows="2" style="width:100%;resize:vertical" placeholder="Detalhes, telefone, valor…">${esc(a?a.obs||'':'')}</textarea></div>
+     <label style="display:flex;align-items:flex-start;gap:9px;cursor:pointer;margin:6px 0"><input type="checkbox" id="ag-rec" ${a&&a.recorrente==='mensal'?'checked':''} style="width:17px;height:17px;margin-top:1px"><span><b>Recorrente — lembrar todo mês no mesmo dia</b><div class="t-mut" style="font-size:12px">Ex.: dia 10 de todo mês. Em mês mais curto, cai no último dia.</div></span></label>
+     <label style="display:flex;align-items:flex-start;gap:9px;cursor:pointer;margin:6px 0"><input type="checkbox" id="ag-feito" ${feito?'checked':''} style="width:17px;height:17px;margin-top:1px"><span><b>Feito</b><div class="t-mut" style="font-size:12px">${a&&a.recorrente==='mensal'?('Marca só a ocorrência de '+esc(fDate(oc))+' — os outros meses continuam pendentes.'):'Marque quando o compromisso tiver sido feito.'}</div></span></label>
+     <label style="display:flex;align-items:center;gap:9px;cursor:pointer;margin:6px 0"><input type="checkbox" id="ag-todos" ${a&&a.todos?'checked':''} style="width:17px;height:17px"><span>Visível para toda a equipe</span></label>
+   </div>
+   <div class="modal-foot">${a?`<button class="btn btn-ghost" style="color:var(--neg)" onclick="agExcluir('${a.id}')">${ico('trash')} Excluir</button>`:''}<div style="flex:1"></div>
+     <button class="btn btn-ghost" onclick="closeModal()">Cancelar</button><button class="btn btn-amber" onclick="agSalvar('${a?a.id:''}','${esc(oc)}')">${ico('check')} Salvar</button></div>`);
+  setTimeout(()=>{ try{ const el=document.getElementById('ag-tit'); if(el&&!a) el.focus(); }catch(e){} },50); }
+function agSalvar(id, oc){ const v=k=>((document.getElementById(k)||{}).value||'').trim(); const ck=k=>!!(document.getElementById(k)||{}).checked;
+  const titulo=v('ag-tit'), data=v('ag-data'); if(!titulo){ toast('Escreva o compromisso','err'); return; } if(!data){ toast('Informe a data','err'); return; }
+  const rec=ck('ag-rec')?'mensal':''; const feito=ck('ag-feito');
+  const dados={ titulo, data, hora:v('ag-hora'), obs:v('ag-obs'), recorrente:rec, todos:ck('ag-todos') };
+  const a=id?DB.get('agenda',id):null;
+  if(rec==='mensal'){ const m=Object.assign({}, (a&&a.feitoMeses)||{}); const k=(oc&&a&&a.recorrente==='mensal'?oc:data).slice(0,7); if(feito) m[k]=m[k]||new Date().toISOString(); else delete m[k]; dados.feitoMeses=m; dados.feito=false; }
+  else { dados.feito=feito; dados.feitoEm=feito?((a&&a.feitoEm)||new Date().toISOString()):null; }
+  if(a) DB.update('agenda', a.id, dados);
+  else DB.insert('agenda', Object.assign(dados, { usuarioId:agUid(), usuarioNome:(CURRENT_USER&&CURRENT_USER.nome)||'', criadoEm:new Date().toISOString() }));
+  try{ nuvemPushJa(); }catch(e){}
+  closeModal(); toast('Lembrete salvo','ok'); agRedesenhar(); }
+function agExcluir(id){ const a=DB.get('agenda',id); if(!a) return;
+  if(!confirm('Excluir o lembrete "'+(a.titulo||'')+'"'+(a.recorrente==='mensal'?' (de TODOS os meses)':'')+'?')) return;
+  DB.remove('agenda', id); try{ nuvemPushJa(); }catch(e){} closeModal(); toast('Lembrete excluído','ok'); agRedesenhar(); }
 /* ===================================================================
    COMPRAS: SUGESTÃO DE COMPRA (reposição de estoque)
 =================================================================== */
@@ -17262,8 +17366,8 @@ function receber(id){ const c=DB.get('compras',id); if(!c||c.situacao==='recebid
 =================================================================== */
 /* ===================================================================
    DEPARTAMENTO PESSOAL
-   Custo mensal de cada funcionário: salário, hora extra, comissão (puxada
-   do módulo de Comissões), encargos, benefícios e as provisões de férias
+   Custo mensal de cada funcionário: salário, hora extra, prêmio (puxado
+   do módulo de Prêmios), encargos, benefícios e as provisões de férias
    e de 13º calculadas sobre o ÚLTIMO SALÁRIO.
    Gera relatório MENSAL e ANUAL, de um funcionário ou de todos.
    =================================================================== */
@@ -17273,9 +17377,9 @@ const DP_MESES=['janeiro','fevereiro','março','abril','maio','junho','julho','a
 const DP_CAMPOS=[
   {k:'salario',  lbl:'Salário',              curto:'Salário',   auto:false, tipo:'prov'},
   {k:'horaExtra',lbl:'Hora extra',           curto:'H. extra',  auto:false, tipo:'prov'},
-  {k:'comissao', lbl:'Comissão',             curto:'Comissão',  auto:true,  tipo:'prov', dica:'Puxada do módulo de Comissões (apuração por vendedor). Digite um valor para substituir.'},
-  {k:'fgts',     lbl:'FGTS',                 curto:'FGTS',      auto:true,  tipo:'enc',  dica:'Calculado sobre salário + hora extra + comissão. Digite para substituir.'},
-  {k:'inss',     lbl:'INSS',                 curto:'INSS',      auto:true,  tipo:'enc',  dica:'Calculado sobre salário + hora extra + comissão. No Simples Nacional costuma ser 0.'},
+  {k:'comissao', lbl:'Prêmio',             curto:'Prêmio',  auto:true,  tipo:'prov', dica:'Puxado do módulo de Prêmios (apuração por vendedor). Digite um valor para substituir.'},
+  {k:'fgts',     lbl:'FGTS',                 curto:'FGTS',      auto:true,  tipo:'enc',  dica:'Calculado sobre salário + hora extra + prêmio. Digite para substituir.'},
+  {k:'inss',     lbl:'INSS',                 curto:'INSS',      auto:true,  tipo:'enc',  dica:'Calculado sobre salário + hora extra + prêmio. No Simples Nacional costuma ser 0.'},
   {k:'vt',       lbl:'Vale transporte',      curto:'V. transp.',auto:false, tipo:'ben'},
   {k:'saude',    lbl:'Plano de saúde',       curto:'Saúde',     auto:false, tipo:'ben'},
   {k:'odonto',   lbl:'Plano odontológico',   curto:'Odonto',    auto:false, tipo:'ben'},
@@ -17300,7 +17404,7 @@ function dpFuncs(){ return DB.all('funcionarios').filter(f=>f && (f.situacao||'a
 function dpFuncsTodos(){ return DB.all('funcionarios').slice().sort((a,b)=>(a.nome||'').localeCompare(b.nome||'','pt')); }
 function dpReg(funcId,comp){ return DB.all('folha').find(x=>x && x.funcId===funcId && x.comp===comp)||null; }
 
-/* ---- Comissão do mês, com as MESMAS regras da aba Comissões ---- */
+/* ---- Prêmio do mês, com as MESMAS regras da aba Prêmios ---- */
 function dpComissaoMes(comp){
   const r=dpCompRange(comp);
   const vendas=DB.all('vendas').filter(v=>v && v.data>=r[0] && v.data<=r[1] && (typeof vendaConcluida!=='function'||vendaConcluida(v)));
@@ -17337,9 +17441,13 @@ function dpUltimoSalario(func, comp){
   if(ant) return +ant.salario;
   return +func.salario||0;
 }
+/* ESTAGIÁRIO (Lei 11.788): bolsa-estágio não tem vínculo empregatício — não incidem FGTS, INSS, planos
+   (saúde, odonto), seguro, provisões de férias e de 13º, nem hora extra. Ficam só bolsa (salário), prêmio e VT. */
+const DP_EST_ZERO=['horaExtra','fgts','inss','saude','odonto','seguro','ferias','decimo'];
+function dpEhEstagiario(func){ try{ return !!func && (func.estagiario===true || funcEhEstagiario(func)); }catch(e){ return false; } }
 /* A linha do funcionário na competência: o que foi lançado + o que o sistema calcula. */
 function dpLinha(func, comp, mapaCom){
-  const r=dpReg(func.id,comp)||{}; const cfg=dpConfig();
+  const r=dpReg(func.id,comp)||{}; const cfg=dpConfig(); const _est=dpEhEstagiario(func);
   const num=(v)=> (v==null||v==='')?null:(Math.round((+v||0)*100)/100);
   const salario = num(r.salario)!=null ? num(r.salario) : (Math.round((+func.salario||0)*100)/100);
   const horaExtra = num(r.horaExtra)||0;
@@ -17361,6 +17469,10 @@ function dpLinha(func, comp, mapaCom){
   const beneficios=Math.round((vt+saude+odonto+seguro)*100)/100;
   const provisoes=Math.round((ferias+decimo)*100)/100;
   const custo=Math.round((base+encargos+beneficios+provisoes)*100)/100;
+  if(_est){ const vt2=vt; const base2=Math.round((salario+comissao)*100)/100; const ben2=Math.round(vt2*100)/100;
+    return {func, comp, salario, horaExtra:0, comissao, comAuto, comManual, fgts:0, inss:0, vt:vt2, saude:0, odonto:0, seguro:0,
+          ferias:0, decimo:0, ultimo, base:base2, encargos:0, beneficios:ben2, provisoes:0, custo:Math.round((base2+ben2)*100)/100, reg:r, estagiario:true,
+          _auto:{comissao:!comManual, fgts:false, inss:false, ferias:false, decimo:false}}; }
   return {func, comp, salario, horaExtra, comissao, comAuto, comManual, fgts, inss, vt, saude, odonto, seguro,
           ferias, decimo, ultimo, base, encargos, beneficios, provisoes, custo, reg:r,
           _auto:{comissao:!comManual, fgts:num(r.fgts)==null, inss:num(r.inss)==null, ferias:num(r.ferias)==null, decimo:num(r.decimo)==null}};
@@ -17409,6 +17521,139 @@ function dpLimparMes(){
   toast(regs.length+' lançamento(s) apagado(s) de '+dpCompLabel(comp),'ok'); dpRender();
 }
 
+/* ===================================================================
+   IMPORTAR FOLHA — PDF DO CONTADOR (v21/10-D)
+   Lê o texto do PDF (holerite / recibo de pagamento / resumo da folha), separa por funcionário
+   (pelo nome do cadastro) e soma os eventos: salário (ou bolsa), horas extras, prêmio/comissão,
+   FGTS do mês, INSS, vale-transporte, plano de saúde, odonto e seguro. Mostra tudo para conferir
+   ANTES de gravar — nada é gravado sem o OK do operador. PDF escaneado (imagem) não tem texto.
+   =================================================================== */
+const DP_IMP_CAMPOS=[
+  {k:'salario',  lbl:'Salário / bolsa', on:true},
+  {k:'horaExtra',lbl:'Hora extra',      on:true},
+  {k:'comissao', lbl:'Prêmio',          on:true},
+  {k:'fgts',     lbl:'FGTS',            on:true},
+  {k:'inss',     lbl:'INSS',            on:false, nota:'No holerite o INSS é o DESCONTO do funcionário; o campo da folha é o INSS patronal (empresa).'},
+  {k:'vt',       lbl:'Vale transporte', on:false, nota:'No holerite aparece o desconto (até 6%) do funcionário, não o custo da empresa.'},
+  {k:'saude',    lbl:'Plano de saúde',  on:false, nota:'No holerite aparece a parte descontada do funcionário.'},
+  {k:'odonto',   lbl:'Odonto',          on:false},
+  {k:'seguro',   lbl:'Seguro de vida',  on:false}
+];
+const DP_IMP_RX=[
+  ['horaExtra', /(hora|horas|hs|h)\.?\s*extras?|\bh\.?\s?e\.?\s*\d{2,3}\s*%|\bextras?\s*\d{2,3}\s*%/i],
+  ['comissao',  /comiss|pr[eê]mio/i],
+  ['fgts',      /f\.?\s*g\.?\s*t\.?\s*s/i],
+  ['inss',      /\bi\.?\s*n\.?\s*s\.?\s*s\b/i],
+  ['vt',        /vale[\s.-]*transp|\bv\.?\s?t\.?\b|transporte/i],
+  ['odonto',    /odonto/i],
+  ['saude',     /plano\s*(de)?\s*sa[uú]de|assist[eê]ncia\s*m[eé]dica|unimed|conv[eê]nio\s*m[eé]d|\bsa[uú]de\b/i],
+  ['seguro',    /seguro/i],
+  ['salario',   /sal[aá]rio|horas?\s*normais|dias?\s*normais|dias?\s*trabalhad|bolsa|pr[oó][\s-]*labore|ordenado|vencimento\s*base/i]
+];
+const DP_IMP_IGNORA=/base|sal\.?\s*contr|total|l[ií]quido|faixa|teto|dedu[cç]|dependente|fam[ií]lia|maternidade|\bm[eê]s\s*anterior|adiant|refer[eê]ncia|vencimentos|descontos|desconto\s*s\/|cbo|admiss/i;
+const DP_IMP_MOEDA=/^-?\d{1,3}(?:\.\d{3})*,\d{2}$|^-?\d+,\d{2}$/;
+function dpImpValor(t){ return Math.round(numBR(t)*100)/100; }
+/* Linhas do PDF com a POSIÇÃO de cada pedaço de texto (precisa da coluna para casar rótulo × valor). */
+async function dpImpLerPdf(file){
+  if(!window.pdfjsLib) throw new Error('Leitor de PDF indisponível. Verifique a conexão e recarregue a página.');
+  pdfjsLib.GlobalWorkerOptions.workerSrc='https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+  const pdf=await pdfjsLib.getDocument({data:await file.arrayBuffer()}).promise; const rows=[];
+  for(let np=1; np<=pdf.numPages; np++){ const page=await pdf.getPage(np); const tc=await page.getTextContent();
+    const it=tc.items.filter(i=>(i.str||'').trim()).map(i=>({s:i.str, x:i.transform[4], y:i.transform[5], w:i.width||0, h:Math.abs(i.transform[3])||9}));
+    it.sort((a,b)=>(b.y-a.y)||(a.x-b.x)); const pr=[];
+    it.forEach(i=>{ const r=pr.find(r=>Math.abs(r.y-i.y)<=Math.max(2,i.h*0.3)); if(r) r.it.push(i); else pr.push({y:i.y, it:[i]}); });
+    pr.sort((a,b)=>b.y-a.y);
+    pr.forEach(r=>{ r.it.sort((a,b)=>a.x-b.x); const segs=[]; let cur=null;
+      r.it.forEach(i=>{ const gap=cur?(i.x-cur.x1):0; if(cur && gap<=Math.max(4,i.h*0.6)){ cur.t+=(gap>1&&!/\s$/.test(cur.t)?' ':'')+i.s; cur.x1=i.x+i.w; } else { cur={t:i.s, x0:i.x, x1:i.x+i.w}; segs.push(cur); } });
+      segs.forEach(sg=>{ sg.t=sg.t.replace(/\s+/g,' ').trim(); });
+      rows.push({pg:np, y:r.y, segs:segs.filter(sg=>sg.t), txt:segs.map(sg=>sg.t).join('  ')}); }); }
+  return rows; }
+/* Competência mais citada no PDF ("10/2026", "Outubro/2026", "outubro de 2026"). */
+function dpImpCompetencia(rows){ const cont={}; const MES=['janeiro','fevereiro','marco','abril','maio','junho','julho','agosto','setembro','outubro','novembro','dezembro'];
+  rows.forEach(r=>{ const t=normTxt(r.txt);
+    let m; const re1=/\b(0?[1-9]|1[0-2])\s*\/\s*(20\d\d)\b/g; while((m=re1.exec(t))){ if(/\d\/\s*$/.test(t.slice(0,m.index))) continue; const k=m[2]+'-'+pad2(+m[1]); cont[k]=(cont[k]||0)+(/compet|refer|mes|period/.test(t)?3:1); }
+    const re2=/\b(janeiro|fevereiro|marco|abril|maio|junho|julho|agosto|setembro|outubro|novembro|dezembro)\s*(?:de|\/|-)?\s*(20\d\d)\b/g; while((m=re2.exec(t))){ const k=m[2]+'-'+pad2(MES.indexOf(m[1])+1); cont[k]=(cont[k]||0)+3; } });
+  let best='', n=0; Object.keys(cont).forEach(k=>{ if(cont[k]>n){ n=cont[k]; best=k; } }); return best; }
+/* Funcionário do cadastro citado na linha (nome completo, ou ao menos primeiro + último nome). */
+function dpImpAcharFunc(txt, funcs){ const t=' '+normTxt(txt).replace(/[^a-z0-9 ]/g,' ').replace(/\s+/g,' ')+' ';
+  let best=null, bl=0;
+  funcs.forEach(f=>{ const n=normTxt(f.nome||'').replace(/[^a-z0-9 ]/g,' ').replace(/\s+/g,' ').trim(); if(n.length<4) return;
+    let ok=t.indexOf(' '+n+' ')>=0; if(!ok){ const p=n.split(' ').filter(x=>x.length>1); if(p.length>=2){ const a=t.indexOf(' '+p[0]+' '), b=t.indexOf(' '+p[p.length-1]+' '); ok=(a>=0 && b>a && b-a<60); } }
+    if(ok && n.length>bl){ best=f; bl=n.length; } });
+  return best; }
+function dpImpNomeLido(txt){ const m=txt.match(/(?:nome(?:\s+do)?(?:\s+(?:funcion[aá]rio|empregado|colaborador))?|empregado|funcion[aá]rio|colaborador)\s*[:\-]?\s*(?:\d+\s+)?([A-ZÀ-Ú][A-ZÀ-Ú'. ]{6,60})/i);
+  if(m){ const n=m[1].replace(/\s{2,}.*/,'').trim(); if(n.split(' ').length>=2 && !/cbo|fun[cç][aã]o|cargo/i.test(n)) return n; }
+  return ''; }
+function dpImpAnalisar(rows, funcs){
+  const pessoas=[]; let cur=null; const porFunc={};
+  const novo=(func, nome)=>{ const k=func?func.id:('n:'+normTxt(nome)); if(porFunc[k]) return porFunc[k];
+    const p={funcId:func?func.id:'', nomeLido:func?func.nome:nome, val:{}, linhas:[]}; porFunc[k]=p; pessoas.push(p); return p; };
+  for(let i=0;i<rows.length;i++){ const r=rows[i];
+    // troca de funcionário: nome do cadastro na linha (ou na linha logo abaixo de "Nome do Funcionário")
+    const f=dpImpAcharFunc(r.txt, funcs);
+    if(f){ cur=novo(f); continue; }
+    const nl=dpImpNomeLido(r.txt); if(nl){ const f2=dpImpAcharFunc(nl, funcs); cur=novo(f2, nl); continue; }
+    if(/nome\s*(do)?\s*(funcion|empregad|colaborad)/i.test(r.txt) && rows[i+1] && !dpImpAcharFunc(rows[i+1].txt, funcs)){
+      const cand=(rows[i+1].segs.find(sg=>/^[A-ZÀ-Ú][A-ZÀ-Ú'. ]{6,}$/.test(sg.t) && sg.t.split(' ').length>=2)||{}).t; if(cand){ cur=novo(null,cand); i++; continue; } }
+    if(!cur) continue;
+    // valores da linha
+    const moedas=r.segs.filter(sg=>DP_IMP_MOEDA.test(sg.t)); const textos=r.segs.filter(sg=>!DP_IMP_MOEDA.test(sg.t) && /[a-zA-Z]{2}/.test(sg.t));
+    // rótulos SEM valor na linha (rodapé do holerite): o valor está na linha de baixo, na mesma coluna
+    if(!moedas.length && textos.length){ const nx=rows[i+1]; if(!nx || nx.pg!==r.pg) continue;
+      textos.forEach(sg=>{ if(!/f\.?\s*g\.?\s*t\.?\s*s/i.test(sg.t) || /base/i.test(sg.t)) return;
+        const c=(sg.x0+sg.x1)/2; let mv=null, md=1e9; nx.segs.filter(s2=>DP_IMP_MOEDA.test(s2.t)).forEach(s2=>{ const d=Math.abs((s2.x0+s2.x1)/2-c); if(d<md){ md=d; mv=s2; } });
+        if(mv && md<80){ const v=dpImpValor(mv.t); if(v>0){ cur.val.fgts=v; cur.linhas.push('FGTS do mês: '+mv.t); } } });
+      continue; }
+    if(!moedas.length || !textos.length) continue;
+    const desc=textos.map(sg=>sg.t).join(' ').replace(/^\d+\s*/,'');
+    if(DP_IMP_IGNORA.test(desc)) continue;
+    const campo=(DP_IMP_RX.find(([k,rx])=>rx.test(desc))||[])[0]; if(!campo) continue;
+    const v=dpImpValor(moedas[moedas.length-1].t); if(!(v>0)) continue;
+    if(campo==='fgts'){ cur.val.fgts=v; } else cur.val[campo]=Math.round(((cur.val[campo]||0)+v)*100)/100;
+    cur.linhas.push(desc+': '+moedas[moedas.length-1].t);
+  }
+  return pessoas.filter(p=>Object.keys(p.val).length); }
+async function dpImportarPdf(inp){ const f=inp&&inp.files&&inp.files[0]; if(!f) return; try{ inp.value=''; }catch(e){}
+  if(!/\.pdf$/i.test(f.name||'') && f.type!=='application/pdf'){ toast('Escolha o arquivo PDF da folha (enviado pelo contador)','err'); return; }
+  toast('Lendo o PDF da folha…','ok');
+  let rows; try{ rows=await dpImpLerPdf(f); }catch(e){ toast('Não consegui ler o PDF: '+((e&&e.message)||e),'err'); return; }
+  if(!rows.length){ toast('Este PDF não tem texto (parece escaneado/foto). Peça ao contador o PDF gerado pelo sistema da folha.','err'); return; }
+  const funcs=dpFuncsTodos(); const pessoas=dpImpAnalisar(rows, funcs); const comp=dpImpCompetencia(rows)||dpComp();
+  window._dpImp={ pessoas, comp, arquivo:f.name||'folha.pdf' };
+  if(!pessoas.length){ openModal(`<div class="modal-head"><h3>${ico('doc')} Importar folha</h3><button class="btn-icon btn-ghost" onclick="closeModal()">${ico('x')}</button></div>
+    <div class="modal-body"><div class="empty" style="padding:24px">${ico('alert')}<h4>Não encontrei funcionários com valores neste PDF</h4><p class="t-mut">Confira se os nomes no PDF são iguais aos do cadastro (Cadastros › Funcionários). O PDF tem ${NUM(rows.length)} linha(s) de texto.</p></div></div>
+    <div class="modal-foot"><button class="btn btn-ghost" onclick="closeModal()">Fechar</button></div>`); return; }
+  dpImpModal(); }
+function dpImpModal(){ const I=window._dpImp; if(!I) return; const funcs=dpFuncsTodos();
+  const inp=(i,k,v)=>`<input class="tnum" style="width:92px;text-align:right" value="${v?String((+v).toFixed(2)).replace('.',','):''}" placeholder="—" onchange="window._dpImp.pessoas[${i}].val['${k}']=this.value===''?undefined:numBR(this.value)">`;
+  openModal(`<div class="modal-head"><h3>${ico('doc')} Importar folha — conferir antes de gravar</h3><button class="btn-icon btn-ghost" onclick="closeModal()">${ico('x')}</button></div>
+   <div class="modal-body" style="max-height:72vh;overflow:auto">
+     <div style="display:flex;gap:12px;align-items:flex-end;flex-wrap:wrap;margin-bottom:10px">
+       <div class="field" style="margin:0"><label>Competência (mês da folha)</label><input type="month" id="dpimp-comp" value="${esc(I.comp)}"></div>
+       <div class="t-mut" style="font-size:12px;flex:1;min-width:220px">Arquivo: <b>${esc(I.arquivo)}</b> · ${NUM(I.pessoas.length)} funcionário(s) encontrado(s). Confira os valores — dá para corrigir aqui. Só os campos marcados são gravados.</div></div>
+     <div style="display:flex;gap:6px 14px;flex-wrap:wrap;margin-bottom:10px;font-size:12.5px">${DP_IMP_CAMPOS.map(c=>`<label style="display:flex;align-items:center;gap:5px;cursor:pointer" title="${esc(c.nota||'')}"><input type="checkbox" class="dpimp-campo" value="${c.k}" ${c.on?'checked':''}> ${esc(c.lbl)}${c.nota?' <span class="t-mut">ⓘ</span>':''}</label>`).join('')}</div>
+     <div class="tbl-wrap"><table><thead><tr><th></th><th>Funcionário no PDF</th><th>Funcionário do cadastro</th>${DP_IMP_CAMPOS.map(c=>`<th class="t-right">${esc(c.lbl)}</th>`).join('')}</tr></thead><tbody>
+     ${I.pessoas.map((p,i)=>{ const fz=p.funcId?DB.get('funcionarios',p.funcId):null; const est=fz&&dpEhEstagiario(fz);
+       return `<tr><td><input type="checkbox" class="dpimp-ok" data-i="${i}" ${p.funcId?'checked':''}></td>
+       <td><b>${esc(p.nomeLido||'—')}</b>${est?' <span class="tag" style="font-size:9.5px;background:#ede9fe;color:#6d28d9">ESTAGIÁRIO</span>':''}<div class="t-mut" style="font-size:10.5px;max-width:260px" title="${esc(p.linhas.join('\n'))}">${esc(p.linhas.slice(0,3).join(' · '))}${p.linhas.length>3?' …':''}</div></td>
+       <td><select onchange="window._dpImp.pessoas[${i}].funcId=this.value;dpImpModal()"><option value="">— escolher —</option>${funcs.map(f=>`<option value="${f.id}" ${p.funcId===f.id?'selected':''}>${esc(f.nome)}</option>`).join('')}</select></td>
+       ${DP_IMP_CAMPOS.map(c=>`<td class="t-right">${(est && DP_EST_ZERO.indexOf(c.k)>=0)?'<span class="t-mut" title="Estagiário: não incide">—</span>':inp(i,c.k,p.val[c.k])}</td>`).join('')}</tr>`; }).join('')}
+     </tbody></table></div>
+     <p class="t-mut" style="font-size:11.5px;margin-top:8px">Valores marcados substituem o que estiver lançado no mês para o funcionário. Campos não marcados ficam como estão (ou no cálculo automático). Para estagiário, FGTS, INSS, planos, seguro, hora extra e provisões não incidem.</p>
+   </div>
+   <div class="modal-foot"><button class="btn btn-ghost" onclick="closeModal()">Cancelar</button><div style="flex:1"></div><button class="btn btn-amber" onclick="dpImpGravar()">${ico('check')} Gravar na folha</button></div>`, true); }
+function dpImpGravar(){ const I=window._dpImp; if(!I) return; const comp=(document.getElementById('dpimp-comp')||{}).value||I.comp; if(!comp){ toast('Informe a competência','err'); return; }
+  const campos=[...document.querySelectorAll('.dpimp-campo:checked')].map(c=>c.value); if(!campos.length){ toast('Marque pelo menos um campo para gravar','err'); return; }
+  const sel=[...document.querySelectorAll('.dpimp-ok:checked')].map(c=>I.pessoas[+c.dataset.i]).filter(p=>p&&p.funcId);
+  if(!sel.length){ toast('Marque os funcionários e escolha o cadastro de cada um','err'); return; }
+  let n=0;
+  DB.bulk(()=>{ sel.forEach(p=>{ const fz=DB.get('funcionarios',p.funcId); const est=fz&&dpEhEstagiario(fz); const patch={ importadoPdf:I.arquivo, importadoEm:new Date().toISOString() };
+      campos.forEach(k=>{ if(est && DP_EST_ZERO.indexOf(k)>=0) return; const v=p.val[k]; if(v===undefined||v===null||v==='') return; patch[k]=Math.round((+v||0)*100)/100; });
+      const r=dpReg(p.funcId, comp); if(r) DB.update('folha', r.id, patch); else DB.insert('folha', Object.assign({funcId:p.funcId, comp}, patch)); n++; }); });
+  try{ logAcao('Folha importada do PDF do contador', I.arquivo+' · '+dpCompLabel(comp)+' · '+n+' funcionário(s)'); }catch(e){}
+  try{ nuvemPushJa(); }catch(e){}
+  closeModal(); DP.comp=comp; DP.tab='lanc'; toast('Folha de '+dpCompLabel(comp)+' importada — '+n+' funcionário(s). Confira na tela.','ok'); try{ viewDepPessoal(); }catch(e){ dpRender(); } }
+
 /* ---------------------------- TELA ---------------------------- */
 function viewDepPessoal(){
   dpComp(); dpAno();
@@ -17433,13 +17678,14 @@ function dpFuncSelect(id,onch){ return `<select id="${id}" style="${SELCSS};min-
 function dpKpis(linhas){ const t=dpSoma(linhas);
   return `<div class="kpis">
    ${kpiCard('Custo total da folha',BRL(t.custo),'money','#dc2626',NUM(linhas.length)+' funcionário(s) em <b>'+esc(dpCompLabel(dpComp()))+'</b>')}
-   ${kpiCard('Salários + hora extra + comissão',BRL(t.base),'people','#2563eb','salário '+BRL(t.salario)+' · comissão '+BRL(t.comissao))}
+   ${kpiCard('Salários + hora extra + prêmio',BRL(t.base),'people','#2563eb','salário '+BRL(t.salario)+' · prêmio '+BRL(t.comissao))}
    ${kpiCard('Encargos (FGTS + INSS)',BRL(t.encargos),'pct','#b45309','FGTS '+BRL(t.fgts)+' · INSS '+BRL(t.inss))}
    ${kpiCard('Benefícios',BRL(t.beneficios),'gift','#0d9488','VT, saúde, odonto e seguro')}
    ${kpiCard('Provisões (férias + 13º)',BRL(t.provisoes),'clock','#7c3aed','férias '+BRL(t.ferias)+' · 13º '+BRL(t.decimo))}
   </div>`; }
 
 function dpInput(l,campo,auto){
+  if(l.estagiario && DP_EST_ZERO.indexOf(campo)>=0) return `<span class="t-mut" title="Estagiário: não incide" style="display:inline-block;min-width:60px;text-align:right">—</span>`;
   const v=l[campo]; const manual = l.reg && l.reg[campo]!=null;
   const cor = (auto && !manual) ? 'color:#2563eb' : '';
   return `<input class="tnum dp-in" style="${cor}" value="${v?String(v.toFixed(2)).replace('.',','):''}" placeholder="${auto?String((+v||0).toFixed(2)).replace('.',','):'0,00'}"
@@ -17457,6 +17703,7 @@ function dpLancHTML(){
     <div class="spacer" style="flex:1"></div>
     <button class="btn btn-ghost btn-sm" onclick="dpCopiarMesAnterior()" title="Repete os valores de ${esc(dpCompLabel(ant))} para os funcionários que ainda não têm lançamento neste mês">${ico('ret')} Copiar de ${esc(dpCompLabel(ant))}</button>
     <button class="btn btn-ghost btn-sm" onclick="DP.tab='mensal';viewDepPessoal()">${ico('doc')} Relatório do mês</button>
+    <label class="btn btn-amber btn-sm" style="cursor:pointer" title="Anexe o PDF da folha enviado pelo contador (holerites / resumo da folha) — o sistema identifica cada funcionário e os valores">${ico('doc')} Importar folha (PDF do contador)<input type="file" accept="application/pdf,.pdf" style="display:none" onchange="dpImportarPdf(this)"></label>
     <button class="btn btn-ghost btn-sm" onclick="dpLimparMes()" style="color:var(--neg)">${ico('trash')} Limpar o mês</button>
   </div>
   ${dpKpis(linhas)}
@@ -17471,7 +17718,7 @@ function dpLancHTML(){
         ${DP_CAMPOS.map(c=>`<th class="t-right" title="${esc(c.dica||c.lbl)}">${esc(c.curto)}</th>`).join('')}
         <th class="t-right">Custo total</th></tr></thead><tbody>
       ${linhas.map(l=>`<tr>
-        <td><div class="t-strong">${esc(l.func.nome||'—')}</div><div class="t-mut" style="font-size:11px">${esc(l.func.cargo||'—')}${l.ultimo?(' · último salário '+BRL(l.ultimo)):''}</div></td>
+        <td><div class="t-strong">${esc(l.func.nome||'—')}${l.estagiario?' <span class="tag" style="font-size:9.5px;background:#ede9fe;color:#6d28d9" title="Estagiário: sem FGTS, INSS, saúde, odonto, seguro, provisões de férias/13º e hora extra">ESTAGIÁRIO</span>':''}</div><div class="t-mut" style="font-size:11px">${esc(l.func.cargo||'—')}${l.ultimo?(' · último salário '+BRL(l.ultimo)):''}</div></td>
         ${DP_CAMPOS.map(c=>`<td class="t-right">${dpInput(l,c.k,c.auto)}</td>`).join('')}
         <td class="t-right tnum t-strong" style="font-size:13.5px">${BRL(l.custo)}</td></tr>`).join('')}
       </tbody><tfoot><tr style="font-weight:800;border-top:2px solid var(--line)">
@@ -17492,10 +17739,11 @@ function dpLancHTML(){
       <label style="display:flex;gap:7px;align-items:center;font-size:12.5px;padding-bottom:9px"><input type="checkbox" ${cfg.decimoAtivo!==false?'checked':''} onchange="dpCfgSet('decimoAtivo',this.checked)"> Provisionar 13º</label>
     </div>
     <p class="t-mut" style="font-size:12px;line-height:1.65;margin-top:10px">
-      <b>Comissão:</b> vem da apuração do módulo de Comissões, com as mesmas regras (faixas de venda, margem, ticket e meta), somando as vendas concluídas do mês pelo vendedor ligado ao funcionário.<br>
-      <b>FGTS e INSS:</b> aplicados sobre salário + hora extra + comissão. No Simples Nacional o INSS patronal normalmente é 0 — confirme com o contador.<br>
+      <b>Prêmio:</b> vem da apuração do módulo de Prêmios, com as mesmas regras (faixas de venda, margem, ticket e meta), somando as vendas concluídas do mês pelo vendedor ligado ao funcionário.<br>
+      <b>FGTS e INSS:</b> aplicados sobre salário + hora extra + prêmio. No Simples Nacional o INSS patronal normalmente é 0 — confirme com o contador.<br>
       <b>Provisão de férias:</b> 1/12 do último salário + 1/3 constitucional (último salário ÷ 12 × 4/3).<br>
       <b>Provisão de 13º:</b> 1/12 do último salário.<br>
+      <b>Estagiário:</b> recebe só bolsa (salário), prêmio e vale-transporte — não incidem FGTS, INSS, plano de saúde, odonto, seguro, provisões de férias e 13º nem hora extra.<br>
       <b>Último salário:</b> o lançado na competência; se não houver, o mais recente lançado antes dela; se não houver nenhum, o do cadastro do funcionário.
     </p>
   </div>`;
@@ -19142,7 +19390,7 @@ function cpGrupoDoSubgrupo(subNome){ const s=cpSubgrupoAnyByNome(subNome); if(!s
 /* ---- Classificação do grupo de despesa: CUSTO FIXO x CUSTO VARIÁVEL ----
    Guardada em gruposCP.tipoCusto ('fixo' | 'variavel' | '' = não classificado).
    Custo FIXO: não muda com o volume de vendas (aluguel, salários, energia mínima, contador).
-   Custo VARIÁVEL: acompanha o faturamento (mercadoria/CMV, comissões, impostos sobre venda, frete de venda).
+   Custo VARIÁVEL: acompanha o faturamento (mercadoria/CMV, prêmios, impostos sobre venda, frete de venda).
    Serve para o DRE e para a formação de preço (despesas fixas viram % do faturamento). */
 const CP_TIPOCUSTO=[{v:'fixo',lbl:'Custo fixo',cor:'#2563eb'},{v:'variavel',lbl:'Custo variável',cor:'#b45309'}];
 function cpTipoCustoInfo(v){ return CP_TIPOCUSTO.find(t=>t.v===v)||null; }
@@ -19196,7 +19444,7 @@ function gcpGrupoForm(id){ const g=id?cpGrupoById(id):{};
           <option value="" ${!(g.tipoCusto||'')?'selected':''}>— não classificado —</option>
           ${CP_TIPOCUSTO.map(t=>`<option value="${t.v}" ${(g.tipoCusto||'')===t.v?'selected':''}>${esc(t.lbl)}</option>`).join('')}
         </select>
-        <div class="t-mut" style="font-size:11.5px;margin-top:4px"><b>Fixo:</b> não muda com o volume de vendas (aluguel, salários, contador). <b>Variável:</b> acompanha o faturamento (mercadoria, comissões, impostos sobre venda).</div></div></div>
+        <div class="t-mut" style="font-size:11.5px;margin-top:4px"><b>Fixo:</b> não muda com o volume de vendas (aluguel, salários, contador). <b>Variável:</b> acompanha o faturamento (mercadoria, prêmios, impostos sobre venda).</div></div></div>
     <div class="modal-foot"><button class="btn btn-ghost" onclick="closeModal()">Cancelar</button><button class="btn btn-amber" onclick="gcpGrupoSave('${id||''}')">Salvar</button></div>`);
   setTimeout(()=>{ const el=document.getElementById('gcp-gnome'); if(el) el.focus(); },60);
 }
@@ -20672,8 +20920,8 @@ const REPORTS=[
    const totQ=rows.reduce((s,r)=>s+r.qtd,0); const totV=rows.reduce((s,r)=>s+r.valor,0);
    return {cols:[{k:'nome',label:'Produto'},{k:'vendas',label:'Nº de vendas',a:'r'},{k:'qtd',label:'Qtd sem estoque',a:'r',f:fmtQ},{k:'valor',label:'Valor total',a:'r',f:fM}],
      rows, totals:[{label:'Produtos',val:NUM(rows.length)},{label:'Qtd total',val:fmtQ(totQ)},{label:'Valor total',val:BRL(totV),color:'var(--neg)'}]}; }},
-{id:'rep-indic-comissao',pessoa:true,cat:'Financeiros',titulo:'Comissões de indicadores',cor:'#db2777',icon:'gift',date:true,
- desc:'Comissão gerada pelos indicadores (prestadores de serviço). Por pedido: código, cliente, valor da compra e comissão. Filtro por período, cliente ou indicador.',
+{id:'rep-indic-comissao',pessoa:true,cat:'Financeiros',titulo:'Prêmios de indicadores',cor:'#db2777',icon:'gift',date:true,
+ desc:'Prêmio gerado pelos indicadores (prestadores de serviço). Por pedido: código, cliente, valor da compra e prêmio. Filtro por período, cliente ou indicador.',
  search:['clienteNome','indicadorNome'],searchPh:'Cliente ou indicador...',
  run(f){ const rows=[];
    DB.all('vendas').filter(v=>vendaConcluida(v)&&inRange(v.data,f)).forEach(v=>{ const cli=v.clienteId?DB.get('clientes',v.clienteId):null; const indId=cli&&cli.indicadoPor; if(!indId) return; const ind=indicadorDoValor(indId); if(!ind) return; if(!indicVendaConta(v,cli)) return;
@@ -20682,8 +20930,8 @@ const REPORTS=[
      if(mq(f, ''+(r.codigo||''), r.clienteNome, r.indicadorNome)) rows.push(r); });
    rows.sort((a,b)=>((b.data||'')+'').localeCompare((a.data||'')+''));
    const tv=rows.reduce((s,r)=>s+r.valor,0), tc=rows.reduce((s,r)=>s+r.comissao,0); const tu=rows.reduce((s,r)=>s+(+r.usada||0),0);
-   return {cols:[{k:'codigo',label:'Código',f:v=>v?('#'+v):'—'},{k:'data',label:'Data',f:fD},{k:'clienteNome',label:'Cliente'},{k:'indicadorNome',label:'Indicador'},{k:'valor',label:'Valor da compra',a:'r',f:fM},{k:'pct',label:'%',a:'r',f:v=>NUM(v)+'%'},{k:'comissao',label:'Comissão gerada',a:'r',f:fM},{k:'usada',label:'Comissão usada',a:'r',f:v=>v?fM(v):'—'}],
-     rows, totals:[{label:'Pedidos',val:NUM(rows.length)},{label:'Valor total',val:BRL(tv)},{label:'Comissão gerada',val:BRL(tc),color:'#db2777'},{label:'Comissão usada',val:BRL(tu)},{label:'Saldo de comissão',val:BRL(Math.round((tc-tu)*100)/100),color:'#15803d'}]}; }},
+   return {cols:[{k:'codigo',label:'Código',f:v=>v?('#'+v):'—'},{k:'data',label:'Data',f:fD},{k:'clienteNome',label:'Cliente'},{k:'indicadorNome',label:'Indicador'},{k:'valor',label:'Valor da compra',a:'r',f:fM},{k:'pct',label:'%',a:'r',f:v=>NUM(v)+'%'},{k:'comissao',label:'Prêmio gerado',a:'r',f:fM},{k:'usada',label:'Prêmio usado',a:'r',f:v=>v?fM(v):'—'}],
+     rows, totals:[{label:'Pedidos',val:NUM(rows.length)},{label:'Valor total',val:BRL(tv)},{label:'Prêmio gerado',val:BRL(tc),color:'#db2777'},{label:'Prêmio usado',val:BRL(tu)},{label:'Saldo de prêmio',val:BRL(Math.round((tc-tu)*100)/100),color:'#15803d'}]}; }},
 /* ---------- FINANCEIRO ---------- */
 {id:'rep-recebimentos',pessoa:true,cat:'Financeiro',titulo:'Recebimentos',cor:'#15803d',icon:'money',desc:'Pagamentos recebidos: data, cliente, valor, forma e se foi parcial.',
  search:['clienteNome','formas'],searchPh:'Cliente ou forma...',
@@ -20796,13 +21044,13 @@ const REPORTS=[
      rows, totals:[{label:'Total despesas',val:BRL(tot)}],
      chart:{id:'rc-cc',label:'Despesas por centro',type:'bar',labels:rows.map(r=>r.centroCusto),data:rows.map(r=>r.valor)}}; }},
 
-{id:'rep-comissao-vend',pessoa:true,cat:'Financeiros',titulo:'Comissão de vendedores',cor:'#0f1f3a',icon:'pct',desc:'Filtro por loja, vendedor, período e situação.',date:'data',
+{id:'rep-comissao-vend',pessoa:true,cat:'Financeiros',titulo:'Prêmio de vendedores',cor:'#0f1f3a',icon:'pct',desc:'Filtro por loja, vendedor, período e situação.',date:'data',
  selects:[{k:'vendedor',label:'Vendedor',opts:()=>DB.all('vendedores').map(v=>v.nome)}],
  run(f){ const vmap={}; DB.all('vendedores').forEach(v=>vmap[v.id]=v);
    const m={}; ANL.salesIn([f.de||'1970-01-01',f.ate||'9999']).forEach(v=>{ if(f.vendedor&&v.vendedorNome!==f.vendedor)return; const k=v.vendedorId||'__'; if(!m[k])m[k]={vendedor:v.vendedorNome,n:0,fat:0}; m[k].n++; m[k].fat+=v.total; });
    const rows=Object.entries(m).map(([id,o])=>{ const pct=vmap[id]?vmap[id].comissaoPct:0; return {...o,pct,comissao:o.fat*pct/100}; }).sort((a,b)=>b.comissao-a.comissao);
-   return {cols:[{k:'vendedor',label:'Vendedor'},{k:'n',label:'Vendas',a:'r',f:fN},{k:'fat',label:'Faturamento',a:'r',f:fM},{k:'pct',label:'Comissão %',a:'r',f:v=>PCT(v)},{k:'comissao',label:'Comissão R$',a:'r',f:fM}],
-     rows, totals:[{label:'Total comissões',val:BRL(rows.reduce((s,r)=>s+r.comissao,0)),color:'var(--amber-d)'}]}; }},
+   return {cols:[{k:'vendedor',label:'Vendedor'},{k:'n',label:'Vendas',a:'r',f:fN},{k:'fat',label:'Faturamento',a:'r',f:fM},{k:'pct',label:'Prêmio %',a:'r',f:v=>PCT(v)},{k:'comissao',label:'Prêmio R$',a:'r',f:fM}],
+     rows, totals:[{label:'Total prêmios',val:BRL(rows.reduce((s,r)=>s+r.comissao,0)),color:'var(--amber-d)'}]}; }},
 
 {id:'rep-dre',cat:'Financeiros',titulo:'DRE',cor:'#7c3aed',icon:'doc',desc:'Filtro por loja, tipo de data, período e situação.',date:'data',
  run(f){ const vendas=ANL.salesIn([f.de||'1970-01-01',f.ate||'9999']); const t=ANL.totais(vendas);
@@ -21099,28 +21347,28 @@ const REPORTS=[
    return {cols:[{k:'nome',label:'Cliente'},{k:'dias',label:'Parado há (dias)',a:'r',f:fN},{k:'ultima',label:'Última compra',a:'r',f:fD},{k:'pedidos',label:'Pedidos',a:'r',f:fN},{k:'receita',label:'Total comprado',a:'r',f:fM},{k:'ticket',label:'Ticket médio',a:'r',f:fM}],
      rows, totals:[{label:'Clientes parados',val:NUM(rows.length)},{label:'Total já comprado',val:BRL(rows.reduce((s,c)=>s+c.receita,0)),color:'var(--pos)'}]}; }},
 
-{id:'rep-comissao-venda',pessoa:true,cat:'Vendas',titulo:'Comissão por venda',cor:'#7c3aed',icon:'pct',desc:'Filtro por loja, vendedor, período e situação.',date:'data',
+{id:'rep-comissao-venda',pessoa:true,cat:'Vendas',titulo:'Prêmio por venda',cor:'#7c3aed',icon:'pct',desc:'Filtro por loja, vendedor, período e situação.',date:'data',
  selects:[{k:'vendedor',label:'Vendedor',opts:()=>DB.all('vendedores').map(v=>v.nome)}],
  run(f){ const vmap={}; DB.all('vendedores').forEach(v=>vmap[v.id]=v.comissaoPct);
    const rows=ANL.salesIn([f.de||'1970-01-01',f.ate||'9999']).filter(v=>!f.vendedor||v.vendedorNome===f.vendedor).map(v=>{ const pct=vmap[v.vendedorId]||0; return {data:v.data,vendedorNome:v.vendedorNome,clienteNome:v.clienteNome,total:v.total,pct,comissao:v.total*pct/100}; }).sort((a,b)=>a.data<b.data?1:-1);
-   return {cols:[{k:'data',label:'Data',f:fD},{k:'clienteNome',label:'Cliente'},{k:'vendedorNome',label:'Vendedor'},{k:'total',label:'Venda',a:'r',f:fM},{k:'pct',label:'%',a:'r',f:v=>PCT(v)},{k:'comissao',label:'Comissão',a:'r',f:fM}],
-     rows, totals:[{label:'Total comissões',val:BRL(rows.reduce((s,r)=>s+r.comissao,0)),color:'var(--amber-d)'}]}; }},
+   return {cols:[{k:'data',label:'Data',f:fD},{k:'clienteNome',label:'Cliente'},{k:'vendedorNome',label:'Vendedor'},{k:'total',label:'Venda',a:'r',f:fM},{k:'pct',label:'%',a:'r',f:v=>PCT(v)},{k:'comissao',label:'Prêmio',a:'r',f:fM}],
+     rows, totals:[{label:'Total prêmios',val:BRL(rows.reduce((s,r)=>s+r.comissao,0)),color:'var(--amber-d)'}]}; }},
 
-{id:'rep-comissao-produto',pessoa:true,cat:'Vendas',titulo:'Comissão por produto',cor:'#ea580c',icon:'pct',desc:'Filtro por loja, vendedor, período e situação.',date:'data',
+{id:'rep-comissao-produto',pessoa:true,cat:'Vendas',titulo:'Prêmio por produto',cor:'#ea580c',icon:'pct',desc:'Filtro por loja, vendedor, período e situação.',date:'data',
  search:['nome'],searchPh:'Produto...',
  run(f){ const vmap={}; DB.all('vendedores').forEach(v=>vmap[v.id]=v.comissaoPct); const m={};
    ANL.salesIn([f.de||'1970-01-01',f.ate||'9999']).forEach(v=>{ const pct=vmap[v.vendedorId]||0; v.itens.forEach(i=>{ if(!m[i.produtoId])m[i.produtoId]={nome:i.nome,receita:0,comissao:0}; const r=i.qtd*i.preco; m[i.produtoId].receita+=r; m[i.produtoId].comissao+=r*pct/100; }); });
    const rows=Object.values(m).filter(r=>mq(f,r.nome)).sort((a,b)=>b.comissao-a.comissao);
-   return {cols:[{k:'nome',label:'Produto'},{k:'receita',label:'Receita',a:'r',f:fM},{k:'comissao',label:'Comissão gerada',a:'r',f:fM}],
+   return {cols:[{k:'nome',label:'Produto'},{k:'receita',label:'Receita',a:'r',f:fM},{k:'comissao',label:'Prêmio gerado',a:'r',f:fM}],
      rows, totals:[{label:'Total',val:BRL(rows.reduce((s,r)=>s+r.comissao,0)),color:'var(--amber-d)'}]}; }},
 
-{id:'rep-comissao-servico',pessoa:true,cat:'Vendas',titulo:'Comissão por serviço',cor:'#0f1f3a',icon:'pct',desc:'Filtro por loja, vendedor, período e situação.',date:'data',
+{id:'rep-comissao-servico',pessoa:true,cat:'Vendas',titulo:'Prêmio por serviço',cor:'#0f1f3a',icon:'pct',desc:'Filtro por loja, vendedor, período e situação.',date:'data',
  selects:[{k:'vendedor',label:'Vendedor',opts:()=>DB.all('vendedores').map(v=>v.nome)}],
  run(f){ const vmap={}; DB.all('vendedores').forEach(v=>vmap[v.id]=v.comissaoPct); const m={};
    DB.all('servicosPrestados').filter(s=>inRange(s.data,f)&&(!f.vendedor||s.vendedorNome===f.vendedor)).forEach(s=>{ const pct=vmap[s.vendedorId]||0; if(!m[s.servicoNome])m[s.servicoNome]={servicoNome:s.servicoNome,n:0,valor:0,comissao:0}; m[s.servicoNome].n++; m[s.servicoNome].valor+=s.valor; m[s.servicoNome].comissao+=s.valor*pct/100; });
    const rows=Object.values(m).sort((a,b)=>b.comissao-a.comissao);
-   return {cols:[{k:'servicoNome',label:'Serviço'},{k:'n',label:'Qtd',a:'r',f:fN},{k:'valor',label:'Faturamento',a:'r',f:fM},{k:'comissao',label:'Comissão',a:'r',f:fM}],
-     rows, totals:[{label:'Total comissões',val:BRL(rows.reduce((s,r)=>s+r.comissao,0)),color:'var(--amber-d)'}]}; }},
+   return {cols:[{k:'servicoNome',label:'Serviço'},{k:'n',label:'Qtd',a:'r',f:fN},{k:'valor',label:'Faturamento',a:'r',f:fM},{k:'comissao',label:'Prêmio',a:'r',f:fM}],
+     rows, totals:[{label:'Total prêmios',val:BRL(rows.reduce((s,r)=>s+r.comissao,0)),color:'var(--amber-d)'}]}; }},
 
 {id:'rep-orcamentos',pessoa:true,cat:'Vendas',titulo:'Relatório de orçamentos',cor:'#f59e0b',icon:'quote',desc:'Filtro por loja, tipo, período, cliente, vendedor e situação.',date:'data',
  search:['clienteNome'],searchPh:'Cliente...',
@@ -23445,14 +23693,14 @@ function orcCalc(){ const bruto=ORC.itens.reduce((s,i)=>s+i.qtd*i.preco,0); cons
   const frete=ORC.entrega?(+ORC.frete||0):0; const dsc=+ORC.desconto||0; const total=Math.max(0,bruto-dsc)+frete; return {bruto,custo,frete,total,lucro:Math.max(0,bruto-dsc)-custo}; }
 /* Selo do crédito LOGO ABAIXO DO CAMPO DO CLIENTE: assim o vendedor vê o vale no
    momento em que escolhe o cliente, sem precisar rolar a tela até o fim. */
-/* Cliente que é INDICADOR e tem comissão acumulada: mostra o saldo como crédito
+/* Cliente que é INDICADOR e tem prêmio acumulado: mostra o saldo como crédito
    no orçamento, no pedido e no PDV (o uso é pela forma "Comissão indicador"). */
 function indicComissaoDoCliente(clienteId, nome){ try{ if(!clienteId && !((nome||'')+'').trim()) return null;
     const ind=indicadorDoCliente(clienteId, nome); if(!ind) return null; const saldo=indicSaldo(ind);
     return saldo>0.004 ? { ind, saldo } : null; }catch(e){ return null; } }
 function indicComissaoChipHTML(clienteId, nome, onde){ const r=indicComissaoDoCliente(clienteId, nome); if(!r) return '';
-  return `<div class="orc-sel" style="display:flex;align-items:center;gap:6px;background:#eff6ff;border:1px solid #3b82f6;border-radius:8px;padding:5px 9px;font-size:12.5px;color:#1d4ed8;font-weight:700;cursor:pointer" onclick="indicHistoricoModal('${r.ind.id}')" title="Comissão acumulada como indicador — use a forma de pagamento 'Comissão indicador' no PDV. Clique para ver o histórico.">
-    ${ico('gift')} Crédito de comissão (indicador): <span class="tnum">${BRL(r.saldo)}</span>${onde?`<span class="t-mut" style="font-weight:400;font-size:11.5px">${onde}</span>`:''}</div>`; }
+  return `<div class="orc-sel" style="display:flex;align-items:center;gap:6px;background:#eff6ff;border:1px solid #3b82f6;border-radius:8px;padding:5px 9px;font-size:12.5px;color:#1d4ed8;font-weight:700;cursor:pointer" onclick="indicHistoricoModal('${r.ind.id}')" title="Prêmio acumulado como indicador — use a forma de pagamento 'Comissão indicador' no PDV. Clique para ver o histórico.">
+    ${ico('gift')} Crédito de prêmio (indicador): <span class="tnum">${BRL(r.saldo)}</span>${onde?`<span class="t-mut" style="font-weight:400;font-size:11.5px">${onde}</span>`:''}</div>`; }
 function orcCreditoAvisoHTML(){ const com=orcFiscalAvisoHTML()+indicComissaoChipHTML(ORC.clienteId, ORC.clienteNome, '— pode ser usado no pagamento');
   const saldo=orcCreditoSaldo(); if(!(saldo>0)) return com;
   return com+`<div style="display:flex;align-items:center;gap:6px;background:#ecfdf5;border:1px solid #10b981;border-radius:8px;padding:5px 9px;font-size:12.5px;color:#047857;font-weight:700">
@@ -25003,7 +25251,7 @@ function vendaCreditoTroca(v){ if(!v) return 0;
   const porPag=(v.pagamentos||[]).filter(p=>ehCreditoDeTroca(p.forma)).reduce((s,p)=>s+(+p.valor||0),0);
   const val=porPag>0?porPag:(+v.creditoTrocaUsado||0);
   return Math.round(Math.max(0,val)*100)/100; }
-/* A COMISSÃO DO INDICADOR usada como pagamento também é ABATIMENTO: não entra dinheiro,
+/* O PRÊMIO DO INDICADOR usado como pagamento também é ABATIMENTO: não entra dinheiro,
    então não soma no Total de Vendas — mas aparece no resumo do caixa, separada. */
 function ehAbatimentoForma(f){ return ehCreditoDeTroca(f) || ehComissaoIndic(f); }
 function caixaSomaVendas(vendas){ const ok=(vendas||[]).filter(v=>(v.status||'')!=='cancelada');
@@ -25151,7 +25399,7 @@ function caixaBody(s,d){
   return `<div class="g2" style="gap:16px;align-items:start">
     <div class="card"><div class="card-head"><h3>${ico('cart')} Vendas por Forma de Pagamento</h3></div><div class="card-pad">
       ${formasArr.length?formasArr.map(([f,v])=>ehAbatimentoForma(f)
-          ? `<div class="cart-total-line" title="${ehComissaoIndic(f)?'Comissão do indicador usada como pagamento: não entrou dinheiro — não soma no Total de Vendas':'Vale de troca/devolução: já foi faturado na venda original — não entra no Total de Vendas'}"><span class="t-mut">${esc(f)} <span style="font-size:11px">(abatimento — fora do total)</span></span><span class="tnum t-mut">− ${BRL(v)}</span></div>`
+          ? `<div class="cart-total-line" title="${ehComissaoIndic(f)?'Prêmio do indicador usado como pagamento: não entrou dinheiro — não soma no Total de Vendas':'Vale de troca/devolução: já foi faturado na venda original — não entra no Total de Vendas'}"><span class="t-mut">${esc(f)} <span style="font-size:11px">(abatimento — fora do total)</span></span><span class="tnum t-mut">− ${BRL(v)}</span></div>`
           : `<div class="cart-total-line"><span>${esc(f)}</span><span class="tnum">${BRL(v)}</span></div>`).join(''):`<div class="t-mut" style="text-align:center;padding:24px">Nenhuma venda registrada</div>`}
       ${((d.creditoTroca||0)>0||(d.comissaoIndic||0)>0)?`<div class="cart-total-line grand"><span>Total de Vendas</span><span class="tnum">${BRL(d.totalVendas)}</span></div>`:''}
     </div></div>
@@ -25256,7 +25504,7 @@ function caixaRelatorioDados(s){
   const vok=vendas.filter(v=>(v.status||'')!=='cancelada');
   const totalVendas=(vok.reduce((a,v)=>a+Math.round((+v.total||0)*100),0)
                     -vok.reduce((a,v)=>a+Math.round(vendaCreditoTroca(v)*100),0)
-                    -vok.reduce((a,v)=>a+Math.round(vendaComissaoIndic(v)*100),0))/100;   // crédito de troca e comissão de indicador não são venda nova
+                    -vok.reduce((a,v)=>a+Math.round(vendaComissaoIndic(v)*100),0))/100;   // crédito de troca e prêmio de indicador não são venda nova
   const formas={}; vok.forEach(v=>{ const fm=caixaVendaFormas(v); Object.keys(fm).forEach(f=>{ formas[f]=Math.round(((formas[f]||0)+fm[f])*100)/100; }); });
   const formasArr=Object.entries(formas).sort((a,b)=>b[1]-a[1]);
   const vendasDinheiro=caixaVendasDinheiro(vendas);
@@ -26281,7 +26529,7 @@ async function nuvemAppSessao(){
    Requer ter rodado o SQL de segurança e criado a conta da loja em Authentication. Para desligar, ponha false. */
 const NUVEM_SECURE = (CFG_E.nuvemSegura !== false);
 /* coleções (listas de registros com id) que são mescladas registro-a-registro entre aparelhos */
-const NUVEM_COLS = ['produtos','clientes','fornecedores','vendedores','transportadoras','funcionarios','servicos','contasBancarias','centroCustos','planoContas','gruposCP','vendas','financeiro','movEstoque','compras','cotacoes','servicosContratados','servicosPrestados','devolucoes','creditos','creditoMovs','orcamentos','categorias','indicadores','tarefas','caixaSessoes','caixaMovs','maquinas','contratosAluguel','notasFiscais','beneficiosFiscais','recebimentos','pedidosOnline','ordensCompra','cotacaoRespostas','clientesSaaS','mensalidades','cheques','conciliacaoTx','veiculos','abastecimentos','manutencoes','chamados','contratos','licencas','implantacoes','leads','gruposProd','subgruposProd','cfopContrapartida','kitsPromo','crmDeals','crmRespostas','prospecEmpresas','calcObraServicos','listaPedidos','produtosFalta','marcas','notasRecebidas','transferencias','lixeira','ofxImportacoes','folha','dispositivos','listasEscolares','gruposVariacao'];
+const NUVEM_COLS = ['produtos','clientes','fornecedores','vendedores','transportadoras','funcionarios','servicos','contasBancarias','centroCustos','planoContas','gruposCP','vendas','financeiro','movEstoque','compras','cotacoes','servicosContratados','servicosPrestados','devolucoes','creditos','creditoMovs','orcamentos','categorias','indicadores','tarefas','agenda','caixaSessoes','caixaMovs','maquinas','contratosAluguel','notasFiscais','beneficiosFiscais','recebimentos','pedidosOnline','ordensCompra','cotacaoRespostas','clientesSaaS','mensalidades','cheques','conciliacaoTx','veiculos','abastecimentos','manutencoes','chamados','contratos','licencas','implantacoes','leads','gruposProd','subgruposProd','cfopContrapartida','kitsPromo','crmDeals','crmRespostas','prospecEmpresas','calcObraServicos','listaPedidos','produtosFalta','marcas','notasRecebidas','transferencias','lixeira','ofxImportacoes','folha','dispositivos','listasEscolares','gruposVariacao'];
 let NUVEM_SB=null, NUVEM_SB_URL=null, NUVEM_LOADING=false, _nuvemTimer=null, NUVEM_AUTH_USER=null, _nuvemOffline=false;
 let NUVEM_RT=null, NUVEM_RT_TENANT=null, _nuvemLastPushTs='', _nuvemPendingPush=false, _nuvemPendingApply=false, _nuvemRtTick=null, _nuvemReautAviso=false;
 function nuvemCfg(){ let c={}; try{ c=JSON.parse(localStorage.getItem(NUVEM_CFG_KEY)||'{}')||{}; }catch(e){ c={}; }
@@ -30047,7 +30295,7 @@ function tcAba(mid,k){ const b=document.getElementById('tc-bloco-'+mid); if(!b) 
    VENDAS › CONFIGURAÇÕES — tudo que muda ou informa a venda num lugar só
 =================================================================== */
 const FORMAS_SEFAZ=[['01','Dinheiro'],['02','Cheque'],['03','Cartão de crédito'],['04','Cartão de débito'],['05','Crédito loja / crediário'],['10','Vale alimentação'],['11','Vale refeição'],['12','Vale presente'],['13','Vale combustível'],['15','Boleto bancário'],['16','Depósito bancário'],['17','PIX'],['18','Transferência bancária / carteira digital'],['19','Programa de fidelidade / cashback'],['90','Sem pagamento'],['99','Outros']];
-const FORMAS_FIXAS_INFO={ 'Dinheiro':'Entra no caixa em espécie; calcula troco.', 'PIX':'Entra no caixa; aparece na conciliação bancária.', 'Cartão Crédito':'Desconta a taxa da maquininha por parcela (abaixo).', 'Cartão Débito':'Desconta a taxa de débito (abaixo).', 'Boleto/Prazo':'Gera as parcelas em Boletos a Receber e as duplicatas da NF-e.', 'Crédito de troca':'Usa o vale de devolução do cliente.', 'Comissão indicador':'Abate a comissão devida ao indicador.', 'Pagamento Futuro':'Venda na ficha do cliente (Fichas Cliente a Receber).', 'Receber no local':'Situação do pedido com entrega: o entregador recebe.' };
+const FORMAS_FIXAS_INFO={ 'Dinheiro':'Entra no caixa em espécie; calcula troco.', 'PIX':'Entra no caixa; aparece na conciliação bancária.', 'Cartão Crédito':'Desconta a taxa da maquininha por parcela (abaixo).', 'Cartão Débito':'Desconta a taxa de débito (abaixo).', 'Boleto/Prazo':'Gera as parcelas em Boletos a Receber e as duplicatas da NF-e.', 'Crédito de troca':'Usa o vale de devolução do cliente.', 'Comissão indicador':'Abate o prêmio devido ao indicador.', 'Pagamento Futuro':'Venda na ficha do cliente (Fichas Cliente a Receber).', 'Receber no local':'Situação do pedido com entrega: o entregador recebe.' };
 function viewVendasCfg(){
   const extras=formasPagExtras();
   document.getElementById('view').innerHTML=`
@@ -30090,7 +30338,7 @@ function viewVendasCfg(){
             <b>Boleto no caixa:</b> parcelas e prazo são escolhidos na hora, na forma "Boleto/Prazo".<br>
             <b>Crédito do cliente:</b> vale de troca/devolução é abatido no orçamento, no pedido ou no PDV.</p>
           <div style="display:flex;gap:8px;flex-wrap:wrap">
-            <button class="btn btn-ghost btn-sm" onclick="go('comis')">${ico('pct')} Regras de comissão</button>
+            <button class="btn btn-ghost btn-sm" onclick="go('comis')">${ico('pct')} Regras de prêmio</button>
             <button class="btn btn-ghost btn-sm" onclick="go('dash')">${ico('target')} Meta do mês</button>
             <button class="btn btn-ghost btn-sm" onclick="go('fiscalcfg')">${ico('doc')} Configuração fiscal (NF-e / NFC-e)</button>
             <button class="btn btn-ghost btn-sm" onclick="go('cfg')">${ico('cfg')} Juros e multa por atraso</button>
@@ -37244,6 +37492,7 @@ function canAccess(id){ if(!CURRENT_USER) return false;
   if(telaOculta(id)) return false; // rota oculta usa a permissão da tela onde fica o acesso
   if(SAAS_IMPERSONATE){ if(id==='dash') return true; return (SAAS_IMPERSONATE.modulos||[]).includes(id); }
   if(CURRENT_USER.perfil==='admin') return true;
+  if(id==='agenda') return true;   // agenda é pessoal: todo usuário tem a sua
   if(id==='dashvend') return funcEhVendedor(CURRENT_USER);   // só vendedores (e admin, acima) veem o Painel do Vendedor
   if(id==='dash'){   // Painel geral (números totais da empresa)
     if(funcEhVendedor(CURRENT_USER)) return authPermsDoUsuario(CURRENT_USER).includes('dash');   // vendedor: só se o Acesso por cargo liberar
