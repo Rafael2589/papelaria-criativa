@@ -48,7 +48,7 @@ const CONFIG_EMPRESA = {
      Aparece no topo do menu e no rodapé das Configurações. Troque a cada publicação.
      MANTENHA O FORMATO 'vDD/MM-X' — é ele que o sistema usa para comparar as máquinas
      da loja e avisar quando alguma ficou para trás.                                  */
-  versao: 'v21/10-D',
+  versao: 'v21/10-E',
 
   /* 4) NUVEM (Supabase)  ------------------------------------------------------------
      Cole aqui a Project URL e a chave PUBLISHABLE do projeto Supabase DESTA empresa
@@ -14877,15 +14877,17 @@ function etiqBarrasToggle(){ ETIQ.codBarras = (ETIQ.codBarras===false); etiqPers
 function etiqFonteModal(){ const m=etiqModelo();
   openModal(`<div class="modal-head"><h3>Tamanho e posição das informações — ${m.w}×${m.h} mm</h3><button class="btn-icon btn-ghost" onclick="closeModal()">${ico('x')}</button></div>
     <div class="modal-body">${etiqFonteBodyHTML()}</div>
-    <div class="modal-foot">${etiqFonteFootHTML()}</div>`);
+    <div class="modal-foot">${etiqFonteFootHTML()}</div>`); etiqCfgAutoLigar();
 }
-function etiqFonteSalvar(){ const m=etiqModelo(); const g=id=>(document.getElementById(id)||{}).value;
+function etiqFonteSalvar(){ etiqFonteAplicar(); closeModal(); toast('Etiqueta salva','ok'); viewEtiquetas(); }
+function etiqFonteAplicar(){ const m=etiqModelo(); const g=id=>(document.getElementById(id)||{}).value; if(!document.getElementById('et-fs-preco')) return;
   const norm=v=>{ v=+v; return (v>0&&isFinite(v))?Math.min(60,Math.max(3,v)):0; };
   const nome=norm(g('et-fs-nome')), preco=norm(g('et-fs-preco')), cod=norm(g('et-fs-cod'));
   const al=g('et-fs-align'); const align=(al==='left'||al==='right')?al:'';
   if(!ETIQ.fs) ETIQ.fs={}; const o={}; if(nome)o.nome=nome; if(preco)o.preco=preco; if(cod)o.cod=cod; if(align)o.align=align;
+  const promoAnt=(ETIQ.fs[m.id]||{}).promo; if(promoAnt) o.promo=promoAnt;   // não perde o tamanho da etiqueta PROMOCIONAL
   if(Object.keys(o).length) ETIQ.fs[m.id]=o; else delete ETIQ.fs[m.id];
-  etiqPersist(); closeModal(); toast('Etiqueta salva','ok'); viewEtiquetas(); }
+  etiqPersist(); }
 function etiqFonteReset(){ const m=etiqModelo(); if(ETIQ.fs){ const cur=ETIQ.fs[m.id]; if(cur){ const promo=cur.promo; if(promo){ ETIQ.fs[m.id]={promo}; } else delete ETIQ.fs[m.id]; } } etiqPersist(); closeModal(); toast('Etiqueta voltou ao padrão','ok'); viewEtiquetas(); }
 /* Abre a configuração de tamanho certa conforme o modo (normal ou promoção). */
 function etiqFonteAbrir(){ if(ETIQ.promo) etiqFontePromoModal(); else etiqFonteModal(); }
@@ -14936,16 +14938,17 @@ function etiqFontePromoFootHTML(){ return `<button class="btn btn-ghost" onclick
 function etiqFontePromoModal(){ const m=etiqModelo();
   openModal(`<div class="modal-head"><h3>Tamanho das informações — Etiqueta promocional (${m.w}×${m.h} mm)</h3><button class="btn-icon btn-ghost" onclick="closeModal()">${ico('x')}</button></div>
     <div class="modal-body">${etiqFontePromoBodyHTML()}</div>
-    <div class="modal-foot">${etiqFontePromoFootHTML()}</div>`);
+    <div class="modal-foot">${etiqFontePromoFootHTML()}</div>`); etiqCfgAutoLigar();
 }
-function etiqFontePromoSalvar(){ const m=etiqModelo(); const g=id=>(document.getElementById(id)||{}).value;
+function etiqFontePromoSalvar(){ etiqFontePromoAplicar(); closeModal(); toast('Etiqueta promocional salva','ok'); viewEtiquetas(); }
+function etiqFontePromoAplicar(){ const m=etiqModelo(); const g=id=>(document.getElementById(id)||{}).value; if(!document.getElementById('etp-preco')) return;
   const norm=v=>{ v=+v; return (v>0&&isFinite(v))?Math.min(80,Math.max(3,v)):0; };
   const o={}; [['banner','etp-banner'],['nome','etp-nome'],['cod','etp-cod'],['antigo','etp-antigo'],['preco','etp-preco'],['avista','etp-avista']].forEach(function(par){ const v=norm(g(par[1])); if(v)o[par[0]]=v; });
   const al=g('etp-align'); if(al==='left'||al==='right')o.align=al;
   if(!ETIQ.fs) ETIQ.fs={}; const cur=ETIQ.fs[m.id]||{};
   if(Object.keys(o).length) cur.promo=o; else delete cur.promo;
   if(Object.keys(cur).length) ETIQ.fs[m.id]=cur; else delete ETIQ.fs[m.id];
-  etiqPersist(); closeModal(); toast('Etiqueta promocional salva','ok'); viewEtiquetas(); }
+  etiqPersist(); }
 function etiqFontePromoReset(){ const m=etiqModelo(); if(ETIQ.fs&&ETIQ.fs[m.id]){ delete ETIQ.fs[m.id].promo; if(!Object.keys(ETIQ.fs[m.id]).length) delete ETIQ.fs[m.id]; } etiqPersist(); closeModal(); toast('Etiqueta promocional voltou ao padrão','ok'); viewEtiquetas(); }
 function etiqEspacoBodyHTML(){ return `<p class="t-mut" style="font-size:12.5px;margin-bottom:12px;line-height:1.5">Os campos abaixo mostram o espaçamento <b>em uso agora</b>. Ajuste em passos de 0,5 mm para corrigir o alinhamento da impressão e clique em <b>Salvar</b>. Gere o PDF de teste até bater com a folha.</p>
       <div class="field"><label>Modo de impressão</label><select id="et-folha">
@@ -14961,26 +14964,35 @@ function etiqEspacoFootHTML(){ return `<button class="btn btn-ghost" onclick="et
 function etiqEspacoModal(){
   openModal(`<div class="modal-head"><h3>Espaçamento da etiqueta</h3><button class="btn-icon btn-ghost" onclick="closeModal()">${ico('x')}</button></div>
     <div class="modal-body">${etiqEspacoBodyHTML()}</div>
-    <div class="modal-foot">${etiqEspacoFootHTML()}</div>`);
+    <div class="modal-foot">${etiqEspacoFootHTML()}</div>`); etiqCfgAutoLigar();
 }
 /* ===== Configuração de etiqueta UNIFICADA — um só botão, com abas =====
    Aba 1: Configurar espaçamento · Aba 2: Tamanho das informações (normal ou promoção). */
 let ETIQ_CFG_TAB='espaco';
-function etiqConfigModal(tab){ tab=tab||ETIQ_CFG_TAB||'espaco'; ETIQ_CFG_TAB=tab; const m=etiqModelo(); const isPromo=!!ETIQ.promo;
+/* SALVAMENTO AUTOMÁTICO da configuração de etiqueta (v21/10-E): cada valor alterado é gravado na hora —
+   não depende mais de clicar em "Salvar" (antes, trocar de aba, fechar no X ou clicar fora perdia o que
+   foi digitado). O "Salvar" continua, só fecha a janela. */
+function etiqCfgAplicarAberto(){ try{ etiqEspacoAplicar(); }catch(e){} try{ if(ETIQ.promo) etiqFontePromoAplicar(); else etiqFonteAplicar(); }catch(e){} }
+function etiqCfgSalvoAviso(){ const el=document.getElementById('etiq-salvo'); if(el){ el.textContent='✓ salvo '+new Date().toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit',second:'2-digit'}); el.style.opacity='1'; } }
+function etiqCfgAutoLigar(){ const mb=document.getElementById('modal-bg'); if(!mb || mb._etiqAuto) return; mb._etiqAuto=true;
+  mb.addEventListener('change', function(ev){ const t=ev.target; if(!t || !t.id || !/^(et-|etp-)/.test(t.id)) return; try{ etiqCfgAplicarAberto(); etiqCfgSalvoAviso(); }catch(e){window.__es&&__es(e)} }, true); }
+function etiqConfigModal(tab){ try{ if(document.getElementById('et-gapX')||document.getElementById('et-fs-preco')||document.getElementById('etp-preco')) etiqCfgAplicarAberto(); }catch(e){}
+  tab=tab||ETIQ_CFG_TAB||'espaco'; ETIQ_CFG_TAB=tab; const m=etiqModelo(); const isPromo=!!ETIQ.promo;
   let body, foot;
   if(tab==='fonte'){ if(isPromo){ body=etiqFontePromoBodyHTML(); foot=etiqFontePromoFootHTML(); } else { body=etiqFonteBodyHTML(); foot=etiqFonteFootHTML(); } }
   else { body=etiqEspacoBodyHTML(); foot=etiqEspacoFootHTML(); }
   const tabBtn=(id,label)=>`<button onclick="etiqConfigModal('${id}')" style="appearance:none;background:none;border:none;cursor:pointer;padding:9px 4px;margin-right:18px;font-size:13px;font-weight:${tab===id?'700':'500'};color:${tab===id?'var(--brand)':'var(--mut)'};border-bottom:2.5px solid ${tab===id?'var(--brand)':'transparent'}">${label}</button>`;
   openModal(`<div class="modal-head"><h3>${ico('gear')} Configuração de etiqueta — ${m.w}×${m.h} mm</h3><button class="btn-icon btn-ghost" onclick="closeModal()">${ico('x')}</button></div>
     <div style="padding:0 20px;border-bottom:1px solid var(--line);display:flex;flex-wrap:wrap">${tabBtn('espaco','Configurar espaçamento')}${tabBtn('fonte','Tamanho das informações'+(isPromo?' (promoção)':''))}</div>
-    <div class="modal-body">${body}</div>
+    <div class="modal-body">${body}<div id="etiq-salvo" class="t-mut" style="font-size:11.5px;margin-top:8px;opacity:.8">As alterações são salvas automaticamente.</div></div>
     <div class="modal-foot">${foot}</div>`, true);
+  etiqCfgAutoLigar();
 }
-function etiqEspacoSalvar(){ const g=id=>(document.getElementById(id)||{}).value;
+function etiqEspacoSalvar(){ etiqEspacoAplicar(); closeModal(); toast('Espaçamento salvo','ok'); viewEtiquetas(); }
+function etiqEspacoAplicar(){ const g=id=>(document.getElementById(id)||{}).value; if(!document.getElementById('et-gapX')) return;
   ETIQ.folha=(g('et-folha')==='folha'); ETIQ.gapX=Math.max(0,+g('et-gapX')||0); ETIQ.gapY=Math.max(0,+g('et-gapY')||0); ETIQ.offX=Math.max(0,+g('et-offX')||0); ETIQ.offY=Math.max(0,+g('et-offY')||0);
-  etiqPersist();
-  closeModal(); toast('Espaçamento salvo','ok'); viewEtiquetas(); }
-function etiqEspacoReset(){ ['et-gapX','et-gapY','et-offX','et-offY'].forEach(id=>{ const el=document.getElementById(id); if(el)el.value=0; }); }
+  etiqPersist(); }
+function etiqEspacoReset(){ ['et-gapX','et-gapY','et-offX','et-offY'].forEach(id=>{ const el=document.getElementById(id); if(el)el.value=0; }); try{ etiqEspacoAplicar(); etiqCfgSalvoAviso(); }catch(e){} }
 let _etiqQT; function etiqListD(){ clearTimeout(_etiqQT); _etiqQT=setTimeout(function(){ try{ etiqList(); }catch(e){window.__es&&__es(e)} }, 160); }
 /* ===================================================================
    BANNER DE PROMOÇÃO — cartaz de oferta para imprimir em A4 (1 por folha),
