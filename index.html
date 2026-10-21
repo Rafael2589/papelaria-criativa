@@ -48,7 +48,7 @@ const CONFIG_EMPRESA = {
      Aparece no topo do menu e no rodapé das Configurações. Troque a cada publicação.
      MANTENHA O FORMATO 'vDD/MM-X' — é ele que o sistema usa para comparar as máquinas
      da loja e avisar quando alguma ficou para trás.                                  */
-  versao: 'v21/10-A',
+  versao: 'v21/10-B',
 
   /* 4) NUVEM (Supabase)  ------------------------------------------------------------
      Cole aqui a Project URL e a chave PUBLISHABLE do projeto Supabase DESTA empresa
@@ -5365,6 +5365,10 @@ function pdvPagFinalizar(){ closeModal(); setTimeout(()=>{ try{ finalizarVenda()
 /* F4 abre o pagamento; com a tela aberta, F1…F9 escolhem a forma. */
 window.addEventListener('keydown', function(e){
   const rota=(typeof STATE!=='undefined' && STATE.route)||'';
+  // Janela "Venda registrada!": F1 recibo · F2 NF-e · F3 cupom fiscal · F4 concluir sem imprimir
+  { const mb=document.getElementById('modal-bg'); const pv=document.getElementById('pos-venda-acoes');
+    if(pv && mb && mb.classList.contains('open') && mb.contains(pv) && /^F[1-4]$/.test(e.key)){ e.preventDefault(); e.stopPropagation();
+      const b=document.getElementById('posv-'+e.key.toLowerCase()); if(b) b.click(); return; } }
   if(e.key==='F4' && rota==='pdv'){ e.preventDefault();
     if(pdvPagAberta()) pdvPagFinalizar(); else pdvPagtoModal(); return; }
   if(e.key==='Escape' && pdvPagAberta()){ setTimeout(()=>{ try{ renderPDV(); }catch(_){} },30); return; }
@@ -5510,11 +5514,11 @@ function finalizarVenda(){
       ${aberto>0.01?`<div class="t-mut" style="font-size:12px;margin-top:6px">Em aberto${futuro>0.01?' (ficha/futuro)':' (prazo)'}: ${BRL(aberto)}</div>`:''}
     </div>
     <p class="t-mut" style="font-size:12.5px;text-align:center;margin:16px 0 10px">Estoque e financeiro já foram atualizados. Escolha o documento para emitir/imprimir:</p>
-    <div style="display:grid;gap:9px">
-      <button class="btn btn-primary" style="justify-content:center" onclick="posVendaDoc('${vid}','recibo')">${ico('print')} Salvar venda (recibo / pedido)</button>
-      <button class="btn btn-amber" style="justify-content:center" onclick="posVendaDoc('${vid}','nfe')">${ico('nfeout')} NF-e Eletrônica${ehBoleto?' (modelo 55)':''}</button>
-      ${ehBoleto?`<p class="t-mut" style="font-size:11.5px;text-align:center;margin:2px 0 0">Venda no <b>boleto</b> (a prazo): a nota sai como <b>NF-e (modelo 55)</b>. O Cupom Fiscal (NFC-e) não vale para venda a prazo.</p>`:`<button class="btn btn-amber" style="justify-content:center" onclick="posVendaDoc('${vid}','nfce')">${ico('doc')} Cupom Fiscal (NFC-e)</button>`}
-      <button class="btn btn-ghost" style="justify-content:center" onclick="closeModal()">Concluir sem imprimir</button>
+    <div id="pos-venda-acoes" style="display:grid;gap:9px">
+      <button id="posv-f1" class="btn btn-primary" style="justify-content:center" onclick="posVendaDoc('${vid}','recibo')">${ico('print')} Salvar venda (recibo / pedido) (F1)</button>
+      <button id="posv-f2" class="btn btn-amber" style="justify-content:center" onclick="posVendaDoc('${vid}','nfe')">${ico('nfeout')} NF-e Eletrônica${ehBoleto?' (modelo 55)':''} (F2)</button>
+      ${ehBoleto?`<p class="t-mut" style="font-size:11.5px;text-align:center;margin:2px 0 0">Venda no <b>boleto</b> (a prazo): a nota sai como <b>NF-e (modelo 55)</b>. O Cupom Fiscal (NFC-e) não vale para venda a prazo.</p>`:`<button id="posv-f3" class="btn btn-amber" style="justify-content:center" onclick="posVendaDoc('${vid}','nfce')">${ico('doc')} Cupom Fiscal (NFC-e) (F3)</button>`}
+      <button id="posv-f4" class="btn btn-ghost" style="justify-content:center" onclick="closeModal()">Concluir sem imprimir (F4 / Esc)</button>
     </div></div>`);
 }
 /* ===================================================================
@@ -9008,8 +9012,51 @@ function prodSelBarra(){ const n=PROD_SEL.size; const tot=prodFiltrados(PROD_Q,(
   return `<div id="prod-sel-bar" style="display:${n?'flex':'none'};gap:8px;align-items:center;flex-wrap:wrap;padding:8px 12px;margin-bottom:8px;border:1px solid var(--amber);background:var(--amber-soft,#fff7e6);border-radius:10px">
     <b><span id="prod-sel-n">${NUM(n)}</span> produto(s) selecionado(s)</b>
     <button class="btn btn-amber btn-sm" onclick="prodLoteModal()">${ico('edit')} Ajustar em lote</button>
+    <button class="btn btn-ghost btn-sm" onclick="prodSelSaidaModal('imprimir')">${ico('print')} Imprimir selecionados</button>
+    <button class="btn btn-ghost btn-sm" onclick="prodSelSaidaModal('planilha')">${ico('dl')} Exportar planilha (Excel)</button>
     <button class="btn btn-ghost btn-sm" onclick="prodSelTodosFiltrados()" title="Seleciona todos os produtos que a busca/filtro atual mostra, inclusive os que ainda não aparecem na lista">Selecionar todos os filtrados (${NUM(tot)})</button>
     <button class="btn btn-ghost btn-sm" onclick="prodSelLimpar()">Limpar seleção</button></div>`; }
+/* IMPRIMIR / EXPORTAR os produtos marcados na lista — o operador escolhe as colunas. */
+const PROD_SAIDA_COLS=[['nome','Produto',1],['sku','SKU',1],['barras','Cód. barras',1],['categoria','Categoria',1],['custo','Custo',1],['venda','Venda',1],['margem','Margem',1],['estoque','Estoque',1],['minimo','Estoque mínimo',0],['marca','Marca',0]];
+function prodSaidaLinhas(ids, cols){ const ps=ids.map(id=>DB.get('produtos',id)).filter(Boolean).sort((a,b)=>(a.nome||'').localeCompare(b.nome||'','pt'));
+  return ps.map(p=>{ const custo=+p.custo||0, venda=+p.preco||0; const mg=venda>0?((venda-custo)/venda*100):0;
+    const cat=[p.categoria||'', p.grupo||'', p.subgrupo||''].filter(Boolean).filter((v,i,a)=>a.indexOf(v)===i).join(' / ');
+    const val={ nome:p.nome||'', sku:p.sku||'', barras:p.codigoBarras||'', categoria:cat, custo, venda, margem:Math.round(mg*10)/10, estoque:p.servico?'':(+p.estoque||0), minimo:p.servico?'':(+p.estoqueMinimo||0), marca:p.marca||'' };
+    return cols.map(c=>val[c]); }); }
+function prodSelSaidaModal(modo){ const ids=[...PROD_SEL].filter(id=>DB.get('produtos',id)); if(!ids.length){ toast('Marque pelo menos um produto na lista','err'); return; }
+  openModal(`<div class="modal-head"><h3>${ico(modo==='imprimir'?'print':'dl')} ${modo==='imprimir'?'Imprimir':'Exportar planilha de'} ${NUM(ids.length)} produto(s)</h3><button class="btn-icon btn-ghost" onclick="closeModal()">${ico('x')}</button></div>
+   <div class="modal-body"><label style="font-size:12px;font-weight:600;color:var(--muted)">Colunas</label>
+     <div style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:6px 14px;margin-top:6px">${PROD_SAIDA_COLS.map(([k,l,on])=>`<label style="display:flex;align-items:center;gap:7px;cursor:pointer;font-size:13px"><input type="checkbox" class="prod-saida-col" value="${k}" ${on?'checked':''} style="width:16px;height:16px"> ${l}</label>`).join('')}</div></div>
+   <div class="modal-foot"><button class="btn btn-ghost" onclick="closeModal()">Cancelar</button><div style="flex:1"></div>
+     <button class="btn btn-amber" onclick="prodSelSaida('${modo}')">${ico(modo==='imprimir'?'print':'dl')} ${modo==='imprimir'?'Imprimir':'Baixar planilha (.xlsx)'}</button></div>`); }
+function prodSelSaida(modo){ const ids=[...PROD_SEL].filter(id=>DB.get('produtos',id)); const cols=[...document.querySelectorAll('.prod-saida-col:checked')].map(c=>c.value);
+  if(!cols.length){ toast('Marque pelo menos uma coluna','err'); return; }
+  const nomes=cols.map(c=>(PROD_SAIDA_COLS.find(x=>x[0]===c)||[])[1]||c); const linhas=prodSaidaLinhas(ids, cols);
+  if(modo==='planilha'){
+    if(typeof XLSX==='undefined'){ // sem a biblioteca: CSV (abre no Excel)
+      const q=v=>{ v=(v==null?'':(typeof v==='number'?String(v).replace('.',','):String(v))); return /[";\n]/.test(v)?'"'+v.replace(/"/g,'""')+'"':v; };
+      const csv='\ufeff'+[nomes].concat(linhas).map(r=>r.map(q).join(';')).join('\r\n');
+      const a=document.createElement('a'); a.href=URL.createObjectURL(new Blob([csv],{type:'text/csv;charset=utf-8'})); a.download='produtos-selecionados-'+today()+'.csv'; a.click();
+    } else { const ws=XLSX.utils.aoa_to_sheet([nomes].concat(linhas)); ws['!cols']=cols.map(c=>({wch:c==='nome'?46:c==='categoria'?36:14}));
+      const wb=XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, ws, 'Produtos'); XLSX.writeFile(wb, 'produtos-selecionados-'+today()+'.xlsx'); }
+    try{ logAcao('Produtos exportados em planilha', NUM(ids.length)+' produto(s)'); }catch(e){}
+    closeModal(); toast('Planilha gerada com '+NUM(ids.length)+' produto(s)','ok'); return; }
+  const fmt=(c,v)=>(c==='custo'||c==='venda')?BRL(+v||0):(c==='margem'?(String(v).replace('.',',')+'%'):(c==='estoque'||c==='minimo')?(v===''?'—':fmtQ(v)):esc(v||'—'));
+  const dir=c=>(['custo','venda','margem','estoque','minimo'].indexOf(c)>=0?'right':'left');
+  const emp=(DB._load().empresa||{});
+  const html=`<!DOCTYPE html><html><head><meta charset="utf-8"><title>Produtos selecionados</title><style>@page{size:A4 ${cols.length>6?'landscape':'portrait'};margin:10mm}
+    body{font-family:Arial,Helvetica,sans-serif;font-size:11px;color:#000;margin:0} h1{font-size:15px;margin:0 0 2px} .sub{font-size:11px;color:#444;margin-bottom:8px}
+    table{width:100%;border-collapse:collapse} th{background:#eee;font-size:10px;text-transform:uppercase;text-align:left;padding:5px 6px;border-bottom:1.5px solid #000}
+    td{padding:4px 6px;border-bottom:1px solid #ccc;vertical-align:top} tr{page-break-inside:avoid}</style></head><body>
+    <h1>${esc(emp.nome||emp.razaoSocial||'')} — Produtos</h1><div class="sub">${NUM(linhas.length)} produto(s) · impresso em ${fDate(today())} ${new Date().toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'})}</div>
+    <table><thead><tr>${nomes.map((n,i)=>`<th style="text-align:${dir(cols[i])}">${esc(n)}</th>`).join('')}</tr></thead><tbody>
+    ${linhas.map(r=>`<tr>${r.map((v,i)=>`<td style="text-align:${dir(cols[i])}">${fmt(cols[i],v)}</td>`).join('')}</tr>`).join('')}</tbody></table></body></html>`;
+  closeModal();
+  const prev=document.getElementById('prod-print-frame'); if(prev){ try{ prev.remove(); }catch(e){} }
+  const ifr=document.createElement('iframe'); ifr.id='prod-print-frame'; ifr.style.cssText='position:fixed;left:-9999px;top:0;width:900px;height:10px;border:0;opacity:0'; document.body.appendChild(ifr);
+  const d=ifr.contentWindow.document; d.open(); d.write(html); d.close();
+  setTimeout(()=>{ try{ ifr.contentWindow.focus(); ifr.contentWindow.print(); }catch(e){} setTimeout(()=>{ try{ ifr.remove(); }catch(e){} }, 1500); }, 200);
+  try{ logAcao('Produtos impressos', NUM(ids.length)+' produto(s)'); }catch(e){} }
 function prodSelBarraAtualizar(){ const b=document.getElementById('prod-sel-bar'); if(!b){ renderProdTable(); return; } b.style.display=PROD_SEL.size?'flex':'none'; const n=document.getElementById('prod-sel-n'); if(n) n.textContent=NUM(PROD_SEL.size); }
 function prodLoteModal(){ const ids=[...PROD_SEL].filter(id=>DB.get('produtos',id)); if(!ids.length){ toast('Marque pelo menos um produto na lista','err'); return; }
   const marcas=marcaListaTodas(); const cats=categoriasProduto().map(c=>c.nome).filter(Boolean).sort((a,b)=>a.localeCompare(b,'pt'));
