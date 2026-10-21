@@ -48,7 +48,7 @@ const CONFIG_EMPRESA = {
      Aparece no topo do menu e no rodapé das Configurações. Troque a cada publicação.
      MANTENHA O FORMATO 'vDD/MM-X' — é ele que o sistema usa para comparar as máquinas
      da loja e avisar quando alguma ficou para trás.                                  */
-  versao: 'v20/10-F',
+  versao: 'v21/10-A',
 
   /* 4) NUVEM (Supabase)  ------------------------------------------------------------
      Cole aqui a Project URL e a chave PUBLISHABLE do projeto Supabase DESTA empresa
@@ -33554,7 +33554,7 @@ function entradasOrfasEstornar(){ const o=entradasOrfas(); if(!o.length){ closeM
   try{ nuvemPushJa(); }catch(e){}
   closeModal(); toast(n+' entrada(s) estornada(s) do estoque'+(marc?(' · '+marc+' já estavam acertadas pela contagem'):''),'ok');
   try{ go(STATE.route); }catch(e){} }
-function viewNfeEntrada(){ if(!WIZ) wizReset(); try{ nfentConciliarLancadas(); }catch(e){window.__es&&__es(e)}
+function viewNfeEntrada(){ if(!WIZ) wizReset(); try{ nfentConciliarLancadas(); }catch(e){window.__es&&__es(e)} try{ nfentRascLimparLancados(); }catch(e){window.__es&&__es(e)}
   try{ nfentJuntarDuplicadas({silencioso:false}); }catch(e){window.__es&&__es(e)}   // nota repetida nunca chega à lista
   document.getElementById('view').innerHTML=`<div id="nfent-orfas">${(function(){ try{ return entradasOrfasBannerHTML(); }catch(e){ return ''; } })()}</div><div id="nfent-body"></div>`;
   // Sem abas: a tela mostra "Notas Recebidas" por padrão. O assistente de entrada só aparece
@@ -33626,7 +33626,7 @@ async function rascRestaurarDoIDB(){ try{ const reg=await cofreLer(rascIdbChave(
     const o=JSON.parse(reg.raw)||{}; const d=DB._load(); let n=0;
     const cur=(d.nfeEntRascunhos&&typeof d.nfeEntRascunhos==='object'&&!Array.isArray(d.nfeEntRascunhos))?d.nfeEntRascunhos:{};
     const esp=(o.nfeEntRascunhos&&typeof o.nfeEntRascunhos==='object')?o.nfeEntRascunhos:{};
-    Object.keys(esp).forEach(k=>{ const a=cur[k], b=esp[k]; if(!b||!b.wiz) return;
+    Object.keys(esp).forEach(k=>{ const a=cur[k], b=esp[k]; if(!b||!b.wiz) return; if(nfentRascJaLancado(b)) return;
       if(!a || String(b.salvoEm||'')>String(a.salvoEm||'')){ cur[k]=b; n++; } });
     if(!d.nfaRascunho && o.nfaRascunho && o.nfaRascunho.nfa){ d.nfaRascunho=o.nfaRascunho; n++; }
     if(n){ d.nfeEntRascunhos=cur; DB._persist(); try{ toast(n+' lançamento(s) salvo(s) recuperado(s) da cópia de segurança deste computador','ok'); }catch(e){} }
@@ -33634,7 +33634,7 @@ async function rascRestaurarDoIDB(){ try{ const reg=await cofreLer(rascIdbChave(
 /* PROCURAR LANÇAMENTOS PERDIDOS: varre as cópias do cofre local (1 por dia, até 7 dias) e a cópia rápida do
    navegador atrás de lançamentos de nota salvos que não estão mais na lista — e deixa o operador trazer de volta. */
 async function nfentRascProcurar(){ const achados={}; const atual=nfentRascLer();
-  const juntar=(map, origem)=>{ if(!map||typeof map!=='object') return; Object.keys(map).forEach(k=>{ const r=map[k]; if(!r||!r.wiz||!r.wiz.nf) return;
+  const juntar=(map, origem)=>{ if(!map||typeof map!=='object') return; Object.keys(map).forEach(k=>{ const r=map[k]; if(!r||!r.wiz||!r.wiz.nf) return; if(nfentRascJaLancado(r)) return;   // nota já lançada: não oferece
       const a=atual[k]; if(a && String(a.salvoEm||'')>=String(r.salvoEm||'')) return;
       const ja=achados[k]; if(!ja || String(r.salvoEm||'')>String(ja.r.salvoEm||'')) achados[k]={r, origem}; }); };
   try{ const reg=await cofreLer(rascIdbChave()); if(reg&&reg.raw){ const o=JSON.parse(reg.raw); juntar(o.nfeEntRascunhos,'espelho dos rascunhos'); } }catch(e){}
@@ -33652,7 +33652,15 @@ function nfentRascTrazer(k){ const a=(window._rascAchados||{})[k]; if(!a) return
   try{ logAcao('Lançamento de nota recuperado', 'NF '+(a.r.numero||'')+' · '+(a.r.fornecedor||'')+' · '+a.origem); }catch(e){}
   closeModal(); toast('Lançamento recuperado — está em "Lançamentos salvos"','ok'); try{ viewNfeEntrada(); }catch(e){} }
 function nfentRascChave(w){ w=w||WIZ; const nf=w&&w.nf; if(!nf) return ''; const k=chaveNorm(nf.chave||''); return k||('nf-'+(nf.emitCNPJ||'').replace(/\D/g,'')+'-'+(nf.nNF||'')+'-'+(nf.serie||nf.serieNF||'')); }
-function nfentRascLista(){ const m=nfentRascLer(); return Object.keys(m).map(k=>Object.assign({_k:k},m[k])).filter(x=>x&&x.wiz&&x.wiz.nf).sort((a,b)=>String(b.salvoEm||'').localeCompare(String(a.salvoEm||''))); }
+/* Lançamento salvo de uma nota que JÁ DEU ENTRADA (por este lançamento, por outro caminho ou em outro
+   computador) não serve mais: não aparece na lista e é apagado (com registro no histórico). */
+function nfentRascJaLancado(r){ try{ const nf=r&&r.wiz&&r.wiz.nf; if(!nf) return null;
+    const ex=nfeEntradaExistente({ chave:chaveNorm(nf.chave||''), cnpj:((nf.emitCNPJ||'')+'').replace(/\D/g,''), numero:nf.nNF||r.numero||'', serie:(nf.serie!=null&&nf.serie!=='')?nf.serie:(nf.serieNF||r.serie||'') });
+    return (ex && (ex.compra||ex.venda||ex.recebida))?ex:null; }catch(e){ return null; } }
+function nfentRascLimparLancados(){ try{ const m=nfentRascLer(); const tirar=Object.keys(m).filter(k=>nfentRascJaLancado(m[k])); if(!tirar.length) return 0;
+    tirar.forEach(k=>{ const r=m[k]; delete m[k]; try{ logAcao('Lançamento salvo removido — nota já lançada', 'NF '+(r.numero||'')+' · '+(r.fornecedor||'')); }catch(e){} });
+    nfentRascGravar(m); return tirar.length; }catch(e){ return 0; } }
+function nfentRascLista(){ const m=nfentRascLer(); return Object.keys(m).map(k=>Object.assign({_k:k},m[k])).filter(x=>x&&x.wiz&&x.wiz.nf&&!nfentRascJaLancado(x)).sort((a,b)=>String(b.salvoEm||'').localeCompare(String(a.salvoEm||''))); }
 function wizSalvarRascunho(sair){
   if(!WIZ||!WIZ.nf){ toast('Nenhuma nota em lançamento para salvar','err'); return false; }
   const k=nfentRascChave(WIZ); if(!k){ toast('Não foi possível identificar a nota','err'); return false; }
