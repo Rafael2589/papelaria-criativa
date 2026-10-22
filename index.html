@@ -48,7 +48,7 @@ const CONFIG_EMPRESA = {
      Aparece no topo do menu e no rodapé das Configurações. Troque a cada publicação.
      MANTENHA O FORMATO 'vDD/MM-X' — é ele que o sistema usa para comparar as máquinas
      da loja e avisar quando alguma ficou para trás.                                  */
-  versao: 'v22/10-B',
+  versao: 'v22/10-C',
 
   /* 4) NUVEM (Supabase)  ------------------------------------------------------------
      Cole aqui a Project URL e a chave PUBLISHABLE do projeto Supabase DESTA empresa
@@ -17614,8 +17614,8 @@ function dpImpNomeLido(txt){ const m=txt.match(/(?:nome(?:\s+do)?(?:\s+(?:funcio
    depois junta por funcionário. Recibo repetido (1ª e 2ª via do mesmo holerite, ou o mesmo PDF
    anexado duas vezes) entra UMA vez só. Funcionário que não está no cadastro vem com o nome lido
    do PDF (e a função, quando houver) para cadastrar na hora. */
-function dpImpAnalisar(rows, funcs){
-  const blocos=[]; let cur=null;
+function dpImpAnalisar(rows, funcs, modo){
+  const blocos=[]; let cur=null; const ADI=/adiant|antecipa[cç]|vale\s*(salarial|quinzen)|quinzena/i;
   const abrir=(func, nome, cargo)=>{ cur={funcId:func?func.id:'', nomeLido:func?func.nome:nome, cargoLido:cargo||'', val:{}, linhas:[], ev:[]}; blocos.push(cur); };
   const cargoDaLinha=(r, nome)=>{ try{ const n=normTxt(nome||''); const segs=r.segs.map(sg=>sg.t).filter(t=>/[A-Za-zÀ-ú]{4}/.test(t) && !DP_IMP_MOEDA.test(t) && normTxt(t)!==n && n.indexOf(normTxt(t))<0 && normTxt(t).indexOf(n)<0);
       const c=segs.find(t=>!/^(cbo|fun[cç][aã]o|cargo|nome|c[oó]digo|admiss)/i.test(t)); return c?c.trim():''; }catch(e){ return ''; } };
@@ -17635,6 +17635,12 @@ function dpImpAnalisar(rows, funcs){
       continue; }
     if(!moedas.length || !textos.length) continue;
     const desc=textos.map(sg=>sg.t).join(' ').replace(/^\d+\s*/,'');
+    // ADIANTAMENTO: no recibo de adiantamento, a linha "Adiantamento salarial" é o valor pago (vai em salário);
+    // na folha de PAGAMENTO, a mesma linha é o DESCONTO do adiantamento já pago (guardado à parte, para não contar 2x).
+    if(ADI.test(desc) && !/base|l[ií]quido|total/i.test(desc)){ const va=dpImpValor(moedas[moedas.length-1].t); if(va>0){
+        if(modo==='adiant'){ cur.val.salario=Math.round(((cur.val.salario||0)+va)*100)/100; cur.linhas.push(desc+': '+moedas[moedas.length-1].t); cur.ev.push('salario='+va+'|'+normTxt(desc)); }
+        else { cur.val._descAdiant=Math.round(((cur.val._descAdiant||0)+va)*100)/100; cur.linhas.push(desc+' (desconto): '+moedas[moedas.length-1].t); cur.ev.push('desc='+va+'|'+normTxt(desc)); } }
+      continue; }
     if(DP_IMP_IGNORA.test(desc)) continue;
     const campo=(DP_IMP_RX.find(([k,rx])=>rx.test(desc))||[])[0]; if(!campo) continue;
     const v=dpImpValor(moedas[moedas.length-1].t); if(!(v>0)) continue;
@@ -17652,16 +17658,16 @@ function dpImpJuntar(blocos){ const porK={}, out=[];
     p.linhas=p.linhas.concat(b.linhas); });
   out.forEach(p=>{ delete p._assin; }); return out; }
 /* Aceita VÁRIOS arquivos de uma vez (um PDF com todos os funcionários, ou um holerite por funcionário). */
-async function dpImportarPdf(inp){ const fs=[...((inp&&inp.files)||[])]; try{ inp.value=''; }catch(e){} if(!fs.length) return;
+async function dpImportarPdf(inp, tipo){ tipo=(tipo==='adiant')?'adiant':'pagto'; const fs=[...((inp&&inp.files)||[])]; try{ inp.value=''; }catch(e){} if(!fs.length) return;
   const ruins=fs.filter(f=>!/\.pdf$/i.test(f.name||'') && f.type!=='application/pdf'); if(ruins.length===fs.length){ toast('Escolha o(s) arquivo(s) PDF da folha (enviado pelo contador)','err'); return; }
   const funcs=dpFuncsTodos(); let blocos=[]; let todasLinhas=[]; const semTexto=[], falhas=[];
   for(let k=0;k<fs.length;k++){ const f=fs[k]; if(ruins.indexOf(f)>=0) continue;
     toast('Lendo '+(fs.length>1?('o arquivo '+(k+1)+' de '+fs.length+' — '):'')+(f.name||'PDF')+'…','ok');
     let rows; try{ rows=await dpImpLerPdf(f); }catch(e){ falhas.push((f.name||'PDF')+': '+((e&&e.message)||e)); continue; }
     if(!rows.length){ semTexto.push(f.name||'PDF'); continue; }
-    todasLinhas=todasLinhas.concat(rows); dpImpAnalisar(rows, funcs).forEach(b=>{ b.arquivo=f.name||'PDF'; blocos.push(b); }); }
+    todasLinhas=todasLinhas.concat(rows); dpImpAnalisar(rows, funcs, tipo).forEach(b=>{ b.arquivo=f.name||'PDF'; blocos.push(b); }); }
   const pessoas=dpImpJuntar(blocos); const comp=dpImpCompetencia(todasLinhas)||dpComp();
-  window._dpImp={ pessoas, comp, arquivo:fs.map(f=>f.name).join(', '), nArq:fs.length, semTexto, falhas, ruins:ruins.map(f=>f.name) };
+  window._dpImp={ pessoas, comp, tipo, abater:true, arquivo:fs.map(f=>f.name).join(', '), nArq:fs.length, semTexto, falhas, ruins:ruins.map(f=>f.name) };
   if(!pessoas.length){ openModal(`<div class="modal-head"><h3>${ico('doc')} Importar folha</h3><button class="btn-icon btn-ghost" onclick="closeModal()">${ico('x')}</button></div>
     <div class="modal-body"><div class="empty" style="padding:24px">${ico('alert')}<h4>Não encontrei funcionários com valores ${fs.length>1?'nestes arquivos':'neste PDF'}</h4>
       <p class="t-mut">${semTexto.length?('Sem texto (escaneado/foto): '+esc(semTexto.join(', '))+'. '):''}${falhas.length?('Não abriram: '+esc(falhas.join(' · '))+'. '):''}Confira se o PDF é o gerado pelo sistema do contador (holerite / recibo de pagamento / resumo da folha).</p></div></div>
@@ -17681,21 +17687,24 @@ function dpImpCadastrar(idx){ const I=window._dpImp; if(!I) return; const lista=
 function dpImpModal(){ const I=window._dpImp; if(!I) return; const funcs=dpFuncsTodos(); const semCad=I.pessoas.filter(p=>!p.funcId).length;
   const inp=(i,k,v)=>`<input class="tnum" style="width:92px;text-align:right" value="${v?String((+v).toFixed(2)).replace('.',','):''}" placeholder="—" onchange="window._dpImp.pessoas[${i}].val['${k}']=this.value===''?undefined:numBR(this.value)">`;
   const usados={}; I.pessoas.forEach(p=>{ if(p.funcId) usados[p.funcId]=(usados[p.funcId]||0)+1; });
-  openModal(`<div class="modal-head"><h3>${ico('doc')} Importar folha — ${NUM(I.pessoas.length)} funcionário(s) — conferir antes de gravar</h3><button class="btn-icon btn-ghost" onclick="closeModal()">${ico('x')}</button></div>
+  const temDesc=I.tipo!=='adiant' && I.pessoas.some(p=>(+p.val._descAdiant||0)>0);
+  openModal(`<div class="modal-head"><h3>${ico('doc')} Importar ${I.tipo==='adiant'?'ADIANTAMENTO':'PAGAMENTO (folha do mês)'} — ${NUM(I.pessoas.length)} funcionário(s) — conferir antes de gravar</h3><button class="btn-icon btn-ghost" onclick="closeModal()">${ico('x')}</button></div>
    <div class="modal-body" style="max-height:72vh;overflow:auto">
      <div style="display:flex;gap:12px;align-items:flex-end;flex-wrap:wrap;margin-bottom:10px">
        <div class="field" style="margin:0"><label>Competência (mês da folha)</label><input type="month" id="dpimp-comp" value="${esc(I.comp)}"></div>
        <div class="t-mut" style="font-size:12px;flex:1;min-width:220px">${I.nArq>1?(NUM(I.nArq)+' arquivo(s)'):('Arquivo: <b>'+esc(I.arquivo)+'</b>')} · <b>${NUM(I.pessoas.length)}</b> funcionário(s) identificado(s), cada um com os próprios valores. Confira e corrija se precisar — só os campos marcados são gravados.
          ${I.semTexto&&I.semTexto.length?`<div style="color:var(--neg)">Sem texto (escaneado): ${esc(I.semTexto.join(', '))}</div>`:''}${I.falhas&&I.falhas.length?`<div style="color:var(--neg)">Não abriram: ${esc(I.falhas.join(' · '))}</div>`:''}</div>
        ${semCad?`<button class="btn btn-amber btn-sm" onclick="dpImpCadastrar()" title="Cria no cadastro os funcionários do PDF que ainda não existem, com o nome, a função e o salário lidos">${ico('plus')} Cadastrar os ${NUM(semCad)} não cadastrado(s)</button>`:''}</div>
+     <div style="padding:8px 10px;border-radius:9px;margin-bottom:10px;font-size:12.5px;background:${I.tipo==='adiant'?'#eff6ff':'var(--amber-soft)'};border:1px solid ${I.tipo==='adiant'?'#93c5fd':'var(--amber)'}">${I.tipo==='adiant'?'<b>Adiantamento</b> (vale do dia 20, quinzena…): os valores entram como a parte de ADIANTAMENTO do mês. Depois importe o PAGAMENTO — o sistema soma os dois na apuração.':'<b>Pagamento</b> (folha do mês): os valores entram como a parte de PAGAMENTO. Se já houver adiantamento importado no mês, o sistema soma os dois na apuração.'}
+       ${temDesc?`<label style="display:flex;align-items:flex-start;gap:8px;margin-top:8px;cursor:pointer"><input type="checkbox" ${I.abater?'checked':''} onchange="window._dpImp.abater=this.checked" style="width:16px;height:16px;margin-top:1px"><span><b>Esta folha desconta o adiantamento</b> (coluna "Desc. adiant."): abater esse valor do salário desta parte — assim o adiantamento não é contado duas vezes na soma.</span></label>`:''}</div>
      <div style="display:flex;gap:6px 14px;flex-wrap:wrap;margin-bottom:10px;font-size:12.5px">${DP_IMP_CAMPOS.map(c=>`<label style="display:flex;align-items:center;gap:5px;cursor:pointer" title="${esc(c.nota||'')}"><input type="checkbox" class="dpimp-campo" value="${c.k}" ${c.on?'checked':''}> ${esc(c.lbl)}${c.nota?' <span class="t-mut">ⓘ</span>':''}</label>`).join('')}</div>
      <div style="display:flex;gap:8px;margin-bottom:6px"><button class="btn btn-ghost btn-sm" onclick="document.querySelectorAll('.dpimp-ok').forEach(c=>{ if(!c.disabled) c.checked=true; })">Marcar todos</button><button class="btn btn-ghost btn-sm" onclick="document.querySelectorAll('.dpimp-ok').forEach(c=>c.checked=false)">Desmarcar</button></div>
-     <div class="tbl-wrap"><table><thead><tr><th></th><th>Funcionário no PDF</th><th>Funcionário do cadastro</th>${DP_IMP_CAMPOS.map(c=>`<th class="t-right">${esc(c.lbl)}</th>`).join('')}</tr></thead><tbody>
+     <div class="tbl-wrap"><table><thead><tr><th></th><th>Funcionário no PDF</th><th>Funcionário do cadastro</th>${DP_IMP_CAMPOS.map(c=>`<th class="t-right">${esc(c.lbl)}</th>`).join('')}${temDesc?'<th class="t-right" title="Adiantamento descontado nesta folha">Desc. adiant.</th>':''}</tr></thead><tbody>
      ${I.pessoas.map((p,i)=>{ const fz=p.funcId?DB.get('funcionarios',p.funcId):null; const est=fz?dpEhEstagiario(fz):/estagi/i.test(p.cargoLido||''); const dup=p.funcId&&usados[p.funcId]>1;
        return `<tr><td><input type="checkbox" class="dpimp-ok" data-i="${i}" ${p.funcId?'checked':''} ${p.funcId?'':'disabled title="Escolha ou cadastre o funcionário"'}></td>
        <td><b>${esc(p.nomeLido||'—')}</b>${est?' <span class="tag" style="font-size:9.5px;background:#ede9fe;color:#6d28d9">ESTAGIÁRIO</span>':''}${p.cargoLido?`<div class="t-mut" style="font-size:11px">${esc(p.cargoLido)}</div>`:''}<div class="t-mut" style="font-size:10.5px;max-width:260px" title="${esc(p.linhas.join('\n'))}">${esc(p.linhas.slice(0,3).join(' · '))}${p.linhas.length>3?' …':''}${p.recibos>1?(' · '+p.recibos+' recibos somados'):''}</div></td>
        <td><select onchange="if(this.value==='__novo__'){ dpImpCadastrar(${i}); } else { window._dpImp.pessoas[${i}].funcId=this.value; dpImpModal(); }" style="${p.funcId?'':'border:1px solid var(--amber)'}"><option value="">— escolher —</option>${!p.funcId?`<option value="__novo__">+ Cadastrar "${esc((p.nomeLido||'').slice(0,30))}"</option>`:''}${funcs.map(f=>`<option value="${f.id}" ${p.funcId===f.id?'selected':''}>${esc(f.nome)}</option>`).join('')}</select>${dup?'<div style="color:var(--neg);font-size:11px">mesmo funcionário em 2 linhas</div>':''}</td>
-       ${DP_IMP_CAMPOS.map(c=>`<td class="t-right">${(est && DP_EST_ZERO.indexOf(c.k)>=0)?'<span class="t-mut" title="Estagiário: não incide">—</span>':inp(i,c.k,p.val[c.k])}</td>`).join('')}</tr>`; }).join('')}
+       ${DP_IMP_CAMPOS.map(c=>`<td class="t-right">${(est && DP_EST_ZERO.indexOf(c.k)>=0)?'<span class="t-mut" title="Estagiário: não incide">—</span>':inp(i,c.k,p.val[c.k])}</td>`).join('')}${temDesc?`<td class="t-right">${inp(i,'_descAdiant',p.val._descAdiant)}</td>`:''}</tr>`; }).join('')}
      </tbody></table></div>
      <p class="t-mut" style="font-size:11.5px;margin-top:8px">Cada funcionário recebe os PRÓPRIOS valores lidos do PDF. Valores marcados substituem o que estiver lançado no mês para ele; campos não marcados ficam como estão. Para estagiário, FGTS, INSS, planos, seguro, hora extra e provisões não incidem.</p>
    </div>
@@ -17706,13 +17715,19 @@ function dpImpGravar(){ const I=window._dpImp; if(!I) return; const comp=(docume
   if(!sel.length){ toast('Marque os funcionários e escolha (ou cadastre) cada um','err'); return; }
   // mesmo funcionário escolhido em duas linhas: soma as duas (ex.: dois recibos com o nome escrito diferente)
   const porF={}; sel.forEach(p=>{ const a=porF[p.funcId]; if(!a){ porF[p.funcId]={val:Object.assign({},p.val)}; return; } Object.keys(p.val).forEach(k=>{ a.val[k]=Math.round(((+a.val[k]||0)+(+p.val[k]||0))*100)/100; }); });
-  let n=0;
-  DB.bulk(()=>{ Object.keys(porF).forEach(fid=>{ const fz=DB.get('funcionarios',fid); const est=fz&&dpEhEstagiario(fz); const patch={ importadoPdf:I.arquivo, importadoEm:new Date().toISOString() }; const val=porF[fid].val;
-      campos.forEach(k=>{ if(est && DP_EST_ZERO.indexOf(k)>=0) return; const v=val[k]; if(v===undefined||v===null||v==='') return; patch[k]=Math.round((+v||0)*100)/100; });
-      const r=dpReg(fid, comp); if(r) DB.update('folha', r.id, patch); else DB.insert('folha', Object.assign({funcId:fid, comp}, patch)); n++; }); });
-  try{ logAcao('Folha importada do PDF do contador', I.arquivo+' · '+dpCompLabel(comp)+' · '+n+' funcionário(s)'); }catch(e){}
+  let n=0; const tipo=I.tipo==='adiant'?'adiant':'pagto';
+  DB.bulk(()=>{ Object.keys(porF).forEach(fid=>{ const fz=DB.get('funcionarios',fid); const est=fz&&dpEhEstagiario(fz); const val=porF[fid].val;
+      const parte={ arquivo:I.arquivo, em:new Date().toISOString() };
+      campos.forEach(k=>{ if(est && DP_EST_ZERO.indexOf(k)>=0) return; const v=val[k]; if(v===undefined||v===null||v==='') return; parte[k]=Math.round((+v||0)*100)/100; });
+      if(tipo==='pagto' && I.abater && (+val._descAdiant||0)>0 && parte.salario!=null){ parte.descAdiant=Math.round((+val._descAdiant)*100)/100; parte.salario=Math.max(0, Math.round((parte.salario-parte.descAdiant)*100)/100); }
+      const r=dpReg(fid, comp); const partes=Object.assign({}, (r&&r.partes)||{}); partes[tipo]=parte;   // reimportar o mesmo tipo SUBSTITUI aquela parte (não duplica)
+      const patch={ partes, importadoPdf:I.arquivo, importadoEm:new Date().toISOString() };
+      // APURAÇÃO TOTAL = adiantamento + pagamento, campo a campo
+      DP_IMP_CAMPOS.forEach(c=>{ const a=partes.adiant&&partes.adiant[c.k], b=partes.pagto&&partes.pagto[c.k]; if(a==null && b==null) return; patch[c.k]=Math.round(((+a||0)+(+b||0))*100)/100; });
+      if(r) DB.update('folha', r.id, patch); else DB.insert('folha', Object.assign({funcId:fid, comp}, patch)); n++; }); });
+  try{ logAcao((tipo==='adiant'?'Adiantamento':'Pagamento')+' da folha importado do PDF do contador', I.arquivo+' · '+dpCompLabel(comp)+' · '+n+' funcionário(s)'); }catch(e){}
   try{ nuvemPushJa(); }catch(e){}
-  closeModal(); DP.comp=comp; DP.tab='lanc'; DP.funcId=''; toast('Folha de '+dpCompLabel(comp)+' importada — '+n+' funcionário(s), cada um com os seus valores.','ok'); try{ viewDepPessoal(); }catch(e){ dpRender(); } }
+  closeModal(); DP.comp=comp; DP.tab='lanc'; DP.funcId=''; toast((tipo==='adiant'?'Adiantamento':'Pagamento')+' de '+dpCompLabel(comp)+' importado — '+n+' funcionário(s). A folha soma adiantamento + pagamento.','ok'); try{ viewDepPessoal(); }catch(e){ dpRender(); } }
 
 /* ---------------------------- TELA ---------------------------- */
 function viewDepPessoal(){
@@ -17744,6 +17759,10 @@ function dpKpis(linhas){ const t=dpSoma(linhas);
    ${kpiCard('Provisões (férias + 13º)',BRL(t.provisoes),'clock','#7c3aed','férias '+BRL(t.ferias)+' · 13º '+BRL(t.decimo))}
   </div>`; }
 
+/* Mostra de onde veio o valor importado: ADIANTAMENTO + PAGAMENTO (somados na apuração). */
+function dpPartesHTML(l){ try{ const pt=(l.reg&&l.reg.partes)||null; if(!pt) return ''; const a=pt.adiant, b=pt.pagto; if(!a && !b) return '';
+    const tot=x=>x?DP_IMP_CAMPOS.reduce((s,c)=>s+((c.k!=='salario'&&c.k!=='horaExtra'&&c.k!=='comissao')?0:(+x[c.k]||0)),0):0;
+    return `<div style="font-size:10.5px;margin-top:2px"><span style="color:#1d4ed8" title="${a?esc('Adiantamento — '+(a.arquivo||'')):'Adiantamento ainda não importado'}">Adiant. ${a?BRL(tot(a)):'—'}</span> + <span style="color:var(--amber-d)" title="${b?esc('Pagamento — '+(b.arquivo||'')+(b.descAdiant?(' · adiantamento descontado '+BRL(b.descAdiant)+' abatido'):'')):'Pagamento ainda não importado'}">Pagto. ${b?BRL(tot(b)):'—'}</span> = <b>${BRL(tot(a)+tot(b))}</b></div>`; }catch(e){ return ''; } }
 function dpInput(l,campo,auto){
   if(l.estagiario && DP_EST_ZERO.indexOf(campo)>=0) return `<span class="t-mut" title="Estagiário: não incide" style="display:inline-block;min-width:60px;text-align:right">—</span>`;
   const v=l[campo]; const manual = l.reg && l.reg[campo]!=null;
@@ -17763,7 +17782,8 @@ function dpLancHTML(){
     <div class="spacer" style="flex:1"></div>
     <button class="btn btn-ghost btn-sm" onclick="dpCopiarMesAnterior()" title="Repete os valores de ${esc(dpCompLabel(ant))} para os funcionários que ainda não têm lançamento neste mês">${ico('ret')} Copiar de ${esc(dpCompLabel(ant))}</button>
     <button class="btn btn-ghost btn-sm" onclick="DP.tab='mensal';viewDepPessoal()">${ico('doc')} Relatório do mês</button>
-    <label class="btn btn-amber btn-sm" style="cursor:pointer" title="Anexe um ou VÁRIOS PDFs da folha (holerites / resumo da folha) — o sistema separa cada funcionário com os seus valores; quem não estiver cadastrado pode ser cadastrado na hora">${ico('doc')} Importar folha (PDFs do contador — vários funcionários)<input type="file" accept="application/pdf,.pdf" multiple style="display:none" onchange="dpImportarPdf(this)"></label>
+    <label class="btn btn-ghost btn-sm" style="cursor:pointer;border:1px solid #93c5fd;color:#1d4ed8" title="Anexe o(s) PDF(s) do ADIANTAMENTO (vale do dia 20 / quinzena) — um ou vários funcionários">${ico('doc')} Importar ADIANTAMENTO (PDF)<input type="file" accept="application/pdf,.pdf" multiple style="display:none" onchange="dpImportarPdf(this,'adiant')"></label>
+    <label class="btn btn-amber btn-sm" style="cursor:pointer" title="Anexe o(s) PDF(s) do PAGAMENTO (folha do mês) — um ou vários funcionários. O sistema soma com o adiantamento">${ico('doc')} Importar PAGAMENTO (PDF)<input type="file" accept="application/pdf,.pdf" multiple style="display:none" onchange="dpImportarPdf(this,'pagto')"></label>
     <button class="btn btn-ghost btn-sm" onclick="dpLimparMes()" style="color:var(--neg)">${ico('trash')} Limpar o mês</button>
   </div>
   ${dpKpis(linhas)}
@@ -17778,7 +17798,7 @@ function dpLancHTML(){
         ${DP_CAMPOS.map(c=>`<th class="t-right" title="${esc(c.dica||c.lbl)}">${esc(c.curto)}</th>`).join('')}
         <th class="t-right">Custo total</th></tr></thead><tbody>
       ${linhas.map(l=>`<tr>
-        <td><div class="t-strong">${esc(l.func.nome||'—')}${l.estagiario?' <span class="tag" style="font-size:9.5px;background:#ede9fe;color:#6d28d9" title="Estagiário: sem FGTS, INSS, saúde, odonto, seguro, provisões de férias/13º e hora extra">ESTAGIÁRIO</span>':''}</div><div class="t-mut" style="font-size:11px">${esc(l.func.cargo||'—')}${l.ultimo?(' · último salário '+BRL(l.ultimo)):''}</div></td>
+        <td><div class="t-strong">${esc(l.func.nome||'—')}${l.estagiario?' <span class="tag" style="font-size:9.5px;background:#ede9fe;color:#6d28d9" title="Estagiário: sem FGTS, INSS, saúde, odonto, seguro, provisões de férias/13º e hora extra">ESTAGIÁRIO</span>':''}</div>${dpPartesHTML(l)}<div class="t-mut" style="font-size:11px">${esc(l.func.cargo||'—')}${l.ultimo?(' · último salário '+BRL(l.ultimo)):''}</div></td>
         ${DP_CAMPOS.map(c=>`<td class="t-right">${dpInput(l,c.k,c.auto)}</td>`).join('')}
         <td class="t-right tnum t-strong" style="font-size:13.5px">${BRL(l.custo)}</td></tr>`).join('')}
       </tbody><tfoot><tr style="font-weight:800;border-top:2px solid var(--line)">
