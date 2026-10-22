@@ -48,7 +48,7 @@ const CONFIG_EMPRESA = {
      Aparece no topo do menu e no rodapé das Configurações. Troque a cada publicação.
      MANTENHA O FORMATO 'vDD/MM-X' — é ele que o sistema usa para comparar as máquinas
      da loja e avisar quando alguma ficou para trás.                                  */
-  versao: 'v22/10-C',
+  versao: 'v22/10-D',
 
   /* 4) NUVEM (Supabase)  ------------------------------------------------------------
      Cole aqui a Project URL e a chave PUBLISHABLE do projeto Supabase DESTA empresa
@@ -3942,6 +3942,10 @@ function viewDash(){
       return `<div class="card card-pad" style="margin-bottom:16px;border:1px solid var(--amber);background:var(--amber-soft);display:flex;align-items:center;gap:12px;flex-wrap:wrap">
         <div style="flex:1;min-width:200px">${ico('alert')} <b>${NUM(ag.length)} venda(s) aguardando nota fiscal (${BRL(val)}).</b> <span class="t-mut" style="font-size:12.5px">Ficaram fora do caixa por pendência na nota fiscal. Corrija a pendência e emita a nota para faturar e lançar no caixa.</span></div>
         <button class="btn btn-amber btn-sm" onclick="go('sales')">${ico('nfeout')} Ver pedidos</button></div>`; })()}
+    ${(()=>{ const ct=DB.all('vendas').filter(v=>v.contingencia && v.status!=='cancelada' && !v.notaEmitida); if(!ct.length) return '';
+      return `<div class="card card-pad" style="margin-bottom:16px;border:1px solid var(--amber);background:var(--amber-soft);display:flex;align-items:center;gap:12px;flex-wrap:wrap">
+        <div style="flex:1;min-width:200px">${ico('nfeout')} <b>${NUM(ct.length)} venda(s) em CONTINGÊNCIA — nota fiscal a emitir (${BRL(ct.reduce((a,v)=>a+(+v.total||0),0))}).</b> <span class="t-mut" style="font-size:12.5px">As vendas estão registradas (caixa e estoque); só falta emitir a nota, que não saiu por falha da internet/SEFAZ ou recusa.</span></div>
+        <button class="btn btn-amber btn-sm" onclick="SALESF.status='contingencia';go('sales')">${ico('nfeout')} Ver e emitir</button></div>`; })()}
     ${pendDashCardHTML()}
     ${agendaPainelHTML()}
     ${metaMesCard()}
@@ -4162,17 +4166,17 @@ function cartTotalValue(){ return Math.round((Math.max(0,cartSub()-CART.desconto
 /* VENDAS QUE FICARAM SEM NOTA POR ERRO NA EMISSÃO — continuam aqui no PDV para emitir a nota
    assim que o problema for resolvido (cadastro do produto/cliente, rejeição da SEFAZ). */
 let PDVNP={aberto:true};
-function pdvNotasPendentes(){ return DB.all('vendas').filter(v=>v && v.fiscalPendente && v.status!=='cancelada' && !v.notaEmitida)
+function pdvNotasPendentes(){ return DB.all('vendas').filter(v=>v && (v.fiscalPendente || v.contingencia) && v.status!=='cancelada' && !v.notaEmitida)
   .sort((a,b)=>String(b.fiscalPendenteEm||b.data||'').localeCompare(String(a.fiscalPendenteEm||a.data||''))); }
 function pdvNotasPendentesHTML(){ const L=pdvNotasPendentes(); if(!L.length) return '';
   return `<div class="card" style="margin-bottom:14px;border:1px solid var(--amber)">
     <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;padding:10px 14px;background:var(--amber-soft);cursor:pointer" onclick="PDVNP.aberto=!PDVNP.aberto;pdvNotasPendRefresh()">
-      <b style="flex:1;font-size:13px">${ico('nfeout')} ${NUM(L.length)} venda(s) aguardando nota fiscal — emita a nota aqui depois de corrigir</b>
+      <b style="flex:1;font-size:13px">${ico('nfeout')} ${NUM(L.length)} venda(s) sem nota fiscal (contingência / aguardando) — emita a nota aqui</b>
       <span class="t-mut" style="font-size:12px">${PDVNP.aberto?'ocultar ▲':'mostrar ▼'}</span></div>
     ${PDVNP.aberto?`<div class="tbl-wrap"><table style="font-size:12.5px"><thead><tr><th>Pedido</th><th>Cliente</th><th class="t-right">Total</th><th>Motivo</th><th></th></tr></thead><tbody>
-      ${L.slice(0,30).map(v=>{ const md=v.fiscalPendenteModelo||''; return `<tr><td class="tnum"><b>#${esc(v.numero||'—')}</b><div class="t-mut" style="font-size:11px">${fDate(v.data)}</div></td>
+      ${L.slice(0,30).map(v=>{ const md=v.fiscalPendenteModelo||v.contingenciaModelo||''; return `<tr><td class="tnum"><b>#${esc(v.numero||'—')}</b>${v.contingencia?' <span class="tag warn" style="font-size:9.5px">CONTINGÊNCIA</span>':''}<div class="t-mut" style="font-size:11px">${fDate(v.data)}</div></td>
         <td>${esc(v.clienteNome||'Consumidor')}</td><td class="t-right tnum t-strong">${BRL(v.total)}</td>
-        <td class="t-mut" style="font-size:12px;max-width:380px">${esc(((v.fiscalPendenciaMotivo||'')+'').slice(0,160))}</td>
+        <td class="t-mut" style="font-size:12px;max-width:380px">${esc(((v.fiscalPendenciaMotivo||v.contingenciaMotivo||'')+'').slice(0,160))}</td>
         <td class="t-right" style="white-space:nowrap">
           <button class="btn btn-ghost btn-sm" onclick="pdvNotaPendVer('${v.id}')" title="Ver o que falta e corrigir">${ico('alert')} O que falta</button>
           <button class="btn btn-amber btn-sm" onclick="pdvNotaPendEmitir('${v.id}')">${ico('nfeout')} Emitir ${md==='65'?'NFC-e':(md==='55'?'NF-e':'nota')}</button>
@@ -4191,8 +4195,8 @@ function pdvNotaPendVer(id){ let v=DB.get('vendas',id); if(!v) return; nfeReliga
     if(nf){ notaView(nf.id); return; } }
   nfePendenciasModal(falta, cli?cli.id:'', id, md); }
 async function pdvNotaPendEmitir(id){ const v=DB.get('vendas',id); if(!v) return;
-  const md=v.fiscalPendenteModelo||'';
-  try{ if(md==='65'){ const n=await nfeEmitirETransmitir(id,'65','sales'); await nfeFinalizarEmissao(n); }
+  const md=v.fiscalPendenteModelo||v.contingenciaModelo||'';
+  try{ if(md==='65'){ const n=await nfeEmitirETransmitir(id,'65',v.contingencia?'contingencia':'sales'); await nfeFinalizarEmissao(n); }
        else { await pedidoNFe(id); } }catch(e){ try{ toast('Não foi possível emitir: '+((e&&e.message)||e),'err'); }catch(_){} }
   pdvNotasPendRefresh(); }
 function cartPago(){ return Math.round(CART.pagamentos.reduce((s,p)=>s+(+p.valor||0),0)*100)/100; }
@@ -5864,6 +5868,27 @@ function pdvDesfazerFaturamento(vendaId, motivo){ try{ const v=DB.get('vendas',v
     try{ logAcao('Faturamento desfeito — problema na nota', (v.numero?('#'+v.numero+' · '):'')+(motivo||'')); }catch(e){window.__es&&__es(e)}
     try{ nuvemPushJa(); }catch(e){window.__es&&__es(e)} try{ buildNav(); }catch(e){window.__es&&__es(e)}
     return true; }catch(e){ console.error('desfazer faturamento',e); return false; } }
+/* CONTINGÊNCIA (v22/10-D): a venda FOI FECHADA no PDV (cliente pagou e levou) e a nota não saiu —
+   internet caiu, SEFAZ/Focus fora do ar, recusa, cadastro incompleto. A VENDA NÃO SOME E NÃO É DESFEITA:
+   continua FATURADA (estoque baixado, dinheiro no caixa) e aparece em Pedidos marcada "Contingência —
+   nota a emitir", com o motivo. A nota é emitida depois (Pedidos ou quadro de notas do PDV). Antes o
+   faturamento era desfeito e a venda virava pedido pendente — para quem estava no caixa, ela "sumia". */
+function pdvNotaContingencia(vendaId, motivo, modelo){ try{
+    const v=DB.get('vendas',vendaId); if(!v || v.status==='cancelada') return false;
+    motivo=((motivo||'A nota fiscal não foi emitida')+'').slice(0,300);
+    const notas=DB.all('notasFiscais').filter(n=>n && n.vendaId===vendaId && n.status!=='cancelada' && !n.cancelada);
+    if(notas.some(n=>nfeAutorizadaReal(n) || n.status==='autorizada')) return false;   // já tem nota válida
+    // nota recusada/erro (não está em processamento nem pode ter sido autorizada) sai, para poder emitir de novo
+    notas.forEach(n=>{ const talvez=(n.status==='processando' && nfeFoiTransmitida(n)) || (n.status!=='processando' && nfeFoiTransmitida(n) && !/erro|rejeit|denegad/i.test((n._focusStatus||'')+' '+(n.status||'')) && n.status!=='pendente' && n.status!=='rejeitada');
+      if(!talvez){ try{ DB.remove('notasFiscais', n.id); }catch(e){} } });
+    DB.update('vendas',vendaId,{ contingencia:true, contingenciaMotivo:motivo, contingenciaEm:new Date().toISOString(), contingenciaModelo:String(modelo||v.contingenciaModelo||'65'),
+      fiscalPendente:false, fiscalPendenciaMotivo:'', nfFalhaReverter:false, notaEmitida:false, notaNumero:null, notaModelo:null });
+    try{ logAcao('Venda em CONTINGÊNCIA — nota a emitir', (v.numero?('#'+v.numero+' · '):'')+BRL(v.total||0)+' · '+motivo); }catch(e){}
+    try{ nuvemPushJa(); }catch(e){} try{ buildNav(); }catch(e){}
+    return true; }catch(e){ console.error('pdvNotaContingencia',e); return false; } }
+function vendaContingenciaLimpar(vendaId){ const v=DB.get('vendas',vendaId); if(!v || !v.contingencia) return;
+  DB.update('vendas',vendaId,{ contingencia:false, contingenciaResolvidaEm:new Date().toISOString() });
+  try{ logAcao('Contingência resolvida — nota autorizada', v.numero?('#'+v.numero):''); }catch(e){} }
 /* PDV — a nota da venda que ACABOU de ser fechada NÃO saiu (recusa da SEFAZ, erro do Focus,
    cadastro incompleto, falha de comunicação, exceção). REGRA: o pedido só fica FATURADO quando a
    nota é AUTORIZADA. Aqui o faturamento é desfeito (estoque, contas e caixa voltam) e o pedido
@@ -5897,6 +5922,7 @@ function vendasDesfazerFaturadosSemNota(){ let n=0;
     DB.all('vendas').forEach(v=>{ try{
       if(!v || v.status==='cancelada') return;
       if(!(v.faturadoPDV || v.status==='pago')) return;
+      if(v.contingencia) return;   // contingência: a venda fica faturada — só falta a nota
       const marca = v.nfFalhaReverter===true || !!(v.notaErroMotivo && v.notaErroEm);
       if(!marca) return;
       const nfsV=notas.filter(x=>x && x.vendaId===v.id && x.status!=='cancelada' && !x.cancelada);
@@ -6035,10 +6061,11 @@ function nfeFaltaCliente(v, modelo){ try{
    "Aguardando nota fiscal" na aba Pedidos. Quando a nota é autorizada, a retenção é liberada e a
    venda entra no caixa. */
 function nfeMarcarPendencia(vendaId, motivo, modelo){ if(!vendaId) return; const v=DB.get('vendas',vendaId); if(!v||v.status==='cancelada') return;
+  if(v.contingencia){ DB.update('vendas',vendaId,{contingenciaMotivo:(motivo||v.contingenciaMotivo||''), contingenciaEm:new Date().toISOString()}); try{ buildNav(); }catch(e){} return; }   // contingência: continua faturada no caixa, só atualiza o motivo
   DB.update('vendas',vendaId,Object.assign({fiscalPendente:true, fiscalPendenciaMotivo:(motivo||'Pendência na emissão da nota fiscal'), fiscalPendenteEm:today()}, modelo?{fiscalPendenteModelo:String(modelo)}:{}));
   try{ logAcao('Venda retida por pendência fiscal',(v.numero?('#'+v.numero+' · '):'')+(motivo||'')); }catch(e){window.__es&&__es(e)}
   try{ buildNav(); }catch(e){window.__es&&__es(e)} }
-function nfeLimparPendencia(vendaId){ if(!vendaId) return; const v=DB.get('vendas',vendaId); if(!v||!v.fiscalPendente) return;
+function nfeLimparPendencia(vendaId){ if(!vendaId) return; try{ vendaContingenciaLimpar(vendaId); }catch(e){} const v=DB.get('vendas',vendaId); if(!v||!v.fiscalPendente) return;
   DB.update('vendas',vendaId,{fiscalPendente:false, fiscalPendenciaMotivo:'', fiscalPendenteEm:null});
   try{ logAcao('Pendência fiscal resolvida — venda faturada e lançada no caixa',(v.numero?('#'+v.numero):'')); }catch(e){window.__es&&__es(e)}
   try{ toast('Nota autorizada — venda liberada e lançada no caixa','ok'); buildNav(); }catch(e){window.__es&&__es(e)} }
@@ -6152,6 +6179,7 @@ function nfeXpedResolver(action){ const r=window._nfeXpedResolve; window._nfeXpe
   if(action==='skip'){ if(r) r({action:'skip', xPed:'', itens:itensNip}); return; }
   if(r) r({action:'include', xPed:xPed, itens:itensNip}); }
 async function nfeEmitirETransmitir(vendaId, modelo, origem){
+  const _cont=(origem==='pdv'||origem==='contingencia');   // venda já fechada no caixa: falha da nota = CONTINGÊNCIA (nunca desfaz a venda)
   let v=DB.get('vendas',vendaId); if(!v){ toast('Venda não encontrada','err'); return null; }
   if(nfeReligarItens(v)) v=DB.get('vendas',vendaId);
   // Resolve o MODELO do documento em TODAS as telas: BOLETO (a prazo) é sempre NF-e (55);
@@ -6167,16 +6195,16 @@ async function nfeEmitirETransmitir(vendaId, modelo, origem){
     if(_rc.perdido){ try{ closeModal(); }catch(e){window.__es&&__es(e)}
       nfePendenciasModal(['Cliente: o cadastro ligado a esta venda ('+((v.clienteNome||'sem nome'))+') NÃO foi encontrado neste computador — pode ainda não ter sincronizado, ou o cadastro foi refeito com outro registro. Use "Buscar na nuvem" ou escolha o cliente certo.'], '', vendaId, modelo);
       toast('Nota não enviada — o cadastro do cliente não foi encontrado aqui','err');
-      if(origem==='pdv') pdvNotaFalhou(vendaId, 'Cadastro do cliente não encontrado neste computador');
+      if(_cont) pdvNotaContingencia(vendaId, 'Cadastro do cliente não encontrado neste computador', modelo);
       else nfeMarcarPendencia(vendaId, 'Cadastro do cliente não encontrado neste computador', modelo);
       return null; }
     const falta=nfeFaltaEmitir(cliV, v.itens, modelo);
     if(falta.length){
       try{ closeModal(); }catch(e){window.__es&&__es(e)}
-      if(origem==='pdv') pdvNotaFalhou(vendaId, 'Dados obrigatórios faltando: '+falta.join('; '));   // PDV: não fatura sem nota → volta para PENDENTE
+      if(_cont) pdvNotaContingencia(vendaId, 'Dados obrigatórios faltando: '+falta.join('; '), modelo);   // PDV: venda fica faturada em CONTINGÊNCIA até corrigir e emitir
       else nfeMarcarPendencia(vendaId, 'Dados obrigatórios faltando: '+falta.join('; '), modelo);   // venda antiga: segura fora do caixa até corrigir e emitir
       nfePendenciasModal(falta, cliV?cliV.id:'', vendaId, modelo);
-      try{ toast('Nota não enviada — falta completar o cadastro'+(origem==='pdv'?' · o pedido voltou para PENDENTE':''),'err'); }catch(e){}
+      try{ toast('Nota não enviada — falta completar o cadastro'+(_cont?' · a venda ficou em Pedidos como CONTINGÊNCIA':''),'err'); }catch(e){}
       return null; } }
   if(MODO_TESTE){ try{ closeModal(); }catch(e){window.__es&&__es(e)} toast('Ambiente de teste: o cadastro está completo para a nota, mas nada é enviado para a SEFAZ','ok'); return null; }
   const f=focusCfg();
@@ -6185,15 +6213,15 @@ async function nfeEmitirETransmitir(vendaId, modelo, origem){
   // ("Aguardando nota fiscal") — não volta para pendente nem é refeita.
   if(f.url && focusTemToken() && !(await focusSessaoOk())){
     try{ closeModal(); }catch(e){window.__es&&__es(e)}
-    nfeMarcarPendencia(vendaId, 'Sem login na nuvem neste computador — entre com a conta da loja para emitir a nota', modelo);
+    if(_cont) pdvNotaContingencia(vendaId, 'Sem login na nuvem neste computador — entre com a conta da loja para emitir a nota', modelo); else nfeMarcarPendencia(vendaId, 'Sem login na nuvem neste computador — entre com a conta da loja para emitir a nota', modelo);
     try{ toast('Entre na nuvem (conta da loja) para emitir a nota — a venda ficou aguardando a nota fiscal','err'); }catch(e){window.__es&&__es(e)}
     nuvemLoginRapidoModal(()=>{ try{ nfeEmitirETransmitir(vendaId, modelo, 'sales').then(n=>{ try{ if(n) nfeFinalizarEmissao(n); }catch(e){window.__es&&__es(e)} }); }catch(e){window.__es&&__es(e)} });
     return null; }
-  if(!f.url||!focusTemToken()){ if(origem==='pdv') pdvNotaFalhou(vendaId, 'Focus NFe não configurado');
-    try{ alert('NF-e/NFC-e NÃO emitida: o Focus NFe não está configurado (Fiscal › Configurações). O sistema não gera nota simulada — configure o Focus para emitir de verdade.'+(origem==='pdv'?'\n\nO pedido voltou para PENDENTE (não foi faturado).':'')); }catch(e){} toast('Emissão bloqueada — configure o Focus NFe','err'); return null; }
+  if(!f.url||!focusTemToken()){ if(_cont) pdvNotaContingencia(vendaId, 'Focus NFe não configurado', modelo);
+    try{ alert('NF-e/NFC-e NÃO emitida: o Focus NFe não está configurado (Fiscal › Configurações). O sistema não gera nota simulada — configure o Focus para emitir de verdade.'+(_cont?'\n\nA venda FOI REGISTRADA e ficou em Pedidos como CONTINGÊNCIA — emita a nota depois de configurar.':'')); }catch(e){} toast('Emissão bloqueada — configure o Focus NFe','err'); return null; }
   // NF-e modelo 55: TELA DE CONFERÊNCIA — mostra a nota e deixa corrigir CFOP/CSOSN, natureza, xPed, obs.
   if(modelo==='55'){ const rev=await nfeConfirmarNota(v);
-    if(!rev || rev.action==='cancel'){ if(origem==='pdv'){ pdvNotaFalhou(vendaId, 'Emissão da NF-e cancelada na conferência'); toast('Emissão cancelada — o pedido voltou para PENDENTE (não foi faturado)','err'); try{ go('pdv'); }catch(e){} } else toast('Emissão cancelada','err'); return null; }
+    if(!rev || rev.action==='cancel'){ if(_cont){ pdvNotaContingencia(vendaId, 'Emissão da NF-e cancelada na conferência', modelo); toast('Emissão cancelada — a venda ficou em Pedidos como CONTINGÊNCIA (nota a emitir)','err'); try{ go('pdv'); }catch(e){} } else toast('Emissão cancelada','err'); return null; }
     const itensUpd=(v.itens||[]).map((it,ix)=>{ const o=rev.itens[ix]||{};
       return {...it,
         nItemPed:(o.nItemPed!=null&&(''+o.nItemPed).trim()!==''?(+o.nItemPed||''):(it.nItemPed||'')),
@@ -6201,26 +6229,27 @@ async function nfeEmitirETransmitir(vendaId, modelo, origem){
         cstNfe:(o.cst||'').trim() }; });
     DB.update('vendas', v.id, {xPed:(rev.xPed||''), nfeNatureza:(rev.natureza||''), nfeForma:(rev.forma||''), obs:(rev.obs!=null?rev.obs:(v.obs||'')), itens:itensUpd});
   }
-  const n=nfeEmitir(vendaId,true,modelo); if(!n){ if(origem==='pdv'){ pdvNotaFalhou(vendaId, 'Não foi possível gerar a nota'); toast('A nota não foi gerada — o pedido voltou para PENDENTE','err'); } return null; }
+  const n=nfeEmitir(vendaId,true,modelo); if(!n){ if(_cont){ pdvNotaContingencia(vendaId, 'Não foi possível gerar a nota', modelo); toast('A nota não foi gerada — a venda ficou em Pedidos como CONTINGÊNCIA','err'); } return null; }
   DB.update('notasFiscais',n.id,{status:'processando'});
   let r=await focusEmitirAvancando(n.id, modelo);   // v15/10-A: duplicidade na SEFAZ → avança o número e reenvia sozinho
   const _tent=(r&&r.tentativasNum)||0;
   if(r && r.autorizado){ nfeLimparPendencia(vendaId); if(_tent) toast('Numeração ajustada automaticamente — NF autorizada nº '+((DB.get('notasFiscais',n.id)||{}).numero||''),'ok'); return DB.get('notasFiscais',n.id); }
-  if(r && (r.semSessao || r.semNumero)){ nfeMarcarPendencia(vendaId, r.semSessao?'Sem login na nuvem neste computador — entre com a conta da loja para emitir a nota':('Nota não transmitida: '+(r.motivo||'')), modelo); return null; }   // v14/10-F: não é rejeição — a nota fica pendente e a venda retida; o login rápido reenvia
-  if(r && r.processando){ nfeMarcarPendencia(vendaId, 'Nota enviada — aguardando autorização da SEFAZ (ainda sem validade fiscal)', modelo); return DB.get('notasFiscais',n.id); }   // SEFAZ processando: NÃO é válida ainda → venda fica retida (fora do caixa) até autorizar
+  if(r && (r.semSessao || r.semNumero)){ if(_cont){ pdvNotaContingencia(vendaId, r.semSessao?'Sem login na nuvem neste computador':('Nota não transmitida: '+(r.motivo||'')), modelo); return null; } nfeMarcarPendencia(vendaId, r.semSessao?'Sem login na nuvem neste computador — entre com a conta da loja para emitir a nota':('Nota não transmitida: '+(r.motivo||'')), modelo); return null; }   // v14/10-F: não é rejeição — a nota fica pendente e a venda retida; o login rápido reenvia
+  if(r && r.processando){ if(_cont){ pdvNotaContingencia(vendaId, 'Nota enviada — aguardando a SEFAZ responder', modelo); return DB.get('notasFiscais',n.id); } nfeMarcarPendencia(vendaId, 'Nota enviada — aguardando autorização da SEFAZ (ainda sem validade fiscal)', modelo); return DB.get('notasFiscais',n.id); }   // SEFAZ processando: NÃO é válida ainda → venda fica retida (fora do caixa) até autorizar
   // ERRO/REJEIÇÃO final: mostra o retorno da SEFAZ (suprimido durante o retry) e NÃO finaliza a nota
   try{ const _nf=DB.get('notasFiscais',n.id); if(r && r.data) focusResultModal((_nf&&_nf._focusRef)||('gp-'+n.modelo+'-'+n.id), n.modelo, focusCfg().ambiente, r.data); }catch(e){window.__es&&__es(e)}
   const numUsado=(DB.get('notasFiscais',n.id)||n).numero, modeloUsado=n.modelo;
   DB.remove('notasFiscais', n.id);   // marca a exclusão p/ a sincronização não ressuscitar a nota rejeitada
   DB.update('vendas',vendaId,{notaEmitida:false,notaNumero:null,notaModelo:null});
   const _motivoRej=(function(){ try{ const d=r&&r.data||{}; const m=d.mensagem_sefaz||d.mensagem||d.erro||(d.focus&&(d.focus.mensagem_sefaz||d.focus.mensagem))||''; return (m?(''+m):'').slice(0,160); }catch(e){ return ''; } })();
-  if(origem==='pdv'){
-    // A venda acabou de ser fechada no PDV e a nota foi RECUSADA: desfaz o faturamento — estoque volta,
-    // contas/recebimentos saem, e o registro volta a ser PEDIDO PENDENTE (aparece de novo em "Importar pedido").
-    const _okRev=pdvNotaFalhou(vendaId, 'Nota recusada: '+(_motivoRej||'veja o retorno da SEFAZ'));
-    try{ DB.update('vendas',vendaId,{fiscalRejeicaoMotivo:_motivoRej||'Nota rejeitada pela SEFAZ', fiscalRejeicaoEm:today()}); }catch(e){window.__es&&__es(e)}
-    if(_okRev) toast('Nota recusada — o pedido voltou para PENDENTE e não foi faturado. Motivo: '+(_motivoRej||'veja o retorno da SEFAZ'),'err');
-    else toast('Nota recusada — NÃO consegui devolver o pedido para Pendente sozinho. Use "Voltar para em aberto" no pedido. Motivo: '+(_motivoRej||'veja o retorno da SEFAZ'),'err');
+  if(_cont){
+    // A venda já foi fechada no caixa e a nota NÃO saiu (recusa, erro de comunicação, SEFAZ fora do ar):
+    // a venda CONTINUA FATURADA e fica em Pedidos como CONTINGÊNCIA, com o motivo, até a nota ser emitida.
+    const _sem=(!r || !r.data);
+    const _mot=_sem?('Sem resposta da SEFAZ/Focus (internet ou serviço fora do ar)'+(r&&r.motivo?(' — '+(''+r.motivo).slice(0,120)):'')):('Nota recusada: '+(_motivoRej||'veja o retorno da SEFAZ'));
+    pdvNotaContingencia(vendaId, _mot, modelo);
+    try{ DB.update('vendas',vendaId,{fiscalRejeicaoMotivo:_motivoRej||'', fiscalRejeicaoEm:today()}); }catch(e){window.__es&&__es(e)}
+    toast('A nota não saiu — a VENDA FOI REGISTRADA e está em Pedidos como CONTINGÊNCIA. Motivo: '+_mot,'err');
   } else {
     nfeMarcarPendencia(vendaId, 'Nota rejeitada/erro na SEFAZ — corrija e emita novamente'+(_motivoRej?(' ('+_motivoRej+')'):''), modelo);   // venda antiga: fica retida fora do caixa até emitir corretamente
   }
@@ -6710,17 +6739,17 @@ async function posVendaDoc(vendaId,tipo){
   try{ n=await nfeEmitirETransmitir(vendaId, modelo, 'pdv'); }
   catch(e){ console.error('emissão PDV',e);
     const _m=((e&&e.message)||e||'erro desconhecido')+'';
-    const ok=pdvNotaFalhou(vendaId, 'Erro ao emitir a nota: '+_m);
-    try{ alert('A NOTA NÃO FOI EMITIDA.\n\nErro: '+_m+'\n\n'+(ok?'O pedido voltou para PENDENTE (não foi faturado). Corrija e fature de novo no PDV.':'Confira o pedido em Pedidos — se a nota foi enviada, consulte o status em Notas Emitidas.')); }catch(_){}
-    try{ go('pdv'); if(ok) setTimeout(()=>{ try{ if(DB.get('vendas',vendaId)) pdvLoadPedido(vendaId); }catch(_){} },400); }catch(_){}
+    pdvNotaContingencia(vendaId, 'Erro ao emitir a nota (internet/SEFAZ): '+_m, modelo);
+    try{ alert('A NOTA NÃO FOI EMITIDA.\n\nErro: '+_m+'\n\nA VENDA FOI REGISTRADA normalmente (caixa e estoque) e está em PEDIDOS como CONTINGÊNCIA. Quando a internet/SEFAZ voltar, emita a nota em Pedidos ou no quadro de notas do PDV.'); }catch(_){}
+    try{ go('pdv'); }catch(_){}
     return; }
   // Nota que voltou sem autorização (rejeitada na consulta, erro): o pedido NÃO pode ficar faturado
   try{ if(n){ const _nid=(typeof n==='string')?n:n.id; await nfeFinalizarEmissao(n, 'pdv');
       const _nf=DB.get('notasFiscais',_nid);
       if(_nf && !(nfeAutorizadaReal(_nf)||_nf.status==='autorizada') && _nf.status!=='processando'){
-        if(pdvNotaFalhou(vendaId, 'Nota não autorizada: '+((_nf._focusUltMsg||'').slice(0,160)||'veja o retorno da SEFAZ'))){
-          toast('Nota não autorizada — o pedido voltou para PENDENTE (não foi faturado)','err');
-          try{ go('pdv'); setTimeout(()=>{ try{ if(DB.get('vendas',vendaId)) pdvLoadPedido(vendaId); }catch(_){} },400); }catch(_){} } } } }
+        if(pdvNotaContingencia(vendaId, 'Nota não autorizada: '+((_nf._focusUltMsg||'').slice(0,160)||'veja o retorno da SEFAZ'), modelo)){
+          toast('Nota não autorizada — a VENDA FOI REGISTRADA e está em Pedidos como CONTINGÊNCIA (nota a emitir)','err');
+          try{ go('pdv'); }catch(_){} } } } }
   catch(e){ console.error('finalizar emissão PDV',e); }
 }
 /* ===================================================================
@@ -6733,6 +6762,7 @@ function vendasLiberarPendenciaResolvida(){
   try{ vendasDesfazerFaturadosSemNota(); }catch(e){}
   let n=0;
   try{
+    try{ const notasC=DB.all('notasFiscais'); DB.all('vendas').filter(v=>v && v.contingencia && v.status!=='cancelada').forEach(v=>{ const nf=notasC.find(x=>x && x.vendaId===v.id && x.status!=='cancelada' && nfeAutorizadaReal(x)); if(nf){ DB.update('vendas',v.id,{notaEmitida:true, notaNumero:nf.numero||null, notaModelo:nf.modelo||null}); vendaContingenciaLimpar(v.id); } }); }catch(e){}
     const retidas=DB.all('vendas').filter(v=>v && v.fiscalPendente && v.status!=='cancelada');
     if(!retidas.length) return 0;
     const notas=DB.all('notasFiscais');
@@ -6842,6 +6872,7 @@ function viewSales(scope){ SALES_LIM=SALES_PASSO; SALESF.scope=(scope==='vend')?
         ${vend?'':`<option value="pendente" ${SALESF.status==='pendente'?'selected':''}>Pendente</option>
         <option value="receber_local" ${SALESF.status==='receber_local'?'selected':''}>Receber no local</option>`}
         <option value="faturado" ${SALESF.status==='faturado'?'selected':''}>Faturado</option>
+        <option value="contingencia" ${SALESF.status==='contingencia'?'selected':''}>Contingência (nota a emitir)</option>
         ${vend?'':`<option value="cancelado" ${SALESF.status==='cancelado'?'selected':''}>Cancelado</option>`}
       </select>
       <select class="pill-filter" id="sales-forma" onchange="SALESF.forma=this.value;renderSalesTable()" style="min-width:170px">
@@ -7091,7 +7122,7 @@ function salesTable(vendas){
     ${vendas.slice(0,SALES_LIM).map(v=>{ const lucro=vendaLucro(v); const nit=v.itens.reduce((s,i)=>s+i.qtd,0);
     const isRL = v.status==='receber_local' || pedidoStatusInfo(v).k==='receber_local';   // destaque para "receber no local"
     return `<tr style="${isRL?'background:#fff7ed;box-shadow:inset 4px 0 0 #f59e0b':''}">
-      <td class="tnum t-strong">${v.numero?('#'+v.numero):(v.fromOrcNumero?('orç. '+v.fromOrcNumero):'—')}${isRL?` <span class="tag warn" style="font-size:9.5px;letter-spacing:.3px;display:inline-block;margin-top:2px">${ico('money')} RECEBER NO LOCAL</span>`:''}</td>
+      <td class="tnum t-strong">${v.numero?('#'+v.numero):(v.fromOrcNumero?('orç. '+v.fromOrcNumero):'—')}${v.contingencia&&v.status!=='cancelada'?` <span class="tag warn" style="font-size:9.5px;display:inline-block;margin-top:2px;cursor:pointer" title="${esc('Nota não emitida: '+(v.contingenciaMotivo||''))} — clique para emitir" onclick="pedidoNFe('${v.id}')">${ico('nfeout')} CONTINGÊNCIA</span>`:''}${isRL?` <span class="tag warn" style="font-size:9.5px;letter-spacing:.3px;display:inline-block;margin-top:2px">${ico('money')} RECEBER NO LOCAL</span>`:''}</td>
       <td class="tnum t-mut">${fDate(v.data)}</td>
       <td class="t-strong sales-cli">${esc(v.clienteNome||'Consumidor')}</td>
       <td class="t-mut tnum">${NUM(nit)}</td>
@@ -7125,7 +7156,7 @@ async function pedidoNFeEmitir(id, modelo){ const v=DB.get('vendas',id); if(!v) 
   if(modelo==='65' && boleto){ toast('Venda no boleto (a prazo): a nota sai como NF-e (modelo 55), não NFC-e.','ok'); modelo='55'; }
   if(modelo==='55' && boleto && !(v.parcelas&&v.parcelas.length)){ closeModal(); nfeParcModal(id, ()=>pedidoNFeEmitir(id,'55')); return; }   // NF-e a prazo: parcelas e vencimentos antes
   closeModal();
-  const n=await nfeEmitirETransmitir(id, modelo, 'sales');
+  const n=await nfeEmitirETransmitir(id, modelo, v.contingencia?'contingencia':'sales');
   try{ renderSalesTable((document.getElementById('sales-q')||{}).value||''); }catch(e){window.__es&&__es(e)}
   await nfeFinalizarEmissao(n);
 }
@@ -7134,6 +7165,7 @@ function vendaTemForma(v, forma){ if(!forma) return true;
   if((v.pagamentos||[]).some(p=>(p.forma||'')===forma)) return true;
   return (v.formaPagamento||'')===forma; }
 function pedidoStatusInfo(v){ if(v.status==='cancelada') return {k:'cancelado',label:'Cancelado',cls:'err'};
+  if(v.contingencia && !v.fiscalPendente) return {k:'faturado',label:'Contingência — nota a emitir',cls:'warn',contingencia:true};   // venda fechada, só falta a nota (continua no caixa)
   if(v.fiscalPendente) return {k:'aguardando_nf',label:'Aguardando nota fiscal',cls:'warn'};   // retida: nota com pendência — fora do caixa e dos faturados até resolver
   if(v.status==='receber_local') return {k:'receber_local',label:'Receber no local',cls:'warn'};
   if(v.status==='pendente'){
@@ -8385,7 +8417,7 @@ function renderSalesTable(q){ if(q!==undefined) SALESF.q=q; const qq=(SALESF.q||
       return (v.clienteNome||'').toLowerCase().includes(ql) || (!!qd && String(v.numero||'').includes(qd)); })
     .filter(v=>{ const vv=numBR(SALESF.val); if(!(vv>0)) return true;   // busca por VALOR: igual ou aproximado (tolerância de 5% ou R$5, o que for maior)
       const tot=vendaFaturamento(v); const tol=Math.max(vv*0.05, 5); return Math.abs(tot-vv)<=tol; })
-    .filter(v=> !SALESF.status || pedidoStatusInfo(v).k===SALESF.status)
+    .filter(v=> !SALESF.status || (SALESF.status==='contingencia'?!!v.contingencia:pedidoStatusInfo(v).k===SALESF.status))
     .filter(v=> !SALESF.forma || vendaTemForma(v, SALESF.forma))
     .filter(v=> !SALESF.de || (v.data||'')>=SALESF.de)
     .filter(v=> !SALESF.ate || (v.data||'')<=SALESF.ate);
