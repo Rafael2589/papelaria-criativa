@@ -48,7 +48,7 @@ const CONFIG_EMPRESA = {
      Aparece no topo do menu e no rodapé das Configurações. Troque a cada publicação.
      MANTENHA O FORMATO 'vDD/MM-X' — é ele que o sistema usa para comparar as máquinas
      da loja e avisar quando alguma ficou para trás.                                  */
-  versao: 'v22/10-D',
+  versao: 'v22/10-F',
 
   /* 4) NUVEM (Supabase)  ------------------------------------------------------------
      Cole aqui a Project URL e a chave PUBLISHABLE do projeto Supabase DESTA empresa
@@ -17438,7 +17438,7 @@ const DP_CAMPOS=[
   {k:'comissao', lbl:'Prêmio',             curto:'Prêmio',  auto:true,  tipo:'prov', dica:'Puxado do módulo de Prêmios (apuração por vendedor). Digite um valor para substituir.'},
   {k:'fgts',     lbl:'FGTS',                 curto:'FGTS',      auto:true,  tipo:'enc',  dica:'Calculado sobre salário + hora extra + prêmio. Digite para substituir.'},
   {k:'inss',     lbl:'INSS',                 curto:'INSS',      auto:true,  tipo:'enc',  dica:'Calculado sobre salário + hora extra + prêmio. No Simples Nacional costuma ser 0.'},
-  {k:'vt',       lbl:'Vale transporte',      curto:'V. transp.',auto:false, tipo:'ben'},
+  {k:'vt',       lbl:'Vale transporte pago (valor pago ao funcionário)', curto:'VT pago',auto:false, tipo:'ben', dica:'Valor de vale-transporte PAGO ao funcionário (custo da empresa). O desconto do contracheque fica na coluna "VT desc.".'},
   {k:'saude',    lbl:'Plano de saúde',       curto:'Saúde',     auto:false, tipo:'ben'},
   {k:'odonto',   lbl:'Plano odontológico',   curto:'Odonto',    auto:false, tipo:'ben'},
   {k:'seguro',   lbl:'Seguro de vida',       curto:'Seguro',    auto:false, tipo:'ben'},
@@ -17591,26 +17591,30 @@ const DP_IMP_CAMPOS=[
   {k:'horaExtra',lbl:'Hora extra',      on:true},
   {k:'comissao', lbl:'Prêmio',          on:true},
   {k:'fgts',     lbl:'FGTS',            on:true},
-  {k:'inss',     lbl:'INSS',            on:false, nota:'No holerite o INSS é o DESCONTO do funcionário; o campo da folha é o INSS patronal (empresa).'},
-  {k:'vt',       lbl:'Vale transporte', on:false, nota:'No holerite aparece o desconto (até 6%) do funcionário, não o custo da empresa.'},
-  {k:'saude',    lbl:'Plano de saúde',  on:false, nota:'No holerite aparece a parte descontada do funcionário.'},
-  {k:'odonto',   lbl:'Odonto',          on:false},
+  {k:'salFamilia',lbl:'Salário família', on:true, info:true, nota:'Provento pago ao funcionário e abatido da guia do INSS — informativo (não entra no custo).'},
+  {k:'inssDesc', lbl:'INSS (desconto)', on:true, info:true, nota:'INSS descontado do funcionário no holerite — informativo (não é custo da empresa).'},
+  {k:'vtDesc',   lbl:'VT (desconto)',   on:true, info:true, nota:'Vale-transporte DESCONTADO no contracheque (até 6% do salário).'},
+  {k:'saudeDesc',lbl:'Plano de saúde (desconto)', on:true, info:true, nota:'Plano de saúde/odonto descontado em folha do funcionário — informativo.'},
+  {k:'liquido',  lbl:'Salário líquido', on:true, info:true, nota:'Valor líquido do recibo (adiantamento + pagamento somados na apuração).'},
+  {k:'inss',     lbl:'INSS patronal',   on:false, nota:'Só quando o PDF trouxer o INSS da EMPRESA (patronal). O INSS do holerite vai em "INSS (desconto)".'},
+  {k:'vt',       lbl:'VT pago',         on:true, nota:'Vale-transporte PAGO ao funcionário — só quando aparece nos PROVENTOS do holerite. O desconto vai em "VT (desconto)".'},
   {k:'seguro',   lbl:'Seguro de vida',  on:false}
 ];
+/* Valores do holerite que NÃO são custo da empresa: aparecem na folha à parte (informativos). */
+const DP_INFO_CAMPOS=[{k:'salFamilia',curto:'Sal. família'},{k:'inssDesc',curto:'INSS desc.'},{k:'vtDesc',curto:'VT desc.'},{k:'saudeDesc',curto:'Plano desc.'},{k:'liquido',curto:'Líquido'}];
 const DP_IMP_RX=[
   ['horaExtra', /(hora|horas|hs|h)\.?\s*extras?|\bh\.?\s?e\.?\s*\d{2,3}\s*%|\bextras?\s*\d{2,3}\s*%/i],
   ['comissao',  /comiss|pr[eê]mio/i],
   ['fgts',      /f\.?\s*g\.?\s*t\.?\s*s/i],
   ['inss',      /\bi\.?\s*n\.?\s*s\.?\s*s\b/i],
-  ['vt',        /vale[\s.-]*transp|\bv\.?\s?t\.?\b|transporte/i],
   ['odonto',    /odonto/i],
   ['saude',     /plano\s*(de)?\s*sa[uú]de|assist[eê]ncia\s*m[eé]dica|unimed|conv[eê]nio\s*m[eé]d|\bsa[uú]de\b/i],
   ['seguro',    /seguro/i],
   ['salario',   /sal[aá]rio|horas?\s*normais|dias?\s*normais|dias?\s*trabalhad|bolsa|pr[oó][\s-]*labore|ordenado|vencimento\s*base/i]
 ];
 const DP_IMP_IGNORA=/base|sal\.?\s*contr|total|l[ií]quido|faixa|teto|dedu[cç]|dependente|fam[ií]lia|maternidade|\bm[eê]s\s*anterior|adiant|refer[eê]ncia|vencimentos|descontos|desconto\s*s\/|cbo|admiss/i;
-const DP_IMP_MOEDA=/^-?\d{1,3}(?:\.\d{3})*,\d{2}$|^-?\d+,\d{2}$/;
-function dpImpValor(t){ return Math.round(numBR(t)*100)/100; }
+const DP_IMP_MOEDA=/^(?:R\$\s*)?-?\d{1,3}(?:\.\d{3})*,\d{2}$|^(?:R\$\s*)?-?\d+,\d{2}$/;
+function dpImpValor(t){ return Math.round(numBR((''+(t||'')).replace(/[^\d.,-]/g,''))*100)/100; }
 /* Linhas do PDF com a POSIÇÃO de cada pedaço de texto (precisa da coluna para casar rótulo × valor). */
 async function dpImpLerPdf(file){
   if(!window.pdfjsLib) throw new Error('Leitor de PDF indisponível. Verifique a conexão e recarregue a página.');
@@ -17651,7 +17655,10 @@ function dpImpAnalisar(rows, funcs, modo){
   const abrir=(func, nome, cargo)=>{ cur={funcId:func?func.id:'', nomeLido:func?func.nome:nome, cargoLido:cargo||'', val:{}, linhas:[], ev:[]}; blocos.push(cur); };
   const cargoDaLinha=(r, nome)=>{ try{ const n=normTxt(nome||''); const segs=r.segs.map(sg=>sg.t).filter(t=>/[A-Za-zÀ-ú]{4}/.test(t) && !DP_IMP_MOEDA.test(t) && normTxt(t)!==n && n.indexOf(normTxt(t))<0 && normTxt(t).indexOf(n)<0);
       const c=segs.find(t=>!/^(cbo|fun[cç][aã]o|cargo|nome|c[oó]digo|admiss)/i.test(t)); return c?c.trim():''; }catch(e){ return ''; } };
+  let colPg=-1, colP=null, colD=null;   // posição (borda direita) das colunas PROVENTOS e DESCONTOS na página
   for(let i=0;i<rows.length;i++){ const r=rows[i];
+    { const hp=r.segs.find(sg=>/^(proventos|vencimentos|cr[eé]ditos)$/i.test(sg.t.trim())), hd=r.segs.find(sg=>/^(descontos|d[eé]bitos)$/i.test(sg.t.trim()));
+      if(hp && hd){ colPg=r.pg; colP=hp.x1; colD=hd.x1; continue; } }
     const f=dpImpAcharFunc(r.txt, funcs);
     if(f){ abrir(f, f.nome, cargoDaLinha(r, f.nome)); continue; }
     const nl=dpImpNomeLido(r.txt); if(nl){ const f2=dpImpAcharFunc(nl, funcs); abrir(f2, nl, cargoDaLinha(r, nl)); continue; }
@@ -17659,7 +17666,7 @@ function dpImpAnalisar(rows, funcs, modo){
       const nx=rows[i+1]; const cand=(nx.segs.find(sg=>/^[A-ZÀ-Ú][A-ZÀ-Ú'. ]{6,}$/.test(sg.t) && sg.t.trim().split(/\s+/).length>=2)||{}).t;
       if(cand){ abrir(null, cand.trim(), cargoDaLinha(nx, cand)); i++; continue; } }
     if(!cur) continue;
-    const moedas=r.segs.filter(sg=>DP_IMP_MOEDA.test(sg.t)); const textos=r.segs.filter(sg=>!DP_IMP_MOEDA.test(sg.t) && /[a-zA-Z]{2}/.test(sg.t));
+    const moedas=r.segs.filter(sg=>DP_IMP_MOEDA.test(sg.t)); const textos=r.segs.filter(sg=>!DP_IMP_MOEDA.test(sg.t) && /[A-Za-zÀ-ú][^A-Za-zÀ-ú]{0,2}[A-Za-zÀ-ú]/.test(sg.t));
     if(!moedas.length && textos.length){ const nx=rows[i+1]; if(!nx || nx.pg!==r.pg) continue;
       textos.forEach(sg=>{ if(!/f\.?\s*g\.?\s*t\.?\s*s/i.test(sg.t) || /base/i.test(sg.t)) return;
         const c=(sg.x0+sg.x1)/2; let mv=null, md=1e9; nx.segs.filter(s2=>DP_IMP_MOEDA.test(s2.t)).forEach(s2=>{ const d=Math.abs((s2.x0+s2.x1)/2-c); if(d<md){ md=d; mv=s2; } });
@@ -17673,6 +17680,15 @@ function dpImpAnalisar(rows, funcs, modo){
         if(modo==='adiant'){ cur.val.salario=Math.round(((cur.val.salario||0)+va)*100)/100; cur.linhas.push(desc+': '+moedas[moedas.length-1].t); cur.ev.push('salario='+va+'|'+normTxt(desc)); }
         else { cur.val._descAdiant=Math.round(((cur.val._descAdiant||0)+va)*100)/100; cur.linhas.push(desc+' (desconto): '+moedas[moedas.length-1].t); cur.ev.push('desc='+va+'|'+normTxt(desc)); } }
       continue; }
+    { const vx=dpImpValor(moedas[moedas.length-1].t); let ce='';
+      if(/sal[aá]rio\s*-?\s*fam/i.test(desc)) ce='salFamilia';
+      else if(/l[ií]quido/i.test(desc) && !/base|total/i.test(desc)) ce='liquido';
+      else if(/\bi\.?\s*n\.?\s*s\.?\s*s\b/i.test(desc) && !/base|sal\.?\s*contr|teto|faixa/i.test(desc)) ce=/patronal|empresa|empregador/i.test(desc)?'inss':'inssDesc';
+      else if(/vale[\s.-]*transp|\bv\.?\s?t\.?\b|transporte/i.test(desc)){ const mv=moedas[moedas.length-1];
+        // VT nos PROVENTOS = valor pago ao funcionário; nos DESCONTOS = desconto do contracheque
+        ce=(colPg===r.pg && colP!=null && colD!=null && Math.abs(mv.x1-colP)<Math.abs(mv.x1-colD))?'vt':'vtDesc'; }
+      else if(/plano\s*(de)?\s*sa[uú]de|assist[eê]ncia\s*m[eé]dic|unimed|odonto|conv[eê]nio\s*m[eé]d|\bsa[uú]de\b|amil|bradesco\s*sa|hapvida|samp|medsenior/i.test(desc)) ce='saudeDesc';
+      if(ce){ if(vx>0){ if(ce==='liquido') cur.val.liquido=vx; else cur.val[ce]=Math.round(((cur.val[ce]||0)+vx)*100)/100; cur.linhas.push(desc+': '+moedas[moedas.length-1].t); cur.ev.push(ce+'='+vx+'|'+normTxt(desc)); } continue; } }
     if(DP_IMP_IGNORA.test(desc)) continue;
     const campo=(DP_IMP_RX.find(([k,rx])=>rx.test(desc))||[])[0]; if(!campo) continue;
     const v=dpImpValor(moedas[moedas.length-1].t); if(!(v>0)) continue;
@@ -17751,8 +17767,13 @@ function dpImpGravar(){ const I=window._dpImp; if(!I) return; const comp=(docume
   DB.bulk(()=>{ Object.keys(porF).forEach(fid=>{ const fz=DB.get('funcionarios',fid); const est=fz&&dpEhEstagiario(fz); const val=porF[fid].val;
       const parte={ arquivo:I.arquivo, em:new Date().toISOString() };
       campos.forEach(k=>{ if(est && DP_EST_ZERO.indexOf(k)>=0) return; const v=val[k]; if(v===undefined||v===null||v==='') return; parte[k]=Math.round((+v||0)*100)/100; });
-      if(tipo==='pagto' && I.abater && (+val._descAdiant||0)>0 && parte.salario!=null){ parte.descAdiant=Math.round((+val._descAdiant)*100)/100; parte.salario=Math.max(0, Math.round((parte.salario-parte.descAdiant)*100)/100); }
+      if(tipo==='pagto' && I.abater && (+val._descAdiant||0)>0 && parte.salario!=null){ parte.descAdiant=Math.round((+val._descAdiant)*100)/100; parte.salarioBruto=parte.salario; parte.abatido=false; }
       const r=dpReg(fid, comp); const partes=Object.assign({}, (r&&r.partes)||{}); partes[tipo]=parte;   // reimportar o mesmo tipo SUBSTITUI aquela parte (não duplica)
+      // O desconto do adiantamento só é abatido do salário do PAGAMENTO quando o ADIANTAMENTO também está
+      // importado no mês (em qualquer ordem). Só o pagamento importado = salário cheio; os dois = adiant. + (salário − adiant.).
+      if(partes.pagto && (+partes.pagto.descAdiant||0)>0 && partes.pagto.salarioBruto!=null){ const pg=Object.assign({}, partes.pagto);
+        if(partes.adiant){ pg.salario=Math.max(0, Math.round((pg.salarioBruto-pg.descAdiant)*100)/100); pg.abatido=true; } else { pg.salario=pg.salarioBruto; pg.abatido=false; }
+        partes.pagto=pg; }
       const patch={ partes, importadoPdf:I.arquivo, importadoEm:new Date().toISOString() };
       // APURAÇÃO TOTAL = adiantamento + pagamento, campo a campo
       DP_IMP_CAMPOS.forEach(c=>{ const a=partes.adiant&&partes.adiant[c.k], b=partes.pagto&&partes.pagto[c.k]; if(a==null && b==null) return; patch[c.k]=Math.round(((+a||0)+(+b||0))*100)/100; });
@@ -17795,6 +17816,8 @@ function dpKpis(linhas){ const t=dpSoma(linhas);
 function dpPartesHTML(l){ try{ const pt=(l.reg&&l.reg.partes)||null; if(!pt) return ''; const a=pt.adiant, b=pt.pagto; if(!a && !b) return '';
     const tot=x=>x?DP_IMP_CAMPOS.reduce((s,c)=>s+((c.k!=='salario'&&c.k!=='horaExtra'&&c.k!=='comissao')?0:(+x[c.k]||0)),0):0;
     return `<div style="font-size:10.5px;margin-top:2px"><span style="color:#1d4ed8" title="${a?esc('Adiantamento — '+(a.arquivo||'')):'Adiantamento ainda não importado'}">Adiant. ${a?BRL(tot(a)):'—'}</span> + <span style="color:var(--amber-d)" title="${b?esc('Pagamento — '+(b.arquivo||'')+(b.descAdiant?(' · adiantamento descontado '+BRL(b.descAdiant)+' abatido'):'')):'Pagamento ainda não importado'}">Pagto. ${b?BRL(tot(b)):'—'}</span> = <b>${BRL(tot(a)+tot(b))}</b></div>`; }catch(e){ return ''; } }
+function dpInfoInput(l,campo){ const v=(l.reg||{})[campo];
+  return `<input class="tnum dp-in" style="color:var(--muted)" value="${v!=null&&v!==''?String((+v).toFixed(2)).replace('.',','):''}" placeholder="—" onchange="dpSet('${l.func.id}','${campo}',this.value)" title="Informativo do holerite (não entra no custo da folha)">`; }
 function dpInput(l,campo,auto){
   if(l.estagiario && DP_EST_ZERO.indexOf(campo)>=0) return `<span class="t-mut" title="Estagiário: não incide" style="display:inline-block;min-width:60px;text-align:right">—</span>`;
   const v=l[campo]; const manual = l.reg && l.reg[campo]!=null;
@@ -17828,15 +17851,15 @@ function dpLancHTML(){
       ${linhas.length?`<table class="dp-tbl"><thead><tr>
         <th style="text-align:left">Funcionário</th>
         ${DP_CAMPOS.map(c=>`<th class="t-right" title="${esc(c.dica||c.lbl)}">${esc(c.curto)}</th>`).join('')}
-        <th class="t-right">Custo total</th></tr></thead><tbody>
+        <th class="t-right">Custo total</th>${DP_INFO_CAMPOS.map(c=>`<th class="t-right" style="color:var(--muted);background:var(--surface-2)" title="Informativo do holerite — não entra no custo">${esc(c.curto)}</th>`).join('')}</tr></thead><tbody>
       ${linhas.map(l=>`<tr>
         <td><div class="t-strong">${esc(l.func.nome||'—')}${l.estagiario?' <span class="tag" style="font-size:9.5px;background:#ede9fe;color:#6d28d9" title="Estagiário: sem FGTS, INSS, saúde, odonto, seguro, provisões de férias/13º e hora extra">ESTAGIÁRIO</span>':''}</div>${dpPartesHTML(l)}<div class="t-mut" style="font-size:11px">${esc(l.func.cargo||'—')}${l.ultimo?(' · último salário '+BRL(l.ultimo)):''}</div></td>
         ${DP_CAMPOS.map(c=>`<td class="t-right">${dpInput(l,c.k,c.auto)}</td>`).join('')}
-        <td class="t-right tnum t-strong" style="font-size:13.5px">${BRL(l.custo)}</td></tr>`).join('')}
+        <td class="t-right tnum t-strong" style="font-size:13.5px">${BRL(l.custo)}</td>${DP_INFO_CAMPOS.map(c=>`<td class="t-right" style="background:var(--surface-2)">${dpInfoInput(l,c.k)}</td>`).join('')}</tr>`).join('')}
       </tbody><tfoot><tr style="font-weight:800;border-top:2px solid var(--line)">
         <td>TOTAL — ${NUM(linhas.length)} funcionário(s)</td>
         ${DP_CAMPOS.map(c=>`<td class="t-right tnum">${BRL(t[c.k])}</td>`).join('')}
-        <td class="t-right tnum" style="font-size:14px">${BRL(t.custo)}</td></tr></tfoot></table>`
+        <td class="t-right tnum" style="font-size:14px">${BRL(t.custo)}</td>${DP_INFO_CAMPOS.map(c=>`<td class="t-right tnum" style="background:var(--surface-2);color:var(--muted)">${BRL(linhas.reduce((a,l)=>a+(+((l.reg||{})[c.k])||0),0))}</td>`).join('')}</tr></tfoot></table>`
       :`<div class="empty" style="padding:34px">${ico('people')}<h4>Nenhum funcionário ativo</h4><p class="t-mut">Cadastre a equipe em Cadastros › Funcionários e Vendedores.</p></div>`}
     </div>
   </div>
