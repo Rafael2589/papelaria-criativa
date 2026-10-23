@@ -48,7 +48,7 @@ const CONFIG_EMPRESA = {
      Aparece no topo do menu e no rodapé das Configurações. Troque a cada publicação.
      MANTENHA O FORMATO 'vDD/MM-X' — é ele que o sistema usa para comparar as máquinas
      da loja e avisar quando alguma ficou para trás.                                  */
-  versao: 'v22/10-F',
+  versao: 'v23/10-A',
 
   /* 4) NUVEM (Supabase)  ------------------------------------------------------------
      Cole aqui a Project URL e a chave PUBLISHABLE do projeto Supabase DESTA empresa
@@ -6296,7 +6296,19 @@ async function nfeAvancarNumeroDuplicado(noteId, modelo, r){
   try{ if((+cfg[k]||0)<novo+1){ const p={}; p[k]=novo+1; fiscalSaveCfg(p); } }catch(e){}
   try{ logAcao('Numeração avançada por duplicidade na SEFAZ', (modelo==='65'?'NFC-e':'NF-e')+' nº '+atual+' → '+novo); }catch(e){}
   return novo; }
+const _nfeTransmitindo=new Set();   // v23/10-A: notas com envio em andamento NESTE computador (a consulta não mexe nelas)
 async function focusEmitirAvancando(noteId, modelo, opts){
+  _nfeTransmitindo.add(noteId);
+  try{ DB.update('notasFiscais',noteId,{_procDesde:new Date().toISOString()}); }catch(e){}
+  let r=null;
+  try{ r=await _focusEmitirAvancando(noteId, modelo, opts); return r; }
+  finally{ _nfeTransmitindo.delete(noteId);
+    // v23/10-A: o envio NÃO chegou a sair (dado faltando, Focus não configurado, sem numeração...) e a nota
+    // ficou "processando" sem referência no Focus → nunca seria consultada. Vira PENDENTE com o motivo.
+    try{ const nf=DB.get('notasFiscais',noteId);
+      if(nf && nf.status==='processando' && !nf._focusRef && r && !r.autorizado && !r.processando && !r.rede && !r.duplicidade){
+        DB.update('notasFiscais',noteId,{status:'pendente', _focusUltMsg:('Nota não transmitida: '+(r.motivo||'o envio foi interrompido')).slice(0,300), _focusUltEm:new Date().toISOString()}); } }catch(e){} } }
+async function _focusEmitirAvancando(noteId, modelo, opts){
   const o=Object.assign({silent:true, noModal:true}, opts||{});
   let r=await focusEmitir(DB.get('notasFiscais',noteId), modelo, o);
   if(!(typeof fiscalNumeracaoSistema==='function' && fiscalNumeracaoSistema())) return r;
@@ -29006,6 +29018,11 @@ function pendColetar(){ const d=DB._load(); const hoje=today(); const G=[];
       acoes:[{rotulo:'Abrir notas', fn:"fdAbrirNotas('rejeitada')"}] });
     const proc=(d.notasFiscais||[]).filter(n=>n && n.status==='processando');
     add({ id:'nf_proc', grupo:'Fiscal', nivel:'aviso', n:proc.length, titulo:'Notas esperando resposta da SEFAZ',
+      detalhe:'"Consultar agora" pergunta ao Focus a situação de cada uma. A que não chegou ao Focus volta para Pendente com o motivo.',
+      itens:proc.slice(0,15).map(n=>{ const v=n.vendaId?((d.vendas||[]).find(x=>x&&x.id===n.vendaId)):null;
+        const sit=n._focusRef?((n._focusUltConsultaMsg?('última consulta: '+n._focusUltConsultaMsg):'aguardando a SEFAZ')):'envio não confirmado pelo Focus';
+        return { txt:(n.modelo==='65'?'NFC-e':'NF-e')+' '+(n.numero||'s/nº')+' · '+fDate(n.data)+(v?(' · venda #'+(v.numero||'—')):'')+' · '+(n.clienteNome||'Consumidor')+' · '+BRL(+n.valor||0)+' — '+(''+sit).slice(0,110),
+          btns:[{rotulo:'Ver nota', fn:`notaView('${n.id}')`}] }; }),
       acoes:[{rotulo:'Consultar agora', fn:'pendConsultarNotas()'}] }); }
   { const s=caixaSessaoDiaAnterior();
     add({ id:'caixa_ant', grupo:'Caixa', nivel:'erro', n:s?1:0, titulo:'Caixa de dia anterior ainda aberto',
@@ -33642,12 +33659,12 @@ let _nfeAtualizando=false;
    autorizada. Ao autorizar, a venda é liberada e o operador é avisado. */
 let _nfeVigiaTimer=null, _nfeVigiaN=0;
 function nfeVigiaProcessando(reiniciar){ try{ if(reiniciar) _nfeVigiaN=0; if(_nfeVigiaTimer){ clearTimeout(_nfeVigiaTimer); _nfeVigiaTimer=null; }
-    const temProc=DB.all('notasFiscais').some(n=>n && n.status==='processando' && n._focusRef);
+    const temProc=DB.all('notasFiscais').some(n=>n && n.status==='processando' && (n._focusRef || nfeProcPresaSemRef(n)));
     if(!temProc) return;
     const esperas=[5000,10000,20000,40000]; const esp=_nfeVigiaN<esperas.length?esperas[_nfeVigiaN]:(_nfeVigiaN<34?60000:300000); _nfeVigiaN++;
     _nfeVigiaTimer=setTimeout(async()=>{ _nfeVigiaTimer=null;
       try{ if(typeof navigator!=='undefined' && navigator.onLine===false) return; if(!focusCfg().url || !focusTemToken()) return;
-        const antes=DB.all('notasFiscais').filter(n=>n && n.status==='processando' && n._focusRef).map(n=>n.id);
+        const antes=DB.all('notasFiscais').filter(n=>n && n.status==='processando' && (n._focusRef || nfeProcPresaSemRef(n))).map(n=>n.id);
         if(!antes.length) return;
         await nfeAtualizarProcessando(true);
         const aut=antes.map(id=>DB.get('notasFiscais',id)).filter(n=>n && nfeAutorizadaReal(n));
@@ -33656,17 +33673,74 @@ function nfeVigiaProcessando(reiniciar){ try{ if(reiniciar) _nfeVigiaN=0; if(_nf
   }catch(e){} }
 try{ setTimeout(()=>{ try{ nfeVigiaProcessando(true); }catch(e){} }, 8000); }catch(e){}
 try{ setInterval(()=>{ try{ if(!_nfeVigiaTimer) nfeVigiaProcessando(true); }catch(e){} }, 120000); }catch(e){}   // rede de segurança: se o vigia parou e surgiu nota processando (ex.: veio da sincronização), religa
+/* v23/10-A: nota "processando" SEM referência do Focus: o sistema marcou o envio mas não recebeu (ou nem
+   fez) a transmissão — internet caiu, sistema fechado no meio, erro antes do envio. Antes ela era contada na
+   Central de Pendências mas a consulta a ignorava ("Nenhuma nota em processamento"). Só entra depois de
+   3 min sem envio em andamento, para não atrapalhar uma transmissão que ainda está acontecendo. */
+function nfeProcPresaSemRef(n){ if(!n || n.status!=='processando' || n._focusRef) return false;
+  try{ if(typeof _nfeTransmitindo!=='undefined' && _nfeTransmitindo.has(n.id)) return false; }catch(e){}
+  const t=Date.parse(n._procDesde||''); if(t && (Date.now()-t)<180000) return false;
+  return true; }
+/* Procura no Focus a nota sem referência guardada (a referência é fixa: gp-<modelo>-<id>-<seq>).
+   Achou → guarda a referência e aplica a situação. Não existe no Focus → a nota NUNCA chegou lá:
+   volta para PENDENTE com o motivo e a venda fica retida/contingência até transmitir de novo. */
+async function nfeResolverSemRef(n){ const md=n.modelo||'55';
+  const primeira='gp-'+md+'-'+(n.id||n.numero||'')+'-'+(+n._refSeq||0);
+  const refs=[primeira].concat(focusRefsAlternativas(n, primeira));
+  let algum404=false;
+  for(let i=0;i<refs.length;i++){ const r=refs[i];
+    if(i) await new Promise(ok=>setTimeout(ok,400));   // respeita o limite de requisições do Focus
+    const data=await focusAplicarConsulta(r, md, n.id, r);   // erro de rede sobe para quem chamou
+    if(!data) return {res:'semconfig'};
+    if(data.status_http===404){ algum404=true; continue; }
+    if(data.status_http===401 || data.status_http===403) return {res:'token', msg:'Token do Focus recusado (http '+data.status_http+')'};
+    const fo=data.focus||{};
+    if(!fo.status && !(data.status_http>=200 && data.status_http<300)) return {res:'semresp', msg:(data.erro||('http '+(data.status_http||'?')))};
+    try{ DB.update('notasFiscais',n.id,{_focusRef:r}); }catch(e){}
+    const at=DB.get('notasFiscais',n.id)||{};
+    return {res: nfeAutorizadaReal(at)?'autorizada':(at.status==='pendente'?'rejeitada':(at.status==='cancelada'?'cancelada':'processando')), msg:fo.mensagem_sefaz||fo.mensagem||fo.status||''}; }
+  if(!algum404) return {res:'semresp'};
+  const motivo='A nota não chegou ao Focus/SEFAZ — o envio foi interrompido (internet, sistema fechado ou erro antes do envio). Transmita novamente.';
+  try{ DB.update('notasFiscais',n.id,{status:'pendente', _focusUltMsg:motivo, _focusUltEm:new Date().toISOString(), _focusStatus:'nao_enviada'}); }catch(e){}
+  try{ if(n.vendaId) nfeMarcarPendencia(n.vendaId, 'Nota não transmitida — '+motivo, md); }catch(e){window.__es&&__es(e)}
+  try{ logAcao('Nota presa em "aguardando SEFAZ" sem envio — voltou para Pendente', (md==='65'?'NFC-e':'NF-e')+' nº '+(n.numero||'s/nº')); }catch(e){}
+  return {res:'naoenviada', msg:motivo}; }
 async function nfeAtualizarProcessando(silent){
-  if(_nfeAtualizando){ return; } _nfeAtualizando=true;
+  if(_nfeAtualizando){ if(!silent) toast('A consulta das notas já está em andamento — aguarde alguns segundos','ok'); return; } _nfeAtualizando=true;
   try{ const corr=nfeCorrigirAutorizadas();   // primeiro corrige as que já têm DANFE (autorizadas presas em "processando")
-    const pend=DB.all('notasFiscais').filter(n=>n && (n.status==='processando'||n.status==='pendente') && n._focusRef);
-    if(!pend.length){ if(corr && STATE.route==='notasemit'){ try{ viewNotasEmit(); }catch(e){window.__es&&__es(e)} } if(!silent) toast(corr?(corr+' nota(s) atualizada(s) para Autorizada'):'Nenhuma nota em processamento','ok'); return; }
-    if(!silent) toast('Atualizando situação de '+pend.length+' nota(s)…','ok');
-    for(const n of pend){ try{ await focusAplicarConsulta(n._focusRef, n.modelo||'55', n.id); }catch(e){window.__es&&__es(e)} }
+    const todas=DB.all('notasFiscais');
+    const pend=todas.filter(n=>n && (n.status==='processando'||n.status==='pendente') && n._focusRef);
+    const semRef=todas.filter(n=>nfeProcPresaSemRef(n));
+    const emEnvio=todas.filter(n=>n && n.status==='processando' && !n._focusRef && !nfeProcPresaSemRef(n));
+    if(!pend.length && !semRef.length){ if(corr && STATE.route==='notasemit'){ try{ viewNotasEmit(); }catch(e){window.__es&&__es(e)} }
+      if(!silent) toast(corr?(corr+' nota(s) atualizada(s) para Autorizada'):(emEnvio.length?(emEnvio.length+' nota(s) sendo transmitida(s) agora — consulte de novo em instantes'):'Nenhuma nota em processamento'),'ok'); return; }
+    if(!silent) toast('Consultando no Focus '+(pend.length+semRef.length)+' nota(s)…','ok');
+    const cont={autorizada:0, rejeitada:0, processando:0, naoenviada:0, falha:0, cancelada:0};
+    const antesSt={}; pend.forEach(n=>{ antesSt[n.id]=n.status; });
+    for(const n of pend){ try{ await focusAplicarConsulta(n._focusRef, n.modelo||'55', n.id); }catch(e){ cont.falha++; window.__es&&__es(e); } }
+    pend.forEach(n=>{ const at=DB.get('notasFiscais',n.id); if(!at) return; if(nfeAutorizadaReal(at)) cont.autorizada++; else if(at.status==='cancelada') cont.cancelada++; else if(at.status==='processando') cont.processando++; else if(antesSt[n.id]==='processando' && at.status==='pendente') cont.rejeitada++; });
+    let semCfg=false;
+    if(semRef.length && !(focusCfg().url && focusTemToken())) semCfg=true;
+    else for(const n of semRef){ try{ const r=await nfeResolverSemRef(n);
+        if(r.res==='semconfig'){ semCfg=true; break; }
+        if(r.res==='autorizada') cont.autorizada++; else if(r.res==='rejeitada') cont.rejeitada++; else if(r.res==='cancelada') cont.cancelada++;
+        else if(r.res==='naoenviada') cont.naoenviada++; else if(r.res==='processando') cont.processando++; else cont.falha++;
+        if(r.res==='semresp' || r.res==='token'){ try{ DB.update('notasFiscais',n.id,{_focusUltConsulta:new Date().toISOString(), _focusUltConsultaMsg:(r.msg||'sem resposta do Focus')}); }catch(e){} }
+      }catch(e){ cont.falha++; window.__es&&__es(e); } }
+    try{ buildNav(); }catch(e){}
+    try{ nuvemPushJa(); }catch(e){}
     if(STATE.route==='notasemit' && !document.querySelector('#modal-bg.open')){
       if(silent && uiOcupado()){ uiAgendarAtualizacao(); }
       else { try{ uiRedesenhar(); }catch(e){window.__es&&__es(e)} } }
-    if(!silent) toast('Situação das notas atualizada','ok');
+    if(!silent){ const p=[];
+      if(cont.autorizada) p.push(cont.autorizada+' autorizada(s)');
+      if(cont.rejeitada) p.push(cont.rejeitada+' recusada(s) pela SEFAZ — voltou(aram) para Pendente com o motivo');
+      if(cont.naoenviada) p.push(cont.naoenviada+' nunca chegou(aram) ao Focus — voltou(aram) para Pendente para transmitir de novo');
+      if(cont.cancelada) p.push(cont.cancelada+' cancelada(s)');
+      if(cont.processando) p.push(cont.processando+' ainda em processamento na SEFAZ');
+      if(cont.falha) p.push(cont.falha+' sem resposta do Focus (verifique a internet e tente de novo)');
+      if(semCfg) p.push(semRef.length+' sem referência — configure o Focus (URL e token) neste computador para consultar');
+      toast(p.length?('Notas consultadas: '+p.join(' · ')):'Situação das notas atualizada', (cont.falha||semCfg||cont.naoenviada||cont.rejeitada)?'err':'ok'); }
   } finally{ _nfeAtualizando=false; } }
 function focusResultModal(ref, modelo, ambiente, data){ const fo=(data&&data.focus)||{}; const st=fo.status||('http '+((data&&data.status_http)||'?'));
   openModal(`<div class="modal-head"><h3>Focus NFe — ${modelo==='65'?'NFC-e':'NF-e'} (${ambiente==='producao'?'produção':'homologação'})</h3><button class="btn-icon btn-ghost" onclick="closeModal()">${ico('x')}</button></div>
