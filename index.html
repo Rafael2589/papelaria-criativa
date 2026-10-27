@@ -48,7 +48,7 @@ const CONFIG_EMPRESA = {
      Aparece no topo do menu e no rodapé das Configurações. Troque a cada publicação.
      MANTENHA O FORMATO 'vDD/MM-X' — é ele que o sistema usa para comparar as máquinas
      da loja e avisar quando alguma ficou para trás.                                  */
-  versao: 'v23/10-A',
+  versao: 'v27/10-A',
 
   /* 4) NUVEM (Supabase)  ------------------------------------------------------------
      Cole aqui a Project URL e a chave PUBLISHABLE do projeto Supabase DESTA empresa
@@ -21022,7 +21022,85 @@ function vendasRelExtras(rows, f){
     <tr style="border-top:2px solid var(--line);font-weight:700"><td>Total</td><td class="t-right tnum">${BRL(totForm)}</td><td class="t-right tnum">100,0%</td></tr>
     </tbody></table></div></div>`;
   // no resumo por dia a tabela principal já é o total por dia (com o botão das formas): não repete aqui
-  return secProd+secCat+(((f&&f.exibir)||'dia')!=='lista'?'':secDia)+secFormas;
+  return vendasPicosHTML(rows, f)+secProd+secCat+(((f&&f.exibir)||'dia')!=='lista'?'':secDia)+secFormas;
+}
+/* v27/10-A: PICOS DE VENDAS — dia da semana, horário e cruzamento dia × hora (Relatório de vendas).
+   Hora da venda: campo "hora" gravado no fechamento; nas vendas antigas sem ele, usa a hora em que o
+   registro foi criado (só quando é do mesmo dia da venda — importações ficam como "sem horário"). */
+const PICO_DIAS=['Domingo','Segunda','Terça','Quarta','Quinta','Sexta','Sábado'];
+function vendaHoraNum(v){ try{
+    const h=(''+(v.hora||'')).match(/^(\d{1,2}):/); if(h){ const n=+h[1]; if(n>=0&&n<24) return n; }
+    if(v._cri && v.data){ const d=new Date(v._cri); if(!isNaN(d)){ const loc=d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0'); if(loc===v.data) return d.getHours(); } }
+  }catch(e){} return null; }
+function vendasPicosHTML(rows, f){
+  const vs=(rows||[]).filter(v=>v && (v.status||'')!=='cancelada' && v.data);
+  const card=(t,sub,body)=>`<div class="card" style="margin-top:16px"><div class="card-head"><h3>${ico('chart')} ${t}</h3><div class="ch-sub">${sub}</div></div>${body}</div>`;
+  if(!vs.length) return card('Picos de vendas','Dia da semana e horário','<div class="empty" style="padding:24px">Sem vendas no período</div>');
+  const r2=x=>Math.round(x*100)/100;
+  const sem=PICO_DIAS.map((nome,i)=>({i,nome,qtd:0,val:0,dias:0}));
+  const hor={}; const mapa={}; const porData={}; let semHora=0, valSemHora=0;
+  vs.forEach(v=>{ const tot=+v.total||0; const dw=pDate(v.data).getDay();
+    sem[dw].qtd++; sem[dw].val+=tot;
+    if(!porData[v.data]) porData[v.data]={data:v.data,qtd:0,val:0}; porData[v.data].qtd++; porData[v.data].val+=tot;
+    const h=vendaHoraNum(v);
+    if(h==null){ semHora++; valSemHora+=tot; return; }
+    if(!hor[h]) hor[h]={h,qtd:0,val:0}; hor[h].qtd++; hor[h].val+=tot;
+    const k=dw+'|'+h; if(!mapa[k]) mapa[k]={qtd:0,val:0}; mapa[k].qtd++; mapa[k].val+=tot; });
+  // quantas vezes cada dia da semana aparece no período (para a MÉDIA por dia)
+  const datas=Object.keys(porData).sort();
+  let de=(f&&f.de&&f.de>'1971')?f.de:datas[0]; let ate=(f&&f.ate&&f.ate<'9999')?f.ate:datas[datas.length-1]; if(ate>today()) ate=today(); if(de>ate) de=ate;
+  { const d=pDate(de), fim=pDate(ate); let guard=0; while(d<=fim && guard<4000){ sem[d.getDay()].dias++; d.setDate(d.getDate()+1); guard++; } }
+  const totVal=vs.reduce((s,v)=>s+(+v.total||0),0)||1;
+  const bar=(pct,cor)=>`<div style="background:var(--line-2);border-radius:6px;height:8px;overflow:hidden;width:110px;flex:0 0 auto"><div style="background:${cor||'var(--brand)'};height:100%;width:${Math.min(100,Math.max(0,pct)).toFixed(1)}%"></div></div>`;
+  const pctTxt=p=>p.toFixed(1).replace('.',',')+'%';
+  const faixa=h=>String(h).padStart(2,'0')+'h–'+String((h+1)%24).padStart(2,'0')+'h';
+  // ---- destaques
+  const ordem=[1,2,3,4,5,6,0];   // segunda a domingo
+  const semArr=ordem.map(i=>sem[i]).map(x=>({...x, media:x.dias?x.val/x.dias:0, ticket:x.qtd?x.val/x.qtd:0}));
+  const semCom=semArr.filter(x=>x.qtd);
+  const melhorSem=semCom.slice().sort((a,b)=>b.media-a.media)[0];
+  const piorSem=semCom.length>1?semCom.slice().sort((a,b)=>a.media-b.media)[0]:null;
+  const horArr=Object.keys(hor).map(k=>hor[k]).sort((a,b)=>a.h-b.h);
+  const melhorHor=horArr.slice().sort((a,b)=>b.val-a.val)[0];
+  const movHor=horArr.slice().sort((a,b)=>b.qtd-a.qtd)[0];
+  const melhorDia=Object.keys(porData).map(k=>porData[k]).sort((a,b)=>b.val-a.val)[0];
+  let picoCel=null; Object.keys(mapa).forEach(k=>{ if(!picoCel || mapa[k].val>picoCel.val){ const [dw,h]=k.split('|'); picoCel={dw:+dw,h:+h,...mapa[k]}; } });
+  const kpi=(tit,val,sub,cor)=>`<div style="border:1px solid var(--line);border-left:4px solid ${cor};border-radius:10px;padding:10px 12px;background:var(--surface)">
+      <div class="t-mut" style="font-size:11.5px;text-transform:uppercase;letter-spacing:.03em">${tit}</div><div style="font-size:18px;font-weight:800;margin-top:2px">${val}</div><div class="t-mut" style="font-size:12px;margin-top:2px">${sub}</div></div>`;
+  const kpis=`<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:10px;padding:12px 14px">
+      ${melhorSem?kpi('Dia da semana mais forte',esc(melhorSem.nome),'média de '+BRL(r2(melhorSem.media))+' por '+melhorSem.nome.toLowerCase()+' · '+NUM(melhorSem.qtd)+' venda(s)','#15803d'):''}
+      ${melhorHor?kpi('Horário de pico (faturamento)',faixa(melhorHor.h),BRL(r2(melhorHor.val))+' · '+NUM(melhorHor.qtd)+' venda(s) · '+pctTxt(melhorHor.val/totVal*100)+' do total','#f59e0b'):''}
+      ${movHor?kpi('Horário mais movimentado',faixa(movHor.h),NUM(movHor.qtd)+' venda(s) · ticket médio '+BRL(r2(movHor.val/movHor.qtd)),'#2563eb'):''}
+      ${picoCel?kpi('Pico da semana (dia + hora)',esc(PICO_DIAS[picoCel.dw])+' · '+faixa(picoCel.h),BRL(r2(picoCel.val))+' · '+NUM(picoCel.qtd)+' venda(s) no período','#7c3aed'):''}
+      ${melhorDia?kpi('Dia de maior venda',fDate(melhorDia.data)+' ('+PICO_DIAS[pDate(melhorDia.data).getDay()].slice(0,3).toLowerCase()+')',BRL(r2(melhorDia.val))+' · '+NUM(melhorDia.qtd)+' venda(s)','#0d9488'):''}
+      ${piorSem?kpi('Dia da semana mais fraco',esc(piorSem.nome),'média de '+BRL(r2(piorSem.media))+' por '+piorSem.nome.toLowerCase(),'#dc2626'):''}
+    </div>`;
+  // ---- por dia da semana
+  const maxMed=Math.max(...semArr.map(x=>x.media),0)||1;
+  const tabSem=`<div class="tbl-wrap"><table><thead><tr><th>Dia da semana</th><th class="t-right">Vendas</th><th class="t-right">Faturamento</th><th class="t-right" title="Faturamento dividido pela quantidade desse dia da semana no período">Média por dia</th><th class="t-right">Ticket médio</th><th class="t-right">% do total</th><th style="width:130px"></th></tr></thead><tbody>
+    ${semArr.map(x=>`<tr${melhorSem&&x.i===melhorSem.i?' style="background:rgba(21,128,61,.08)"':''}><td><b>${esc(x.nome)}</b>${melhorSem&&x.i===melhorSem.i?' <span class="tag pos" style="font-size:10px">pico</span>':''}<div class="t-mut" style="font-size:11px">${NUM(x.dias)} ${x.nome.toLowerCase()}(s) no período</div></td><td class="t-right tnum">${NUM(x.qtd)}</td><td class="t-right tnum t-strong">${BRL(r2(x.val))}</td><td class="t-right tnum">${BRL(r2(x.media))}</td><td class="t-right tnum">${BRL(r2(x.ticket))}</td><td class="t-right tnum">${pctTxt(x.val/totVal*100)}</td><td>${bar(x.media/maxMed*100,'#15803d')}</td></tr>`).join('')}
+    </tbody></table></div>`;
+  // ---- por horário
+  const maxH=Math.max(...horArr.map(x=>x.val),0)||1;
+  const tabHor=horArr.length?`<div class="tbl-wrap"><table><thead><tr><th>Horário</th><th class="t-right">Vendas</th><th class="t-right">Faturamento</th><th class="t-right">Ticket médio</th><th class="t-right">% do total</th><th style="width:130px"></th></tr></thead><tbody>
+    ${horArr.map(x=>`<tr${melhorHor&&x.h===melhorHor.h?' style="background:rgba(245,158,11,.10)"':''}><td class="tnum"><b>${faixa(x.h)}</b>${melhorHor&&x.h===melhorHor.h?' <span class="tag warn" style="font-size:10px">pico</span>':''}</td><td class="t-right tnum">${NUM(x.qtd)}</td><td class="t-right tnum t-strong">${BRL(r2(x.val))}</td><td class="t-right tnum">${BRL(r2(x.val/x.qtd))}</td><td class="t-right tnum">${pctTxt(x.val/totVal*100)}</td><td>${bar(x.val/maxH*100,'#f59e0b')}</td></tr>`).join('')}
+    </tbody></table></div>`:'<div class="empty" style="padding:20px">As vendas do período não têm horário registrado</div>';
+  // ---- mapa de calor dia × hora
+  let mapaHTML='';
+  if(horArr.length){ const h0=horArr[0].h, h1=horArr[horArr.length-1].h; const hs=[]; for(let h=h0;h<=h1;h++) hs.push(h);
+    const maxC=Math.max(...Object.keys(mapa).map(k=>mapa[k].val),0)||1;
+    const cel=(dw,h)=>{ const c=mapa[dw+'|'+h]; if(!c) return `<td style="border:1px solid var(--line);text-align:center;color:var(--muted);font-size:10.5px;padding:5px 2px">–</td>`;
+      const a=0.12+0.83*(c.val/maxC); const forte=a>0.55;
+      return `<td title="${esc(PICO_DIAS[dw])} ${faixa(h)} — ${NUM(c.qtd)} venda(s) · ${BRL(r2(c.val))}" style="border:1px solid var(--line);text-align:center;padding:5px 2px;font-size:10.5px;font-weight:${forte?700:500};background:rgba(21,128,61,${a.toFixed(2)});color:${forte?'#fff':'inherit'}">${NUM(c.qtd)}</td>`; };
+    mapaHTML=`<div class="tbl-wrap" style="overflow:auto"><table style="border-collapse:collapse;min-width:${120+hs.length*44}px;-webkit-print-color-adjust:exact;print-color-adjust:exact"><thead><tr><th style="text-align:left">Dia / Hora</th>${hs.map(h=>`<th style="text-align:center;font-size:10.5px;padding:4px 2px">${String(h).padStart(2,'0')}h</th>`).join('')}</tr></thead><tbody>
+      ${ordem.map(dw=>`<tr><td style="white-space:nowrap"><b>${PICO_DIAS[dw].slice(0,3)}</b></td>${hs.map(h=>cel(dw,h)).join('')}</tr>`).join('')}
+      </tbody></table></div>
+      <div class="t-mut" style="font-size:11.5px;padding:6px 14px 12px">Número de vendas em cada dia e hora; quanto mais escura a cor, maior o faturamento. Passe o mouse para ver o valor.</div>`; }
+  const aviso=semHora?`<div class="t-mut" style="font-size:12px;padding:0 14px 12px">${NUM(semHora)} venda(s) sem horário registrado (${BRL(r2(valSemHora))}) entram no dia da semana, mas não nos horários.</div>`:'';
+  return card('Picos de vendas','Dias da semana e horários que mais vendem no período filtrado', kpis+aviso)
+    +card('Vendas por dia da semana','Média por dia = faturamento ÷ quantas vezes aquele dia aparece no período', tabSem)
+    +card('Vendas por horário','Faixas de 1 hora pelo horário de fechamento da venda', tabHor)
+    +(mapaHTML?card('Mapa de calor — dia da semana × horário','Onde se concentram as vendas na semana', mapaHTML):'');
 }
 /* Soma as formas de pagamento de um conjunto de vendas (respeita pagamento misto). */
 function vendasFormasAgg(vendas){ const m={};
