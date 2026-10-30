@@ -48,7 +48,7 @@ const CONFIG_EMPRESA = {
      Aparece no topo do menu e no rodapé das Configurações. Troque a cada publicação.
      MANTENHA O FORMATO 'vDD/MM-X' — é ele que o sistema usa para comparar as máquinas
      da loja e avisar quando alguma ficou para trás.                                  */
-  versao: 'v27/10-A',
+  versao: 'v30/10-B',
 
   /* 4) NUVEM (Supabase)  ------------------------------------------------------------
      Cole aqui a Project URL e a chave PUBLISHABLE do projeto Supabase DESTA empresa
@@ -1797,7 +1797,7 @@ function outboxGravarPodado(o){ // mantém os mais recentes de cada coleção
   try{ localStorage.setItem(OUTBOX_KEY, JSON.stringify(red)); }catch(e){window.__es&&__es(e)} }
 function outboxLimpar(){ try{ localStorage.removeItem(OUTBOX_KEY); }catch(e){window.__es&&__es(e)} }
 /* Junta na fila tudo que mudou depois do último envio confirmado. */
-function outboxRegistrar(){
+function outboxRegistrar(){ if(typeof window!=='undefined' && window.__abaPausada) return;
   try{
     if(typeof NUVEM_LOADING!=='undefined' && NUVEM_LOADING) return;   // carregando da nuvem: não é alteração do usuário
     const d=DB.cache; if(!d) return;
@@ -1806,8 +1806,19 @@ function outboxRegistrar(){
     (typeof NUVEM_COLS!=='undefined'?NUVEM_COLS:[]).forEach(col=>{
       if(LOCAL_KEEP.indexOf(col)>=0) return;                          // esses já ficam inteiros no navegador
       const arr=d[col]; if(!Array.isArray(arr)||!arr.length) return;
-      const novos=arr.filter(x=>x && x.id!=null && x._mod && nuvemTs(x._mod)>desde);
+      const novos=arr.filter(x=>x && x.id!=null && x._mod && nuvemTs(x._mod)>desde && !(x._rx && x._rx===nuvemTs(x._mod)));   // v30/10-A: o que veio da nuvem não precisa de fila
       if(novos.length){ o[col]=novos; n+=novos.length; } });
+    // v30/10-A: o que JÁ estava na fila e não está na memória (ex.: sistema aberto com a nuvem fora do ar,
+    // antes de a fila ser reaplicada) CONTINUA na fila. Antes a fila era refeita só com a memória e a venda
+    // que ainda não tinha subido era APAGADA da fila — e sumia de vez.
+    try{ const ant=outboxLer(); const del=(d._meta&&d._meta.del)||{};
+      Object.keys(ant).forEach(col=>{ const L=ant[col]; if(!Array.isArray(L) || !L.length || LOCAL_KEEP.indexOf(col)>=0) return;
+        const mem=new Map(); (Array.isArray(d[col])?d[col]:[]).forEach(x=>{ if(x && x.id!=null) mem.set(x.id, x._mod); });
+        L.forEach(x=>{ if(!x || x.id==null || nuvemTs(x._mod)<=desde) return;
+          if(mem.has(x.id) && nuvemTs(mem.get(x.id))>=nuvemTs(x._mod)) return;   // a memória já tem esta versão (ou mais nova)
+          const m=(del[col]||{})[x.id]; if(m && nuvemTs(m)>=nuvemTs(x._mod)) return;   // excluído depois: respeita
+          if(o[col] && o[col].some(y=>y && y.id===x.id)) return;
+          (o[col]=o[col]||[]).push(x); n++; }); }); }catch(e){window.__es&&__es(e)}
     if(n) outboxGravar(o); else outboxLimpar();
   }catch(e){window.__es&&__es(e)}
 }
@@ -1941,7 +1952,8 @@ const DB = {
   _bulk:0,
   // durante uma importação em massa, grava UMA vez no final (e não a cada registro)
   bulk(fn){ this._bulk++; try{ return fn(); } finally { this._bulk--; if(!this._bulk) this._persist(); } },
-  _persist(){ if(this._bulk) return; this._rev=(this._rev||0)+1;   // nº da revisão: a tela só é redesenhada se isto mudou
+  _persist(){ if(this._bulk) return; if(typeof window!=='undefined' && window.__abaPausada) return;   // v30/10-A: aba pausada (sistema aberto em outra aba) NUNCA grava por cima
+    this._rev=(this._rev||0)+1; try{ diarioAgendar(); }catch(e){}   // nº da revisão: a tela só é redesenhada se isto mudou
     try{ outboxRegistrarAgendado(); }catch(e){window.__es&&__es(e)}
     try{ if(typeof nuvemConfCarimbarAgendado==='function' && !(typeof NUVEM_LOADING!=='undefined' && NUVEM_LOADING)) nuvemConfCarimbarAgendado(); }catch(e){window.__es&&__es(e)}   // v14/10-J: config alterada recebe carimbo e sobe   // guarda o que ainda não foi confirmado na nuvem (varredura agendada p/ não travar cada save)
     try{ localStorage.setItem(this.K, JSON.stringify(this._localPayload())); try{avisoStorageCheio(false);}catch(_){}}
@@ -1965,6 +1977,103 @@ const DB = {
   replaceAll(data){ this.cache=data; this._persist(); },
   reset(){ localStorage.removeItem(this.K); this.cache=null; this._load(); }
 };
+/* ======================================================================================
+   v30/10-A — UMA ABA SÓ POR COMPUTADOR
+   Cada aba guarda a base inteira na memória e, ao salvar, grava a base INTEIRA por cima.
+   Com o sistema aberto em duas abas/janelas, a aba "atrasada" apagava o que a outra tinha
+   acabado de gravar (ex.: a venda recém-fechada no PDV) — e, com a nuvem fora do ar, a venda
+   não existia em nenhum outro lugar: SUMIA. Agora só uma aba trabalha por vez; a outra fica
+   pausada (não grava nada) até a pessoa escolher trabalhar nela.
+   ====================================================================================== */
+var ABA_LOCK='gestaopro-aba-unica';
+if(typeof window!=='undefined'){ window.__abaPausada=false; window.__abaDona=false; }
+function abaPausar(motivo){ if(window.__abaPausada) return; window.__abaPausada=true;
+  try{ console.warn('[aba única] pausada:', motivo); }catch(e){}
+  const mostrar=()=>{ try{ if(document.getElementById('aba-pausada')) return; const d=document.createElement('div'); d.id='aba-pausada';
+      d.style.cssText='position:fixed;inset:0;z-index:2147483600;background:rgba(15,23,42,.9);display:flex;align-items:center;justify-content:center;padding:20px;font-family:system-ui,Segoe UI,Arial,sans-serif';
+      d.innerHTML='<div style="background:#fff;color:#0f172a;max-width:540px;border-radius:14px;padding:24px 26px;box-shadow:0 20px 60px rgba(0,0,0,.45)">'
+        +'<div style="font-size:19px;font-weight:800;margin-bottom:8px">O sistema já está aberto em outra aba</div>'
+        +'<div style="font-size:14px;line-height:1.55;color:#334155">'+motivo+'<br><br>Para <b>não perder vendas</b>, só uma aba ou janela do sistema trabalha por vez neste computador. Volte para a outra aba — ou clique abaixo para trabalhar aqui (aí a outra aba é que fica pausada).</div>'
+        +'<div style="margin-top:18px;display:flex;justify-content:flex-end"><button id="aba-assumir" style="background:#f59e0b;border:0;color:#111;font-weight:700;padding:11px 18px;border-radius:9px;cursor:pointer;font-size:14px">Usar o sistema nesta aba</button></div></div>';
+      document.body.appendChild(d); const b=document.getElementById('aba-assumir'); if(b) b.onclick=abaAssumir; }catch(e){} };
+  try{ if(document.body) mostrar(); else document.addEventListener('DOMContentLoaded', mostrar); }catch(e){} }
+function abaAssumir(){ try{ const b=document.getElementById('aba-assumir'); if(b){ b.disabled=true; b.textContent='Abrindo…'; } }catch(e){}
+  try{ if(navigator.locks && navigator.locks.request){
+      navigator.locks.request(ABA_LOCK,{steal:true},()=>{ setTimeout(()=>{ try{ location.reload(); }catch(e){} },120); return new Promise(()=>{}); }).catch(()=>{});
+      return; } }catch(e){}
+  try{ location.reload(); }catch(e){} }
+(function abaUnica(){ try{
+    if(typeof navigator==='undefined' || !navigator.locks || !navigator.locks.request) return;   // navegador antigo: segue como antes
+    try{ if((location.hash||'').indexOf('#cotacao=')===0) return; }catch(e){}   // página de cotação do fornecedor: não é o sistema
+    navigator.locks.request(ABA_LOCK,{ifAvailable:true}, lock=>{
+        if(!lock){ abaPausar('Este sistema já está aberto em outra aba ou janela deste computador.'); return; }
+        window.__abaDona=true; return new Promise(()=>{}); })   // segura a "posse" enquanto a aba estiver aberta
+      .catch(()=>{ abaPausar('O sistema foi aberto em outra aba ou janela deste computador, e esta aba foi pausada para não apagar o que a outra gravar.'); });
+  }catch(e){} })();
+/* ======================================================================================
+   v30/10-A — DIÁRIO LOCAL DE VENDAS (IndexedDB, separado da base)
+   Toda venda, nota, movimento de caixa, conta e orçamento gravado neste computador ganha uma cópia
+   num diário à parte. Se um registro some da base sem ter sido EXCLUÍDO (sem lápide e fora da
+   lixeira) — aba atrasada, falha de sincronização, base sobrescrita — o sistema devolve sozinho.
+   ====================================================================================== */
+var DIARIO_COLS=['vendas','notasFiscais','caixaMovs','caixaSessoes','financeiro','orcamentos','devolucoes','movEstoque','produtos','creditos','clientes'];
+function diarioSemImagem(x){ let cl=null; try{ for(const f in x){ const v=x[f]; if(typeof v==='string' && v.indexOf('data:image')===0){ if(!cl) cl=Object.assign({},x); cl[f]=''; } } }catch(e){} return cl||x; }
+/* Marca do que JÁ foi confirmado na nuvem: só o que veio depois dela pode ter ficado só neste computador. */
+function diarioMarcaEnvio(){ try{ const nc=(typeof nuvemCfg==='function')?(nuvemCfg()||{}):{}; if(!(nc.url&&nc.key)) return 0;
+    const a=(typeof nuvemTs==='function')?nuvemTs(nc.ultimoEnvio||''):0; let b=a;
+    try{ if(typeof nuvemV3On==='function' && nuvemV3On() && nuvemV3Cfg().migrado){ const e=nuvemTs(nuvemV3Cfg().envio||''); b=e; } }catch(e){}
+    const m=Math.min(a||0, b||0); return m?Math.max(0, m-120000):0; }catch(e){ return 0; } }
+var _diarioDb=null, _diarioT=null, _diarioMarca={};
+function diarioAbrir(){ if(_diarioDb) return Promise.resolve(_diarioDb);
+  return new Promise(res=>{ try{ if(typeof indexedDB==='undefined') return res(null); const rq=indexedDB.open('gp_diario',1);
+      rq.onupgradeneeded=()=>{ try{ const db=rq.result; if(!db.objectStoreNames.contains('reg')){ const st=db.createObjectStore('reg',{keyPath:'k'}); st.createIndex('base','base'); } }catch(e){} };
+      rq.onsuccess=()=>{ _diarioDb=rq.result; res(_diarioDb); }; rq.onerror=()=>res(null); rq.onblocked=()=>res(null); }catch(e){ res(null); } }); }
+function diarioAgendar(){ if(_diarioT) return; _diarioT=setTimeout(()=>{ _diarioT=null; diarioGravar(); }, 1200); }
+function diarioMarcaLer(base){ try{ const m=localStorage.getItem('gp_diario_marca|'+base); if(m) return m; }catch(e){}
+  try{ return new Date(Date.now()-60*86400000).toISOString(); }catch(e){ return ''; } }
+async function diarioGravar(){ try{
+    if(window.__abaPausada) return; const d=DB.cache; if(!d) return; const base=DB.K;
+    const marca=_diarioMarca[base]||(_diarioMarca[base]=diarioMarcaLer(base)); let maior=marca; const novos=[];
+    DIARIO_COLS.forEach(c=>{ const arr=d[c]; if(!Array.isArray(arr)) return; arr.forEach(x=>{ if(x && x.id!=null && x._mod && x._mod>marca){ novos.push({k:base+'|'+c+'|'+x.id, base, col:c, id:String(x.id), mod:x._mod, ts:Date.now(), dados:diarioSemImagem(x)}); if(x._mod>maior) maior=x._mod; } }); });
+    if(!novos.length) return; const db=await diarioAbrir(); if(!db) return;
+    const ok=await new Promise(res=>{ try{ const tx=db.transaction('reg','readwrite'); const st=tx.objectStore('reg'); novos.forEach(r=>{ try{ st.put(JSON.parse(JSON.stringify(r))); }catch(e){} }); tx.oncomplete=()=>res(true); tx.onerror=()=>res(false); tx.onabort=()=>res(false); }catch(e){ res(false); } });
+    if(ok){ _diarioMarca[base]=maior; try{ localStorage.setItem('gp_diario_marca|'+base, maior); }catch(e){} }
+  }catch(e){} }
+async function diarioPodar(){ try{ const db=await diarioAbrir(); if(!db) return; const lim=Date.now()-60*86400000;
+    const tx=db.transaction('reg','readwrite'); const rq=tx.objectStore('reg').openCursor();
+    rq.onsuccess=()=>{ const c=rq.result; if(!c) return; try{ if((+c.value.ts||0)<lim) c.delete(); }catch(e){} c.continue(); }; }catch(e){} }
+/* Devolve à base o que está no diário e sumiu SEM ter sido excluído. */
+async function diarioResgatar(){ try{
+    if(window.__abaPausada || !DB.__booted || (typeof NUVEM_LOADING!=='undefined' && NUVEM_LOADING)) return 0; const db=await diarioAbrir(); if(!db) return 0; const base=DB.K;
+    const regs=await new Promise(res=>{ try{ const rq=db.transaction('reg','readonly').objectStore('reg').index('base').getAll(base); rq.onsuccess=()=>res(rq.result||[]); rq.onerror=()=>res([]); }catch(e){ res([]); } });
+    if(!regs.length || window.__abaPausada) return 0;
+    const d=DB._load(); const del=(d._meta&&d._meta.del)||{};
+    const lix=new Set((d.lixeira||[]).map(l=>l&&l.item?(l.col+'|'+l.item.id):''));
+    const marcaEnv=diarioMarcaEnvio(); const ts=x=>{ try{ return (typeof nuvemTs==='function')?nuvemTs(x||''):(Date.parse(x||'')||0); }catch(e){ return 0; } };
+    const falta=[], velhos=[];
+    regs.forEach(r=>{ const arr=d[r.col]; if(!Array.isArray(arr) || !r.dados) return;
+      if(marcaEnv && ts(r.mod)<=marcaEnv) return;                       // já confirmado na nuvem: a nuvem é quem manda
+      if((del[r.col]||{})[r.id]) return; if(lix.has(r.col+'|'+r.id)) return;   // foi EXCLUÍDO de verdade: não volta
+      const i=arr.findIndex(x=>x && String(x.id)===r.id);
+      if(i<0){ falta.push(r); return; }
+      if(ts(arr[i]._mod) < ts(r.mod)) velhos.push({r,i}); });          // a base voltou a uma versão ANTERIOR à gravada aqui
+    if(!falta.length && !velhos.length) return 0;
+    const now=new Date().toISOString();
+    falta.forEach(r=>{ const it=JSON.parse(JSON.stringify(r.dados)); it._mod=now; it._resgatadoDiarioEm=now; d[r.col].unshift(it); });
+    velhos.forEach(({r,i})=>{ const atual=d[r.col][i]; const nov=JSON.parse(JSON.stringify(r.dados));
+      for(const f in nov){ if(nov[f]==='' && typeof atual[f]==='string' && atual[f].indexOf('data:image')===0) nov[f]=atual[f]; }   // a cópia do diário não guarda imagem: mantém a atual
+      d[r.col][i]=Object.assign({}, atual, nov, {_mod:now, _resgatadoDiarioEm:now}); });
+    DB._persist();
+    const nv=falta.filter(r=>r.col==='vendas');
+    try{ logAcao('Registros que sumiram foram RECUPERADOS do diário local', falta.length+' registro(s) recriados, '+velhos.length+' atualizados'+(nv.length?(' — vendas: '+nv.map(r=>'#'+(r.dados.numero||'?')+' '+BRL(r.dados.total||0)).join(', ')):'')); }catch(e){}
+    try{ toast(nv.length?(nv.length+' venda(s) que tinham sumido foram RECUPERADAS: '+nv.slice(0,8).map(r=>'#'+(r.dados.numero||'?')).join(', ')+' — confira em Pedidos'):((falta.length+velhos.length)+' registro(s) deste computador que não tinham chegado à nuvem foram recuperados'),'ok'); }catch(e){}
+    try{ nuvemPushJa(); }catch(e){} try{ buildNav(); }catch(e){} try{ if(typeof uiAtualizarDados==='function') uiAtualizarDados(); }catch(e){}
+    return falta.length+velhos.length; }catch(e){ return 0; } }
+try{ setTimeout(()=>{ try{ diarioPodar(); }catch(e){} try{ diarioGravar(); }catch(e){} }, 4000);
+     setTimeout(()=>{ try{ diarioResgatar(); }catch(e){} }, 15000);
+     setInterval(()=>{ try{ diarioResgatar(); }catch(e){} }, 180000);
+     document.addEventListener('visibilitychange',()=>{ try{ if(document.visibilityState==='visible') setTimeout(()=>{ try{ diarioResgatar(); }catch(e){} }, 1500); }catch(e){} });
+}catch(e){}
 
 /* ---------- estado de UI ---------- */
 /* O painel abre no MÊS ATUAL: é o número que o dono da loja olha todo dia e o
@@ -5927,10 +6036,11 @@ function vendasDesfazerFaturadosSemNota(){ let n=0;
       if(!marca) return;
       const nfsV=notas.filter(x=>x && x.vendaId===v.id && x.status!=='cancelada' && !x.cancelada);
       if(nfsV.some(x=>nfeAutorizadaReal(x) || x.status==='autorizada')) return;
-      if(pdvNotaFalhou(v.id, v.notaErroMotivo||'A nota fiscal não foi emitida')) n++;
+      // v30/10-A: venda fechada NUNCA é desfeita sozinha (para quem está no caixa, ela "sumia"): fica em CONTINGÊNCIA
+      if(pdvNotaContingencia(v.id, v.notaErroMotivo||'A nota fiscal não foi emitida', (nfsV[0]&&nfsV[0].modelo)||v.fiscalPendenteModelo||v.contingenciaModelo||'65')){ DB.update('vendas',v.id,{nfFalhaReverter:false, notaErroMotivo:'', notaErroEm:null}); n++; }
     }catch(e){} });
   }catch(e){}
-  if(n){ try{ toast(n+' pedido(s) com nota não emitida voltaram para PENDENTE','ok'); }catch(e){} }
+  if(n){ try{ toast(n+' venda(s) sem nota ficaram em CONTINGÊNCIA (nota a emitir) — continuam faturadas','ok'); }catch(e){} }
   return n; }
 /* Pedido pendente (ainda não faturado) com problema de nota: depois de corrigir, fatura de novo no PDV. */
 function nfePedidoPendente(v){ try{ return !!v && pedidoStatusInfo(v).k==='pendente' && !v.faturadoPDV; }catch(e){ return false; } }
@@ -6181,6 +6291,13 @@ function nfeXpedResolver(action){ const r=window._nfeXpedResolve; window._nfeXpe
 async function nfeEmitirETransmitir(vendaId, modelo, origem){
   const _cont=(origem==='pdv'||origem==='contingencia');   // venda já fechada no caixa: falha da nota = CONTINGÊNCIA (nunca desfaz a venda)
   let v=DB.get('vendas',vendaId); if(!v){ toast('Venda não encontrada','err'); return null; }
+  // v30/10-A: antes de criar OUTRA nota, confere se uma tentativa anterior (já descartada) não foi autorizada
+  // no Focus — senão a mesma venda podia sair com duas notas.
+  try{ const _rec=await nfeRecuperarRemovidas(vendaId); if(_rec){ toast('A nota desta venda JÁ ESTAVA AUTORIZADA na SEFAZ — foi recuperada, sem emitir de novo','ok'); return _rec; } }catch(e){window.__es&&__es(e)}
+  { const _viva=DB.all('notasFiscais').find(x=>x && x.vendaId===vendaId && x.status==='processando' && x._focusRef);
+    if(_viva){ try{ await focusAplicarConsulta(_viva._focusRef, _viva.modelo||modelo||'65', _viva.id); }catch(e){window.__es&&__es(e)}
+      const _at=DB.get('notasFiscais',_viva.id);
+      if(_at && nfeAutorizadaReal(_at)){ try{ nfeLimparPendencia(vendaId); DB.update('vendas',vendaId,{notaEmitida:true, notaNumero:_at.numero||null, notaModelo:_at.modelo||modelo}); }catch(e){} toast('A nota desta venda já está AUTORIZADA','ok'); return _at; } } }
   if(nfeReligarItens(v)) v=DB.get('vendas',vendaId);
   // Resolve o MODELO do documento em TODAS as telas: BOLETO (a prazo) é sempre NF-e (55);
   // sem escolha explícita, decide por valor/cliente (>=R$500 c/ cliente -> 55, senão 65).
@@ -6235,7 +6352,7 @@ async function nfeEmitirETransmitir(vendaId, modelo, origem){
   const _tent=(r&&r.tentativasNum)||0;
   if(r && r.autorizado){ nfeLimparPendencia(vendaId); if(_tent) toast('Numeração ajustada automaticamente — NF autorizada nº '+((DB.get('notasFiscais',n.id)||{}).numero||''),'ok'); return DB.get('notasFiscais',n.id); }
   if(r && (r.semSessao || r.semNumero)){ if(_cont){ pdvNotaContingencia(vendaId, r.semSessao?'Sem login na nuvem neste computador':('Nota não transmitida: '+(r.motivo||'')), modelo); return null; } nfeMarcarPendencia(vendaId, r.semSessao?'Sem login na nuvem neste computador — entre com a conta da loja para emitir a nota':('Nota não transmitida: '+(r.motivo||'')), modelo); return null; }   // v14/10-F: não é rejeição — a nota fica pendente e a venda retida; o login rápido reenvia
-  if(r && r.processando){ if(_cont){ pdvNotaContingencia(vendaId, 'Nota enviada — aguardando a SEFAZ responder', modelo); return DB.get('notasFiscais',n.id); } nfeMarcarPendencia(vendaId, 'Nota enviada — aguardando autorização da SEFAZ (ainda sem validade fiscal)', modelo); return DB.get('notasFiscais',n.id); }   // SEFAZ processando: NÃO é válida ainda → venda fica retida (fora do caixa) até autorizar
+  if(r && r.processando){ const _mi=r.incerto?((r.motivo||'Sem resposta do Focus/SEFAZ')+' — o sistema está consultando se a nota foi autorizada'):''; if(_cont){ pdvNotaContingencia(vendaId, _mi||'Nota enviada — aguardando a SEFAZ responder', modelo); if(r.incerto){ try{ toast('A VENDA FOI REGISTRADA e está em Pedidos como CONTINGÊNCIA — a nota está sendo consultada no Focus','err'); }catch(e){} } return DB.get('notasFiscais',n.id); } nfeMarcarPendencia(vendaId, _mi||'Nota enviada — aguardando autorização da SEFAZ (ainda sem validade fiscal)', modelo); return DB.get('notasFiscais',n.id); }   // SEFAZ processando: NÃO é válida ainda → venda fica retida (fora do caixa) até autorizar
   // ERRO/REJEIÇÃO final: mostra o retorno da SEFAZ (suprimido durante o retry) e NÃO finaliza a nota
   try{ const _nf=DB.get('notasFiscais',n.id); if(r && r.data) focusResultModal((_nf&&_nf._focusRef)||('gp-'+n.modelo+'-'+n.id), n.modelo, focusCfg().ambiente, r.data); }catch(e){window.__es&&__es(e)}
   const numUsado=(DB.get('notasFiscais',n.id)||n).numero, modeloUsado=n.modelo;
@@ -27083,7 +27200,14 @@ function nuvemMerge(local, remote){
   return { merged:out, localExtra:anyExtra };
 }
 let _nuvemPullTimer=null, _nuvemPulling=false;
-function nuvemAgendarPull(){ clearTimeout(_nuvemPullTimer); _nuvemPullTimer=setTimeout(nuvemPullMerge, 250); } // junta rajadas de eventos
+function nuvemAgendarPull(){ clearTimeout(_nuvemPullTimer); _nuvemPullTimer=setTimeout(nuvemPullMerge, 1200); } // junta rajadas de eventos (v30/10-A: 1,2 s — uma venda gera vários eventos)
+/* v30/10-A: aviso em tempo real que NÃO precisa de leitura: o eco do que este computador acabou de enviar
+   e o "estou vivo" (dispositivos) dos outros computadores. Cada leitura evitada é carga a menos no servidor. */
+window._v3Eco=window._v3Eco||new Map();
+function nuvemRtEhEco(p){ try{ const row=(p && p.new && p.new.col)?p.new:((p && p.old)||{}); if(!row || !row.col) return false;
+    if(row.col==='dispositivos') return true;
+    const e=window._v3Eco.get(row.col+'|'+row.id); if(e && row.mod && Math.abs(nuvemTs(row.mod)-e)<2) return true;
+  }catch(e){} return false; }
 async function nuvemPullMerge(){ if(nuvemV3On() && nuvemV3Cfg().migrado){ try{ return await nuvemV3Pull({fundo:true}); }catch(e){ return; } } if(!window._v3Checked && await nuvemV3Check()){ try{ return await nuvemV3Pull({fundo:true}); }catch(e){ return; } } if(nuvemCfg().v2) return nuvemPullV2(); if(!window._v2Checked && await nuvemV2Check()) return nuvemPullV2();
   if(_nuvemPulling) return; const sb=nuvemClient(); if(!sb||_nuvemOffline) return; _nuvemPulling=true;
   try{ const tenant=nuvemTenant(); const { data, error }=await sb.from('acervo').select('dados,atualizado').eq('tenant',tenant).maybeSingle();
@@ -27151,6 +27275,7 @@ function nuvemV3Pendentes(desdeISO){
       if(!it || it.id==null || !it._mod) continue;
       if(dcCol[it.id]) continue;                       // já excluído: não re-subir (evita ressuscitar na nuvem)
       if(nuvemTs(it._mod)<=desde) continue;
+      if(it._rx && it._rx===nuvemTs(it._mod)) continue;   // v30/10-A: veio da nuvem sem mudança aqui — reenviar só regravava o servidor (eco)
       linhas.push({ col, id:String(it.id), dados:it, del:false, mod:it._mod }); }
     const dc=del[col]||{};
     for(const id in dc){ const q=dc[id]; if(nuvemTs(q)<=desde) continue;
@@ -27260,6 +27385,7 @@ async function nuvemV3Push(){
     if(window._v3PushDeNovo){ window._v3PushDeNovo=false; try{ setTimeout(function(){ try{ nuvemSalvar(); }catch(e){} }, 300); }catch(e){} } }
 }
 async function nuvemV3PushExec(){
+  if(window.__abaPausada) return {ok:false, motivo:'aba pausada (sistema aberto em outra aba)'};
   if(MODO_TESTE) return {ok:true, enviados:0, teste:true};   // ambiente de teste: só lê a nuvem
   const sb=nuvemClient(); if(!sb) return {ok:false, motivo:'sem conexão'};
   const tenant=nuvemTenant(); const cfg=nuvemV3Cfg();
@@ -27287,6 +27413,7 @@ async function nuvemV3PushExec(){
       if(typeof nuvemServidorReclamou==='function' && !r.rede) nuvemServidorReclamou(r.motivo||'');
       return {ok:false, motivo:r.motivo||'sem conexão', enviados, pulados}; }
     enviados+=(lote.length-(r.pulados||0)); pulados+=(r.pulados||0);
+    try{ const E=window._v3Eco; if(E){ if(E.size>4000) E.clear(); grupo.forEach(l=>E.set(l.col+'|'+l.id, nuvemTs(l.mod))); } }catch(e){}
     const ult=grupo[grupo.length-1].mod; if(String(ult)>String(maiorMod)) maiorMod=ult;
     nuvemCfgSalvar({ v3Envio:maiorMod });   // avança a marca (inclui os pulados: não re-travam o envio)
     i+=grupo.length;
@@ -27614,8 +27741,9 @@ function nuvemV3Aplicar(linhas){
       if(nuvemTs(l.mod)>=nuvemTs(lapide)) d._meta.del[col][l.id]=new Date().toISOString();
       return;
     }
+    try{ novo._rx=nuvemTs(novo._mod); }catch(e){}   // v30/10-A: veio da nuvem nesta versão — não é reenviado de volta
     if(i<0){ arr.push(novo); try{ if(_ix[col]){ const k=String(novo.id); if(!_ix[col].has(k)) _ix[col].set(k,arr.length-1); } }catch(e){} n++; }
-    else if(nuvemTs(novo._mod)>nuvemTs(arr[i]._mod)){ arr[i]=regMesclarProgresso(col,novo,arr[i]); n++; }
+    else if(nuvemTs(novo._mod)>nuvemTs(arr[i]._mod)){ arr[i]=regMesclarProgresso(col,novo,arr[i]); try{ if(nuvemTs(arr[i]._mod)===novo._rx) arr[i]._rx=novo._rx; else delete arr[i]._rx; }catch(e){} n++; }
     else { const m=regMesclarProgresso(col,arr[i],novo); if(_vmpMudou){ arr[i]=m; n++; } }
 
   });
@@ -28009,6 +28137,7 @@ async function nuvemV3Migrar(aoProgresso){
 }
 
 async function nuvemSalvar(){
+  if(window.__abaPausada) return false;
   if(nuvemPausado()){ _nuvemPendingPush=true; nuvemStatus('off','Sincronização pausada — '+nuvemPausaTexto()); return false; }
   if(nuvemV3On() && nuvemV3Cfg().migrado){
     if(typeof navigator!=='undefined' && navigator.onLine===false){ _nuvemPendingPush=true; nuvemStatus('off','Sem internet — enviaremos ao reconectar'); return false; }
@@ -28104,7 +28233,7 @@ async function nuvemV3CarregarTudo(){
     if(l.col==='__config'){ if(!conf || nuvemTs(l.mod)>=nuvemTs(confMod)){ conf=l.dados||{}; confMod=l.mod||''; } return; }
     if(!colSet[l.col]) return;
     if(l.del){ (del[l.col]=del[l.col]||{})[String(l.id)]=l.mod; delete novo[l.col][String(l.id)]; return; }
-    const d=l.dados; if(!d || d.id==null) return;
+    const d=l.dados; if(!d || d.id==null) return; try{ d._rx=nuvemTs(d._mod); }catch(e){}
     const ex=novo[l.col][String(l.id)];
     if(!ex || nuvemTs(d._mod)>=nuvemTs(ex._mod)) novo[l.col][String(l.id)]=d;
     const dt=(del[l.col]||{})[String(l.id)]; if(dt && nuvemTs(d._mod)>nuvemTs(dt)) delete del[l.col][String(l.id)]; };
@@ -28755,6 +28884,7 @@ function nuvemSalvarAgendado(){ if(!nuvemRtOn()) return;
    importantes como concluir uma venda, abrir/fechar caixa, faturar pedido: os outros
    computadores recebem na hora, sem os segundos de espera do agrupamento. */
 function nuvemPushJa(){ try{
+  if(window.__abaPausada) return;
   if(!DB.__booted || NUVEM_LOADING || !nuvemRtOn() || !nuvemClient()) return;
   if(typeof navigator!=='undefined' && navigator.onLine===false){ _nuvemPendingPush=true; return; }
   clearTimeout(_nuvemTimer); nuvemSalvar();
@@ -29418,8 +29548,16 @@ function nuvemV3DelPermitida(d, col){ const g=window._v3DelGuarda||(window._v3De
       try{ toast('Proteção: a nuvem tentou apagar '+col+' em massa — este computador manteve os dados','err'); }catch(e){window.__es&&__es(e)} }
     return false; }
   return true; }
+/* v30/10-A: reaplica na memória a fila do que foi lançado aqui e ainda não subiu — também quando a nuvem
+   está fora do ar. Antes isso só acontecia depois de a nuvem responder: aberto sem nuvem, a venda recém-
+   lançada não aparecia (e o próximo salvamento apagava a fila). */
+function outboxAplicarMemoria(){ try{ if(window.__abaPausada) return 0; const d=DB._load(); const n=outboxAplicar(d);
+    if(n){ const _nl=NUVEM_LOADING; NUVEM_LOADING=true; try{ DB._ensure(); DB._persist(); } finally{ NUVEM_LOADING=_nl; }
+      try{ nuvemRefreshUI(); }catch(e){} try{ nuvemSalvarAgendado(); }catch(e){} }
+    return n; }catch(e){ return 0; } }
 /* Abre o sistema com a cópia local antes de falar com a nuvem. */
-async function nuvemHidratarCache(){
+async function nuvemHidratarCache(){ const n=await _nuvemHidratarCacheBase(); try{ outboxAplicarMemoria(); }catch(e){} return n; }
+async function _nuvemHidratarCacheBase(){
   try{
     if(_nuvemOffline || !nuvemConfigurada()) return 0;
     const tenant=nuvemTenant();
@@ -29521,7 +29659,7 @@ async function nuvemRealtimeStart(){ if(nuvemPausado()){ nuvemStatus('off','Sinc
     const _v2on = !!nuvemCfg().v2;
     const _tbl = _v3on ? 'acervo_reg' : (_v2on ? 'acervo_col' : 'acervo');
     NUVEM_RT = sb.channel('acervo_rt_'+tenant)
-      .on('postgres_changes',{ event:'*', schema:'public', table:_tbl, filter:'tenant=eq.'+tenant }, p=>nuvemAgendarPull())
+      .on('postgres_changes',{ event:'*', schema:'public', table:_tbl, filter:'tenant=eq.'+tenant }, p=>{ if(nuvemRtEhEco(p)) return; nuvemAgendarPull(); })
       .subscribe(st=>{
         if(st==='SUBSCRIBED'){ NUVEM_RT_OK=true; _nuvemRtTentativa=0;
           if(_nuvemRtReconectar){ clearTimeout(_nuvemRtReconectar); _nuvemRtReconectar=null; }
@@ -29542,7 +29680,7 @@ async function nuvemRealtimeStart(){ if(nuvemPausado()){ nuvemStatus('off','Sinc
       const oculto=(typeof document!=='undefined' && document.hidden);
       // v09/10-K: com o canal instantâneo de pé, a conferência é só rede de segurança (15 s);
       // sem ele, 4,5 s com movimento; parado 30 s; janela minimizada/aba escondida 60 s.
-      const passo = oculto ? 40 : (NUVEM_RT_OK ? 10 : (parado ? 20 : 3));   // rede de segurança: com tempo real de pé confere a cada ~9s (mesmo que os eventos instantâneos não cheguem); parado a cada 30s; sem tempo real a cada 3s
+      const passo = oculto ? 120 : (NUVEM_RT_OK ? 40 : (parado ? 40 : 6));   // v30/10-A: 3 min oculto · 60 s com tempo real ou parado · 9 s sem tempo real (antes 60/15/30/4,5 s)   // rede de segurança: com tempo real de pé confere a cada ~9s (mesmo que os eventos instantâneos não cheguem); parado a cada 30s; sem tempo real a cada 3s
       if(_tick%passo===0) nuvemPollCheck();
     },1500);
   }catch(e){ nuvemRtAgendarReconexao('exceção'); } }
@@ -33137,8 +33275,33 @@ async function focusReq(url, body){
   if(!jwt){ try{ const sb=nuvemClient(); if(sb){ const r=await sb.auth.refreshSession(); jwt=(r&&r.data&&r.data.session&&r.data.session.access_token)||''; } }catch(e){window.__es&&__es(e)} }   // sessão vencida: tenta renovar antes de desistir
   if(jwt) headers['Authorization']='Bearer '+jwt;
   else if(typeof nuvemSecureOn==='function' && nuvemSecureOn()) throw new Error('Entre na nuvem (e-mail e senha da conta da loja) para usar o Focus NFe — a função de emissão só aceita usuário logado.');
+  // v30/10-A: a função da nuvem só desistia depois de 150 s ("IDLE_TIMEOUT") e o caixa ficava parado.
+  // Emissão espera no máx. 60 s; consulta 30 s. Sem resposta = nota "aguardando" e o sistema CONSULTA depois.
+  const _tmo=(body.acao==='emitir')?60000:(body.acao==='consultar'?30000:0);
+  if(_tmo && typeof AbortController!=='undefined'){ const ac=new AbortController(); const _t=setTimeout(()=>{ try{ ac.abort(); }catch(e){} }, _tmo);
+    try{ return await fetch(url,{method:'POST',headers,body:JSON.stringify(body),signal:ac.signal}); }
+    catch(e){ if(e && e.name==='AbortError') throw new Error('Tempo esgotado ('+(_tmo/1000)+' s) esperando o Focus/SEFAZ responder'); throw e; }
+    finally{ clearTimeout(_t); } }
   return fetch(url,{method:'POST',headers,body:JSON.stringify(body)});
 }
+/* v30/10-A: resposta que NÃO diz se a nota saiu ou não (tempo esgotado da função, erro 5xx, página de erro).
+   A nota pode ter sido AUTORIZADA lá — então NUNCA é tratada como recusada: fica "aguardando" e é consultada. */
+function focusRespIncerta(data){ if(!data || typeof data!=='object') return true;
+  const gw=''+(data.code!=null?data.code:(data.error_code||'')); const msg=''+(data.message||data.msg||'');
+  if(gw==='401' || /jwt|unauthori[sz]ed/i.test(msg)) return false;   // sessão recusada: não chegou a enviar
+  const h=+data.status_http||0;
+  if(!data.focus){ if(/TIMEOUT|LIMIT|RESOURCE|INTERNAL|UNAVAILABLE|GATEWAY|EARLY_DROP/i.test(gw) || /timeout|tempo esgotado/i.test(msg)) return true;
+    if(h>=500 || h===408) return true;
+    if(data.status_http==null && data.ok!==false && !data.erro) return true;
+    return false; }
+  if(!(data.focus && data.focus.status) && (h>=500 || h===408)) return true;
+  return false; }
+function focusMarcarIncerta(n, ref, f, motivo){ const agora=new Date().toISOString(); const m=('Sem resposta do Focus/SEFAZ — '+(motivo||'tempo esgotado')).slice(0,300);
+  try{ DB.update('notasFiscais',n.id,{status:'processando', _focusRef:ref, _focusAmbiente:f.ambiente, _focusStatus:'sem_resposta', _focusUltMsg:m, _focusUltEm:agora, _procDesde:agora}); }catch(e){}
+  try{ setTimeout(()=>{ try{ nfeVigiaProcessando(true); }catch(e){} }, 50); }catch(e){}
+  try{ toast('O Focus/SEFAZ não respondeu a tempo. A nota ficou AGUARDANDO e o sistema vai consultar sozinho se ela foi autorizada — não emita de novo.','err'); }catch(e){}
+  try{ logAcao('Nota sem resposta do Focus — fica aguardando consulta', (n.modelo==='65'?'NFC-e':'NF-e')+' · '+m); }catch(e){}
+  return { ok:false, autorizado:false, processando:true, incerto:true, motivo:m }; }
 /* Versão da função de emissão que este sistema espera encontrar publicada. */
 const FN_VERSAO_ESPERADA='2026-09-29-carta-correcao';
 const FN_ACOES_NECESSARIAS=['emitir','consultar','cancelar','baixar_xml','recebidas','xml_recebida','manifestar','diag_nota'];
@@ -33534,9 +33697,10 @@ async function focusEmitir(n, modelo, opts){ opts=opts||{}; if(!n){ toast('Nota 
     if(!nc.ok){ try{ alert('Nota NÃO transmitida.\n\n'+nc.motivo); }catch(e){} toast(nc.motivo,'err'); return {ok:false, semNumero:true, motivo:nc.motivo}; }
     n=DB.get('notasFiscais',n.id)||n; }
   toast('Transmitindo à SEFAZ via Focus NFe ('+(f.ambiente==='producao'?'produção':'homologação')+')...','ok');
+  let _refTentada='';
   try{
     // Referência ESTÁVEL da nota (nunca muda sozinha): é ela que identifica o documento no Focus.
-    const _emitir=async()=>{ const _ref='gp-'+md+'-'+(n.id||n.numero||Date.now())+'-'+(+n._refSeq||0);
+    const _emitir=async()=>{ const _ref='gp-'+md+'-'+(n.id||n.numero||Date.now())+'-'+(+n._refSeq||0); _refTentada=_ref;
       const _r=await focusReq(f.url, { acao:'emitir', modelo:md, ambiente:f.ambiente, ref:_ref, token:f.token, payload:focusPayload(n) });
       return { ref:_ref, data:(await _r.json()) }; };
     let _res=await _emitir();
@@ -33561,7 +33725,8 @@ async function focusEmitir(n, modelo, opts){ opts=opts||{}; if(!n){ toast('Nota 
       await new Promise(r=>setTimeout(r,_seg*1000));
       _res=await _emitir();
     }
-    const ref=_res.ref; const data=_res.data; const fo=data.focus||{};
+    const ref=_res.ref; const data=_res.data; const fo=(data&&data.focus)||{};
+    if(focusRespIncerta(data)){ const _r=focusMarcarIncerta(n, ref, f, (data&&(data.message||data.erro||data.code))?(''+(data.message||data.erro||data.code)).slice(0,160):('http '+((data&&data.status_http)||'?'))); _r.data=data; return _r; }
     const _neg=/cancel|deneg|erro|rejeit|duplicid/i.test(fo.status||'');
     const _proc=((fo.status||'').indexOf('processando')===0);
     const _temDoc=!!(fo.chave_nfe && fo.caminho_danfe);
@@ -33625,7 +33790,11 @@ async function focusEmitir(n, modelo, opts){ opts=opts||{}; if(!n){ toast('Nota 
     else toast('Focus: '+(fo.status||('erro http '+data.status_http))+(motivo?(' — '+motivo):''),'err');
     if(!opts.silent || (!autorizado && !opts.noModal)) focusResultModal(ref, md, f.ambiente, data);
     return { ok:autorizado||processando, autorizado, processando, motivo, duplicidade:/duplicidade/i.test(motivo||''), data };
-  }catch(e){ toast('Falha ao transmitir: '+e,'err'); return { ok:false, rede:true, motivo:''+e }; } }
+  }catch(e){ const _m=''+((e&&e.message)||e);
+    // v30/10-A: o pedido de emissão SAIU e a resposta não voltou (internet caiu, tempo esgotado): a nota pode
+    // estar autorizada — fica aguardando e é consultada. Só é "não enviada" quando nem chegou a sair.
+    if(_refTentada && !/Entre na nuvem|Ambiente de teste/i.test(_m)) return focusMarcarIncerta(n, _refTentada, f, _m.slice(0,160));
+    toast('Falha ao transmitir: '+_m,'err'); return { ok:false, rede:true, motivo:_m }; } }
 async function focusAplicarConsulta(ref, modelo, notaId){ const f=focusCfg();
   // Alvo EXATO por id (quando informado): evita atualizar a nota errada quando duas notas têm a
   // mesma referência — ex.: ao fazer uma NOVA nota copiando os produtos de outra. Usa a referência
@@ -33783,6 +33952,54 @@ async function nfeResolverSemRef(n){ const md=n.modelo||'55';
   try{ if(n.vendaId) nfeMarcarPendencia(n.vendaId, 'Nota não transmitida — '+motivo, md); }catch(e){window.__es&&__es(e)}
   try{ logAcao('Nota presa em "aguardando SEFAZ" sem envio — voltou para Pendente', (md==='65'?'NFC-e':'NF-e')+' nº '+(n.numero||'s/nº')); }catch(e){}
   return {res:'naoenviada', msg:motivo}; }
+/* v30/10-A: nota "aguardando" COM referência, mas o Focus responde 404 (não conhece) depois de 3 min:
+   o envio nunca chegou lá. Volta para PENDENTE com o motivo e a venda fica em contingência/aguardando. */
+function nfeTratar404(n, data){ try{
+    if(!data || +data.status_http!==404) return false; const at=DB.get('notasFiscais',n.id); if(!at || at.status!=='processando') return false;
+    try{ if(typeof _nfeTransmitindo!=='undefined' && _nfeTransmitindo.has(at.id)) return false; }catch(e){}
+    const t=Math.max(Date.parse(at._procDesde||'')||0, Date.parse(at._focusUltEm||'')||0); if(t && (Date.now()-t)<180000) return false;
+    const motivo='A nota não chegou ao Focus/SEFAZ — o envio não se completou (internet ou serviço fora do ar). Transmita novamente.';
+    DB.update('notasFiscais',at.id,{status:'pendente', _focusStatus:'nao_enviada', _focusUltMsg:motivo, _focusUltEm:new Date().toISOString()});
+    try{ if(at.vendaId) nfeMarcarPendencia(at.vendaId, 'Nota não transmitida — '+motivo, at.modelo); }catch(e){}
+    try{ logAcao('Nota aguardando SEFAZ sem envio — voltou para Pendente', (at.modelo==='65'?'NFC-e':'NF-e')+' nº '+(at.numero||'s/nº')); }catch(e){}
+    return true; }catch(e){ return false; } }
+/* v30/10-A: notas DESCARTADAS de uma venda (lixeira) que podem ter sido autorizadas no Focus mesmo assim
+   (ex.: "tempo esgotado" tratado como recusa nas versões anteriores). Consulta cada uma UMA vez; achando
+   AUTORIZADA, devolve a nota ao sistema e libera a venda — sem emitir outra nota para a mesma venda. */
+async function nfeRecuperarRemovidas(vendaId){
+  const f=focusCfg(); if(!f.url || !focusTemToken()) return null;
+  const d=DB._load(); const vistos=new Set();
+  const lix=(d.lixeira||[]).filter(l=>{ if(!l || l.col!=='notasFiscais' || !l.item || l.item.vendaId!==vendaId || l._focusConferido) return false; if(vistos.has(l.item.id)) return false; vistos.add(l.item.id); return true; });
+  if(!lix.length) return null;
+  if(DB.all('notasFiscais').some(x=>x && x.vendaId===vendaId && nfeAutorizadaReal(x))) return null;
+  for(const l of lix){ const it=l.item; const md=it.modelo||'65';
+    if(!(it._focusRef || it._focusStatus || it._focusUltEm)) { (d.lixeira||[]).forEach(x=>{ if(x&&x.item&&x.item.id===it.id) x._focusConferido=new Date().toISOString(); }); DB._persist(); continue; }   // nunca foi transmitida
+    const ref=it._focusRef || ('gp-'+md+'-'+it.id+'-'+(+it._refSeq||0));
+    let data=null; try{ const r=await focusReq(f.url,{acao:'consultar',modelo:md,ambiente:f.ambiente,ref,token:f.token}); data=await r.json(); }catch(e){ continue; }   // sem resposta: tenta de novo numa próxima vez
+    if(!data || (!data.focus && +data.status_http!==404)) continue;
+    (d.lixeira||[]).forEach(x=>{ if(x&&x.item&&x.item.id===it.id) x._focusConferido=new Date().toISOString(); }); DB._persist();
+    const fo=data.focus||{};
+    if(/autoriz/i.test(fo.status||'') && !/erro|rejeit|deneg|cancel/i.test(fo.status||'')){
+      try{ if(d._meta && d._meta.del && d._meta.del.notasFiscais) delete d._meta.del.notasFiscais[it.id]; }catch(e){}
+      if(!DB.get('notasFiscais',it.id)) DB.insert('notasFiscais', Object.assign({}, it, {status:'processando', _focusRef:ref}));
+      try{ await focusAplicarConsulta(ref, md, it.id); }catch(e){}
+      const at=DB.get('notasFiscais',it.id);
+      if(at && nfeAutorizadaReal(at)){
+        try{ DB.update('vendas',vendaId,{notaEmitida:true, notaNumero:at.numero||null, notaModelo:md}); nfeLimparPendencia(vendaId); }catch(e){}
+        try{ fiscalSincronizarNumeracao(md, at.numero); }catch(e){}
+        try{ logAcao('Nota AUTORIZADA recuperada (estava descartada)', (md==='65'?'NFC-e':'NF-e')+' nº '+(at.numero||'')+' · venda '+vendaId); }catch(e){}
+        try{ buildNav(); }catch(e){}
+        return at; } } }
+  return null; }
+/* Ao abrir: confere as vendas em contingência dos últimos 10 dias (uma vez por nota descartada). */
+async function nfeRecuperarRemovidasContingencia(){ try{
+    if(window.__abaPausada || !focusCfg().url || !focusTemToken()) return 0; if(typeof navigator!=='undefined' && navigator.onLine===false) return 0;
+    const lim=daysAgo(10); let n=0;
+    const vs=DB.all('vendas').filter(v=>v && (v.contingencia || v.fiscalPendente) && v.status!=='cancelada' && (v.data||'')>=lim);
+    for(const v of vs){ try{ if(await nfeRecuperarRemovidas(v.id)) n++; }catch(e){} await new Promise(r=>setTimeout(r,700)); }
+    if(n){ try{ toast(n+' nota(s) que pareciam recusadas estavam AUTORIZADAS na SEFAZ — foram recuperadas e as vendas liberadas','ok'); }catch(e){} }
+    return n; }catch(e){ return 0; } }
+try{ setTimeout(()=>{ try{ nfeRecuperarRemovidasContingencia(); }catch(e){} }, 30000); }catch(e){}
 async function nfeAtualizarProcessando(silent){
   if(_nfeAtualizando){ if(!silent) toast('A consulta das notas já está em andamento — aguarde alguns segundos','ok'); return; } _nfeAtualizando=true;
   try{ const corr=nfeCorrigirAutorizadas();   // primeiro corrige as que já têm DANFE (autorizadas presas em "processando")
@@ -33795,8 +34012,8 @@ async function nfeAtualizarProcessando(silent){
     if(!silent) toast('Consultando no Focus '+(pend.length+semRef.length)+' nota(s)…','ok');
     const cont={autorizada:0, rejeitada:0, processando:0, naoenviada:0, falha:0, cancelada:0};
     const antesSt={}; pend.forEach(n=>{ antesSt[n.id]=n.status; });
-    for(const n of pend){ try{ await focusAplicarConsulta(n._focusRef, n.modelo||'55', n.id); }catch(e){ cont.falha++; window.__es&&__es(e); } }
-    pend.forEach(n=>{ const at=DB.get('notasFiscais',n.id); if(!at) return; if(nfeAutorizadaReal(at)) cont.autorizada++; else if(at.status==='cancelada') cont.cancelada++; else if(at.status==='processando') cont.processando++; else if(antesSt[n.id]==='processando' && at.status==='pendente') cont.rejeitada++; });
+    for(const n of pend){ try{ const _dd=await focusAplicarConsulta(n._focusRef, n.modelo||'55', n.id); nfeTratar404(n, _dd); }catch(e){ cont.falha++; window.__es&&__es(e); } }
+    pend.forEach(n=>{ const at=DB.get('notasFiscais',n.id); if(!at) return; if(nfeAutorizadaReal(at)) cont.autorizada++; else if(at._focusStatus==='nao_enviada' && antesSt[n.id]==='processando') cont.naoenviada++; else if(at.status==='cancelada') cont.cancelada++; else if(at.status==='processando') cont.processando++; else if(antesSt[n.id]==='processando' && at.status==='pendente') cont.rejeitada++; });
     let semCfg=false;
     if(semRef.length && !(focusCfg().url && focusTemToken())) semCfg=true;
     else for(const n of semRef){ try{ const r=await nfeResolverSemRef(n);
