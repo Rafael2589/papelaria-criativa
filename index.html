@@ -48,7 +48,7 @@ const CONFIG_EMPRESA = {
      Aparece no topo do menu e no rodapé das Configurações. Troque a cada publicação.
      MANTENHA O FORMATO 'vDD/MM-X' — é ele que o sistema usa para comparar as máquinas
      da loja e avisar quando alguma ficou para trás.                                  */
-  versao: 'v30/10-B',
+  versao: 'v30/10-C',
 
   /* 4) NUVEM (Supabase)  ------------------------------------------------------------
      Cole aqui a Project URL e a chave PUBLISHABLE do projeto Supabase DESTA empresa
@@ -4049,8 +4049,9 @@ function viewDash(){
     ${(()=>{ const ag=DB.all('vendas').filter(v=>v.fiscalPendente && v.status!=='cancelada'); if(!ag.length) return '';
       const val=ag.reduce((s,v)=>s+(+v.total||0),0);
       return `<div class="card card-pad" style="margin-bottom:16px;border:1px solid var(--amber);background:var(--amber-soft);display:flex;align-items:center;gap:12px;flex-wrap:wrap">
-        <div style="flex:1;min-width:200px">${ico('alert')} <b>${NUM(ag.length)} venda(s) aguardando nota fiscal (${BRL(val)}).</b> <span class="t-mut" style="font-size:12.5px">Ficaram fora do caixa por pendência na nota fiscal. Corrija a pendência e emita a nota para faturar e lançar no caixa.</span></div>
-        <button class="btn btn-amber btn-sm" onclick="go('sales')">${ico('nfeout')} Ver pedidos</button></div>`; })()}
+        <div style="flex:1;min-width:200px">${ico('alert')} <b>${NUM(ag.length)} venda(s) aguardando nota fiscal (${BRL(val)}).</b> <span class="t-mut" style="font-size:12.5px">Ficaram fora do caixa por pendência na nota fiscal. Corrija a pendência e emita a nota para faturar e lançar no caixa.</span>
+          <div style="margin-top:6px;font-size:12.5px">${ag.slice(0,6).map(v=>`<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;padding:3px 0"><b>#${esc(v.numero||'—')}</b> · ${fDate(v.data)} · ${esc(v.clienteNome||'Consumidor')} · <b>${BRL(v.total)}</b>${v.fiscalPendenciaMotivo?`<span class="t-mut"> — ${esc((''+v.fiscalPendenciaMotivo).slice(0,90))}</span>`:''} <button class="btn btn-ghost btn-sm" onclick="vendaResumo('${v.id}')">${ico('eye')} Abrir</button></div>`).join('')}${ag.length>6?`<div class="t-mut">… e mais ${NUM(ag.length-6)}</div>`:''}</div></div>
+        <button class="btn btn-amber btn-sm" onclick="salesAbrirFiltrado('aguardando_nf')">${ico('nfeout')} Ver na lista de pedidos</button></div>`; })()}
     ${(()=>{ const ct=DB.all('vendas').filter(v=>v.contingencia && v.status!=='cancelada' && !v.notaEmitida); if(!ct.length) return '';
       return `<div class="card card-pad" style="margin-bottom:16px;border:1px solid var(--amber);background:var(--amber-soft);display:flex;align-items:center;gap:12px;flex-wrap:wrap">
         <div style="flex:1;min-width:200px">${ico('nfeout')} <b>${NUM(ct.length)} venda(s) em CONTINGÊNCIA — nota fiscal a emitir (${BRL(ct.reduce((a,v)=>a+(+v.total||0),0))}).</b> <span class="t-mut" style="font-size:12.5px">As vendas estão registradas (caixa e estoque); só falta emitir a nota, que não saiu por falha da internet/SEFAZ ou recusa.</span></div>
@@ -6913,7 +6914,7 @@ function pedidosFaturados(){ try{ vendasLiberarPendenciaResolvida(); }catch(e){w
   // precisa achar. Só sai da lista quando é EXCLUÍDO (e aí vai para a Lixeira).
   // Cancelado NÃO entra em total nenhum: ANL.totais() já descarta os cancelados,
   // então faturamento, lucro, ticket e contagem seguem iguais ao que eram.
-  return DB.all('vendas').filter(v=>(v.faturadoPDV || v.pedido)); }
+  return DB.all('vendas').filter(v=>(v.faturadoPDV || v.pedido || v.fiscalPendente || v.contingencia)); }   // v30/10-C: retida por nota/contingência sempre aparece
 /* ORDEM DE LANÇAMENTO: o último documento CRIADO fica no topo — editar/faturar um pedido antigo
    não o traz para cima. _cri é gravado na criação; documentos antigos (sem _cri) usam data+hora,
    e o desempate é pelo número (maior primeiro). Vale para Pedidos, Pedidos Vendedores e Orçamentos. */
@@ -7002,6 +7003,7 @@ function viewSales(scope){ SALES_LIM=SALES_PASSO; SALESF.scope=(scope==='vend')?
         <option value="receber_local" ${SALESF.status==='receber_local'?'selected':''}>Receber no local</option>`}
         <option value="faturado" ${SALESF.status==='faturado'?'selected':''}>Faturado</option>
         <option value="contingencia" ${SALESF.status==='contingencia'?'selected':''}>Contingência (nota a emitir)</option>
+        <option value="aguardando_nf" ${SALESF.status==='aguardando_nf'?'selected':''}>Aguardando nota fiscal</option>
         ${vend?'':`<option value="cancelado" ${SALESF.status==='cancelado'?'selected':''}>Cancelado</option>`}
       </select>
       <select class="pill-filter" id="sales-forma" onchange="SALESF.forma=this.value;renderSalesTable()" style="min-width:170px">
@@ -7238,6 +7240,8 @@ const SALES_PASSO=200;
 let SALES_LIM=SALES_PASSO;
 function salesMostrarMais(){ SALES_LIM+=SALES_PASSO; try{ renderSalesTable(); }catch(e){} }
 function salesMostrarTodos(){ SALES_LIM=Number.MAX_SAFE_INTEGER; try{ renderSalesTable(); }catch(e){} }
+/* v30/10-C: abre Pedidos já filtrado por situação, sem limite de linhas e sem filtro de data — nada fica escondido */
+function salesAbrirFiltrado(status){ try{ SALESF.status=status||''; SALESF.de=''; SALESF.ate=''; SALESF.q=''; SALESF.val=''; SALESF.forma=''; SALESF.vend=''; }catch(e){} go('sales'); try{ SALES_LIM=Number.MAX_SAFE_INTEGER; renderSalesTable(); }catch(e){} }
 function salesNotaLimite(mostrando, total){
   if(total<=mostrando) return '';
   return `<div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;padding:10px 13px;font-size:12.5px;border-top:1px solid var(--line);color:var(--ink-2)">
