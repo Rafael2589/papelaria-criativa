@@ -48,7 +48,7 @@ const CONFIG_EMPRESA = {
      Aparece no topo do menu e no rodapé das Configurações. Troque a cada publicação.
      MANTENHA O FORMATO 'vDD/MM-X' — é ele que o sistema usa para comparar as máquinas
      da loja e avisar quando alguma ficou para trás.                                  */
-  versao: 'v30/10-C',
+  versao: 'v03/11-A',
 
   /* 4) NUVEM (Supabase)  ------------------------------------------------------------
      Cole aqui a Project URL e a chave PUBLISHABLE do projeto Supabase DESTA empresa
@@ -5630,6 +5630,8 @@ function finalizarVenda(){
       ${trocoFinal>0?`<div class="tag pos" style="font-size:16px;padding:6px 14px">Troco: ${BRL(trocoFinal)}</div>`:''}
       ${aberto>0.01?`<div class="t-mut" style="font-size:12px;margin-top:6px">Em aberto${futuro>0.01?' (ficha/futuro)':' (prazo)'}: ${BRL(aberto)}</div>`:''}
     </div>
+    ${(function(){ try{ const nj=DB.all('notasFiscais').find(x=>x && x.vendaId===vid && x.status!=='cancelada' && !x.cancelada && (nfeAutorizadaReal(x)||x.status==='autorizada')); if(!nj) return ''; try{ DB.update('vendas',vid,{notaEmitida:true, notaNumero:nj.numero||null, notaModelo:nj.modelo||null}); }catch(e){}
+        return `<div class="card card-pad" style="background:var(--pos-soft);color:var(--pos);font-size:12.5px;text-align:center;margin-top:12px"><b>${nj.modelo==='65'?'NFC-e':'NF-e'} nº ${esc(nj.numero||'')} já está AUTORIZADA para este pedido.</b> Não precisa emitir de novo — F2/F3 só abrem a nota para imprimir.</div>`; }catch(e){ return ''; } })()}
     <p class="t-mut" style="font-size:12.5px;text-align:center;margin:16px 0 10px">Estoque e financeiro já foram atualizados. Escolha o documento para emitir/imprimir:</p>
     <div id="pos-venda-acoes" style="display:grid;gap:9px">
       <button id="posv-f1" class="btn btn-primary" style="justify-content:center" onclick="posVendaDoc('${vid}','recibo')">${ico('print')} Salvar venda (recibo / pedido) (F1)</button>
@@ -6292,6 +6294,12 @@ function nfeXpedResolver(action){ const r=window._nfeXpedResolve; window._nfeXpe
 async function nfeEmitirETransmitir(vendaId, modelo, origem){
   const _cont=(origem==='pdv'||origem==='contingencia');   // venda já fechada no caixa: falha da nota = CONTINGÊNCIA (nunca desfaz a venda)
   let v=DB.get('vendas',vendaId); if(!v){ toast('Venda não encontrada','err'); return null; }
+  // v03/11-A: a venda JÁ TEM nota autorizada → não reemite nem mexe nela (antes a nota autorizada era
+  // marcada "processando" e reenviada ao Focus — bastava um timeout para ela virar contingência de novo).
+  { const _ja=DB.all('notasFiscais').find(x=>x && x.vendaId===vendaId && x.status!=='cancelada' && !x.cancelada && (nfeAutorizadaReal(x) || x.status==='autorizada'));
+    if(_ja){ try{ DB.update('vendas',vendaId,{notaEmitida:true, notaNumero:_ja.numero||v.notaNumero||null, notaModelo:_ja.modelo||v.notaModelo||null}); nfeLimparPendencia(vendaId); }catch(e){window.__es&&__es(e)}
+      try{ if(_cont && v.contingencia) vendaContingenciaLimpar(vendaId); }catch(e){}
+      toast('Esta venda JÁ TEM nota autorizada (nº '+(_ja.numero||'')+') — nada foi reemitido','ok'); return _ja; } }
   // v30/10-A: antes de criar OUTRA nota, confere se uma tentativa anterior (já descartada) não foi autorizada
   // no Focus — senão a mesma venda podia sair com duas notas.
   try{ const _rec=await nfeRecuperarRemovidas(vendaId); if(_rec){ toast('A nota desta venda JÁ ESTAVA AUTORIZADA na SEFAZ — foi recuperada, sem emitir de novo','ok'); return _rec; } }catch(e){window.__es&&__es(e)}
@@ -6949,7 +6957,7 @@ function pedidosNfSemFaturaCard(){
       <td class="t-right" style="white-space:nowrap">
         <button class="btn-icon btn-ghost" onclick="notaView('${x.n.id}')" title="Ver a nota fiscal">${ico('nfeout')}</button>
         <button class="btn-icon btn-ghost" onclick="vendaDetalhe('${x.v.id}')" title="Ver o pedido">${ico('rep')}</button>
-        <button class="btn btn-sm btn-amber" onclick="pedidoAbertoPDVVenda('${x.v.id}')" title="Carregar no PDV para faturar">${ico('sales')} Faturar</button>
+        <button class="btn btn-sm btn-amber" onclick="pedidoFaturarComNota('${x.v.id}')" title="Fatura o pedido com a nota que já existe (estoque, caixa e financeiro) — sem reemitir a nota">${ico('sales')} Faturar com a nota já emitida</button>
       </td></tr>`;
   return `<div class="card" style="margin-bottom:16px;border-left:4px solid var(--neg)">
     <div class="card-head"><div><h3 style="color:var(--neg)">${ico('alert')} Nota autorizada, pedido sem faturamento (${NUM(arr.length)})</h3>
@@ -7200,6 +7208,21 @@ ${(STATE&&STATE.route==='salesvend')?'':`        <button class="btn-icon btn-gho
 }
 function pedidoAbertoPDV(id){ const o=DB.get('orcamentos',id); if(!o){ toast('Pedido não encontrado','err'); return; }
   go('pdv'); setTimeout(()=>{ try{ pdvLoadOrc(id); toast('Pedido Nº '+(o.numero||'')+' carregado no PDV — finalize a venda aqui','ok'); }catch(e){window.__es&&__es(e)} }, 80); }
+/* v03/11-A: pedido PENDENTE cuja nota já está AUTORIZADA — fatura no PDV com o que o pedido já tem
+   (itens, vendedor, pagamentos) sem pedir nada e sem reemitir a nota. Só para no PDV se faltar o
+   vendedor ou a forma de pagamento. */
+function pedidoFaturarComNota(id){ const v=DB.get('vendas',id); if(!v){ toast('Pedido não encontrado','err'); return; }
+  const nj=DB.all('notasFiscais').find(x=>x && x.vendaId===id && x.status!=='cancelada' && !x.cancelada && (nfeAutorizadaReal(x)||x.status==='autorizada'));
+  if(!nj){ pedidoAbertoPDVVenda(id); return; }
+  if(pedidoStatusInfo(v).k==='faturado'){ toast('Este pedido já está faturado','ok'); return; }
+  if(!exigirCaixa('o faturamento')) return;
+  go('pdv'); setTimeout(()=>{ try{ pdvLoadPedido(id);
+      if(!CART.vendedorId && CURRENT_USER){ const vd=DB.all('vendedores').find(x=>x && x.situacao!=='inativo' && (x.funcId===CURRENT_USER.id || x.id===CURRENT_USER.id || normTxt(x.nome||'')===normTxt(CURRENT_USER.nome||''))); if(vd){ CART.vendedorId=vd.id; CART.vendedorNome=vd.nome; } }
+      const okPag=(CART.pagamentos||[]).length && !(CART.pagamentos||[]).some(p=>!p.forma);
+      if(!CART.vendedorId || !okPag){ renderPDV(); toast('Pedido #'+(v.numero||'')+' carregado — confira '+(!CART.vendedorId?'o vendedor':'a forma de pagamento')+' e clique em Finalizar venda. A nota nº '+(nj.numero||'')+' já existe e não será reemitida.','err'); return; }
+      renderPDV(); finalizarVenda();
+      toast('Pedido #'+(v.numero||'')+' faturado com a '+(nj.modelo==='65'?'NFC-e':'NF-e')+' nº '+(nj.numero||'')+' já autorizada','ok');
+    }catch(e){ window.__es&&__es(e); toast('Não foi possível faturar: '+((e&&e.message)||e),'err'); } }, 120); }
 function pedidoAbertoPDVVenda(id){ const v=DB.get('vendas',id); if(!v){ toast('Pedido não encontrado','err'); return; }
   go('pdv'); setTimeout(()=>{ try{ pdvLoadPedido(id); toast('Pedido'+(v.numero?(' #'+v.numero):'')+' carregado no PDV — finalize a venda aqui','ok'); }catch(e){window.__es&&__es(e)} }, 80); }
 /* Editar um pedido a partir de "Pedidos Vendedores".
