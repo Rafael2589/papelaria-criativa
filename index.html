@@ -48,7 +48,7 @@ const CONFIG_EMPRESA = {
      Aparece no topo do menu e no rodapé das Configurações. Troque a cada publicação.
      MANTENHA O FORMATO 'vDD/MM-X' — é ele que o sistema usa para comparar as máquinas
      da loja e avisar quando alguma ficou para trás.                                  */
-  versao: 'v03/11-A',
+  versao: 'v03/11-B',
 
   /* 4) NUVEM (Supabase)  ------------------------------------------------------------
      Cole aqui a Project URL e a chave PUBLISHABLE do projeto Supabase DESTA empresa
@@ -1806,7 +1806,8 @@ function outboxRegistrar(){ if(typeof window!=='undefined' && window.__abaPausad
     (typeof NUVEM_COLS!=='undefined'?NUVEM_COLS:[]).forEach(col=>{
       if(LOCAL_KEEP.indexOf(col)>=0) return;                          // esses já ficam inteiros no navegador
       const arr=d[col]; if(!Array.isArray(arr)||!arr.length) return;
-      const novos=arr.filter(x=>x && x.id!=null && x._mod && nuvemTs(x._mod)>desde && !(x._rx && x._rx===nuvemTs(x._mod)));   // v30/10-A: o que veio da nuvem não precisa de fila
+      const _sem=Date.now()-7*86400000;
+      const novos=arr.filter(x=>{ if(!x || x.id==null || !x._mod) return false; const t=nuvemTs(x._mod); if(x._rx && x._rx===t) return false; if(x._tx && x._tx===t) return false; return t>desde || (t>_sem && !x._tx && !x._rx); });   // v30/10-A: o que veio da nuvem não precisa de fila · v03/11-B: nunca enviado entra mesmo antes da marca
       if(novos.length){ o[col]=novos; n+=novos.length; } });
     // v30/10-A: o que JÁ estava na fila e não está na memória (ex.: sistema aberto com a nuvem fora do ar,
     // antes de a fila ser reaplicada) CONTINUA na fila. Antes a fila era refeita só com a memória e a venda
@@ -1871,6 +1872,11 @@ const LOCAL_KEEP=['empresa','comissaoConfig','cfopContrapartida','_meta','unidad
 // que a nuvem tinha sobrescrito com dado antigo de outro aparelho, se perdia. Ficando no navegador,
 // a alteração local sobrevive ao recarregar e a mesclagem por data (_mod) mantém o mais novo.
 const LOCAL_PERSIST=['caixaSessoes','caixaMovs','produtosFalta','dispositivos'];
+/* v03/11-B: carimbo de alteração SEMPRE MAIOR que o anterior. Com o relógio deste computador atrasado em
+   relação aos outros, uma edição ganhava _mod mais antigo do que a versão que ela alterou — e a nuvem e os
+   outros computadores descartavam a edição ("o lançamento sumiu depois de salvar"). */
+let _modUltimo=0;
+function modCarimbo(anterior){ let m=Date.now(); const p=Date.parse(anterior||''); if(isFinite(p) && p>=m) m=p+1; if(_modUltimo>=m) m=_modUltimo+1; _modUltimo=m; return new Date(m).toISOString(); }
 const DB = {
   baseK:LSK('v9'),
   get K(){ return DB_TENANT ? this.baseK+'__t_'+DB_TENANT : this.baseK; },
@@ -1962,11 +1968,11 @@ const DB = {
   all(col){ return this._load()[col]||[]; },
   get(col,id){ return this.all(col).find(x=>x.id===id); },
   insert(col,obj){ if(col==='movEstoque' && obj && obj.produtoId){ try{ const _p=this.get('produtos',obj.produtoId); if(_p && _p.servico){ obj.id=obj.id||uid(); return obj; } }catch(e){window.__es&&__es(e)} }   // serviço: sem movimentação de estoque
-    obj.id=obj.id||uid(); obj._mod=new Date().toISOString(); if(!obj._cri) obj._cri=obj._mod; const d=this._load(); if(!Array.isArray(d[col])) d[col]=[]; d[col].unshift(obj); this._persist(); return obj; },
+    obj.id=obj.id||uid(); obj._mod=modCarimbo(obj._mod); if(!obj._cri) obj._cri=obj._mod; const d=this._load(); if(!Array.isArray(d[col])) d[col]=[]; d[col].unshift(obj); this._persist(); return obj; },
   update(col,id,patch){ const x=this.get(col,id); if(x){
     // SERVIÇO não tem estoque: nenhuma rotina (estorno, troca, nota de entrada, contagem…) consegue somar/baixar estoque nele
     if(col==='produtos' && patch && ('estoque' in patch) && (patch.servico===true || (x.servico && patch.servico!==false))) patch=Object.assign({},patch,{estoque:0});
-    Object.assign(x,patch); x._mod=new Date().toISOString(); this._persist(); try{ edLinhaGravou(id); }catch(e){window.__es&&__es(e)}} return x; },
+    Object.assign(x,patch); x._mod=modCarimbo(x._mod); this._persist(); try{ edLinhaGravou(id); }catch(e){window.__es&&__es(e)}} return x; },
   remove(col,id){ const d=this._load();
     try{ if((col==='notasFiscais'||col==='vendas') && typeof logAcao==='function' && !NUVEM_LOADING){ const it=(d[col]||[]).find(x=>x&&x.id===id);
       if(it) logAcao(col==='vendas'?'Venda removida':'Nota fiscal removida', (it.numero?('nº '+it.numero+' · '):'')+BRL(it.total||it.valor||0)+(it.clienteNome?(' · '+it.clienteNome):'')+(it.status?(' · '+it.status):''), id); } }catch(e){window.__es&&__es(e)}
@@ -2037,7 +2043,7 @@ async function diarioGravar(){ try{
     DIARIO_COLS.forEach(c=>{ const arr=d[c]; if(!Array.isArray(arr)) return; arr.forEach(x=>{ if(x && x.id!=null && x._mod && x._mod>marca){ novos.push({k:base+'|'+c+'|'+x.id, base, col:c, id:String(x.id), mod:x._mod, ts:Date.now(), dados:diarioSemImagem(x)}); if(x._mod>maior) maior=x._mod; } }); });
     if(!novos.length) return; const db=await diarioAbrir(); if(!db) return;
     const ok=await new Promise(res=>{ try{ const tx=db.transaction('reg','readwrite'); const st=tx.objectStore('reg'); novos.forEach(r=>{ try{ st.put(JSON.parse(JSON.stringify(r))); }catch(e){} }); tx.oncomplete=()=>res(true); tx.onerror=()=>res(false); tx.onabort=()=>res(false); }catch(e){ res(false); } });
-    if(ok){ _diarioMarca[base]=maior; try{ localStorage.setItem('gp_diario_marca|'+base, maior); }catch(e){} }
+    if(ok){ const teto=new Date(Date.now()-120000).toISOString(); if(maior>teto) maior=teto; _diarioMarca[base]=maior; try{ localStorage.setItem('gp_diario_marca|'+base, maior); }catch(e){} }   // v03/11-B: teto no relógio local
   }catch(e){} }
 async function diarioPodar(){ try{ const db=await diarioAbrir(); if(!db) return; const lim=Date.now()-60*86400000;
     const tx=db.transaction('reg','readwrite'); const rq=tx.objectStore('reg').openCursor();
@@ -2052,11 +2058,11 @@ async function diarioResgatar(){ try{
     const marcaEnv=diarioMarcaEnvio(); const ts=x=>{ try{ return (typeof nuvemTs==='function')?nuvemTs(x||''):(Date.parse(x||'')||0); }catch(e){ return 0; } };
     const falta=[], velhos=[];
     regs.forEach(r=>{ const arr=d[r.col]; if(!Array.isArray(arr) || !r.dados) return;
-      if(marcaEnv && ts(r.mod)<=marcaEnv) return;                       // já confirmado na nuvem: a nuvem é quem manda
+      { const dd=r.dados||{}; const tm=ts(dd._mod); if((dd._rx && dd._rx===tm) || (dd._tx && dd._tx===tm)) return; }   // v03/11-B: a nuvem conhece este registro — se sumiu, foi excluído lá
+      if(!r.dados || (r.ts && (Date.now()-r.ts)>30*86400000)) return;
       if((del[r.col]||{})[r.id]) return; if(lix.has(r.col+'|'+r.id)) return;   // foi EXCLUÍDO de verdade: não volta
       const i=arr.findIndex(x=>x && String(x.id)===r.id);
-      if(i<0){ falta.push(r); return; }
-      if(ts(arr[i]._mod) < ts(r.mod)) velhos.push({r,i}); });          // a base voltou a uma versão ANTERIOR à gravada aqui
+      if(i<0){ falta.push(r); return; } });                              // v03/11-B: registro que existe NUNCA é sobrescrito pelo diário (só o que sumiu volta)
     if(!falta.length && !velhos.length) return 0;
     const now=new Date().toISOString();
     falta.forEach(r=>{ const it=JSON.parse(JSON.stringify(r.dados)); it._mod=now; it._resgatadoDiarioEm=now; d[r.col].unshift(it); });
@@ -27293,7 +27299,7 @@ function nuvemV3Cols(){ return (typeof NUVEM_COLS!=='undefined'?NUVEM_COLS:[]).f
 /* Monta as linhas a enviar: registros alterados depois da última marca,
    mais as exclusões registradas nas lápides. */
 function nuvemV3Pendentes(desdeISO){
-  const d=DB._load(); const desde=nuvemTs(desdeISO||'');
+  const d=DB._load(); const desde=nuvemTs(desdeISO||''); const _semana=Date.now()-7*86400000;
   const linhas=[]; const del=((d._meta||{}).del)||{};
   nuvemV3Cols().forEach(col=>{
     const arr=d[col]; if(!Array.isArray(arr)) return;
@@ -27301,8 +27307,13 @@ function nuvemV3Pendentes(desdeISO){
     for(let i=0;i<arr.length;i++){ const it=arr[i];
       if(!it || it.id==null || !it._mod) continue;
       if(dcCol[it.id]) continue;                       // já excluído: não re-subir (evita ressuscitar na nuvem)
-      if(nuvemTs(it._mod)<=desde) continue;
-      if(it._rx && it._rx===nuvemTs(it._mod)) continue;   // v30/10-A: veio da nuvem sem mudança aqui — reenviar só regravava o servidor (eco)
+      const _tm=nuvemTs(it._mod);
+      if(it._rx && it._rx===_tm) continue;              // v30/10-A: veio da nuvem sem mudança aqui — reenviar só regravava o servidor (eco)
+      if(_tm<=desde){
+        // v03/11-B: _mod anterior à marca de envio, mas NUNCA confirmado na nuvem (relógio adiantado em algum
+        // momento empurrou a marca para a frente) → vai mesmo assim, desde que seja recente (7 dias)
+        if(it._tx && it._tx===_tm) continue;
+        if(!(_tm>_semana && !it._tx && !it._rx)) continue; }
       linhas.push({ col, id:String(it.id), dados:it, del:false, mod:it._mod }); }
     const dc=del[col]||{};
     for(const id in dc){ const q=dc[id]; if(nuvemTs(q)<=desde) continue;
@@ -27428,7 +27439,7 @@ async function nuvemV3PushExec(){
     const tam=_v3LoteAtual;
     const grupo=linhas.slice(i,i+tam);
     if(linhas.length>tam) nuvemProgresso('Enviando o que foi lançado neste computador… '+NUM(Math.min(i+tam,linhas.length))+' de '+NUM(linhas.length));
-    const lote=grupo.map(l=>({ tenant, col:l.col, id:l.id, dados:l.del?l.dados:nuvemLimparRegistro(l.dados), del:l.del, mod:l.mod }));
+    const lote=grupo.map(l=>({ tenant, col:l.col, id:l.id, dados:l.del?l.dados:nuvemLimparRegistro(nuvemSemMarcasLocais(l.dados)), del:l.del, mod:l.mod }));
     const r=await nuvemV3UpsertLote(sb, lote);
     // v13/10-C: desce até 1 registro. Com "Failed to fetch" o servidor derruba a conexão sem dizer o motivo —
     // se for UM cadastro grande demais (foto colada), só isolando ele o envio volta a andar (o registro é pulado).
@@ -27441,6 +27452,7 @@ async function nuvemV3PushExec(){
       return {ok:false, motivo:r.motivo||'sem conexão', enviados, pulados}; }
     enviados+=(lote.length-(r.pulados||0)); pulados+=(r.pulados||0);
     try{ const E=window._v3Eco; if(E){ if(E.size>4000) E.clear(); grupo.forEach(l=>E.set(l.col+'|'+l.id, nuvemTs(l.mod))); } }catch(e){}
+    try{ grupo.forEach(l=>{ if(l.dados && !l.del && nuvemTs(l.dados._mod)===nuvemTs(l.mod)) l.dados._tx=nuvemTs(l.mod); }); }catch(e){}   // v03/11-B: confirmado na nuvem nesta versão
     const ult=grupo[grupo.length-1].mod; if(String(ult)>String(maiorMod)) maiorMod=ult;
     nuvemCfgSalvar({ v3Envio:maiorMod });   // avança a marca (inclui os pulados: não re-travam o envio)
     i+=grupo.length;
@@ -28020,6 +28032,24 @@ function pedidosConferirAplicar(){
 function nuvemComTimeout(p, ms){ let t; return Promise.race([ Promise.resolve(p).finally(()=>{ try{ clearTimeout(t); }catch(e){window.__es&&__es(e)} }), new Promise((_,rej)=>{ t=setTimeout(()=>rej(new Error('timeout')), ms||20000); }) ]); }
 /* Remove caracteres que o jsonb do Postgres recusa (byte nulo \u0000), que fazem
    o envio falhar SEMPRE no mesmo registro. */
+/* v03/11-B: cópia FORÇADA no cofre ao sair da tela/fechar (no máx. 1 a cada 10 min): é o estado "do fim do
+   dia", que a cópia diária (feita de manhã) não tinha. */
+function cofreSaidaGuardar(motivo){ try{ if(window.__abaPausada || !DB.__booted) return; const ag=Date.now(); if(window._cofreSaidaTs && ag-window._cofreSaidaTs<600000) return; window._cofreSaidaTs=ag; nuvemCofreGuardar(motivo||'ao sair', true); }catch(e){} }
+try{ document.addEventListener('visibilitychange', ()=>{ try{ if(document.visibilityState==='hidden') cofreSaidaGuardar('ao sair da tela'); }catch(e){} }); }catch(e){}
+/* v03/11-B: ao montar a base nova a partir da nuvem, devolve o que só existe aqui e nunca foi confirmado lá. */
+function nuvemV3PreservarLocais(local, base, cols){ let n=0; const sem=Date.now()-30*86400000;
+  (cols||[]).forEach(c=>{ const arr=Array.isArray(local&&local[c])?local[c]:[]; if(!arr.length) return;
+    const del=((base._meta||{}).del||{})[c]||{}; const dest=Array.isArray(base[c])?base[c]:(base[c]=[]);
+    const tem=new Set(dest.map(x=>x&&x.id!=null?String(x.id):''));
+    arr.forEach(x=>{ if(!x || x.id==null || tem.has(String(x.id))) return; const t=nuvemTs(x._mod);
+      if((x._rx && x._rx===t) || (x._tx && x._tx===t)) return;        // a nuvem conhece: se não veio, foi excluído lá
+      if(del[x.id] && nuvemTs(del[x.id])>=t) return;                   // excluído de propósito
+      if(t && t<sem) return;                                           // antigo demais para ser "ainda não enviado"
+      dest.push(JSON.parse(JSON.stringify(x))); tem.add(String(x.id)); n++; }); });
+  if(n){ try{ logAcao('Releitura da nuvem: registros deste computador preservados', n+' registro(s) que a nuvem ainda não tinha'); }catch(e){} }
+  return n; }
+/* v03/11-B: _rx (veio da nuvem) e _tx (já subiu) são marcas só deste computador — não viajam. */
+function nuvemSemMarcasLocais(o){ if(!o || typeof o!=='object' || !('_rx' in o || '_tx' in o)) return o; const c=Object.assign({},o); delete c._rx; delete c._tx; return c; }
 function nuvemLimparRegistro(obj){ try{
   // Limpa strings recursivamente removendo o que o jsonb do Postgres recusa e que faz
   // o envio falhar SEMPRE no mesmo registro: byte nulo e "surrogates" soltos (emojis/colagens
@@ -28290,6 +28320,9 @@ async function nuvemV3CarregarTudo(){
   if(perigo){ try{ toast('Proteção: a base da nuvem tem muito menos registros de "'+perigo+'" do que este computador — a cópia local foi mantida. Verifique a nuvem.','err'); }catch(e){window.__es&&__es(e)} return {ok:false, motivo:'perda anormal em '+perigo, perigo}; }
   // o que foi lançado NESTE computador e ainda não subiu (fila de saída) continua aqui
   let resgatados=0; try{ resgatados=outboxAplicar(base)||0; }catch(e){window.__es&&__es(e)}
+  // v03/11-B: registro deste computador que a nuvem NUNCA confirmou (sem _rx e sem _tx) nunca é descartado
+  // pela releitura — antes só a fila de saída protegia, e ela dependia da marca de envio (relógio).
+  try{ resgatados+=nuvemV3PreservarLocais(local, base, cols)||0; }catch(e){window.__es&&__es(e)}
   NUVEM_LOADING=true; DB.cache=base; DB._ensure(); try{ fiscalGuardAplicarEm(DB.cache); }catch(e){window.__es&&__es(e)} DB._persist(); NUVEM_LOADING=false;
   try{ const _dd=DB._load(); const marca=new Date().toISOString(); cols.forEach(col=>{ idbGravarCol(col, _dd[col]||[], ((_dd._meta||{}).del||{})[col]||{}, marca, tenant); }); }catch(e){window.__es&&__es(e)}
   nuvemCfgSalvar({ v3LeituraSeq:(usaSeq?maxSeq:''), v3Leitura:(maxMod||''), ultimoSync:new Date().toISOString() });
@@ -29435,7 +29468,7 @@ function idbLimpar(){ return idbAbrir().then(db=>{ if(!db) return; try{ db.trans
    cópias extras antes de operações de risco). A recuperação só ADICIONA o que sumiu — não apaga
    nem regride o que foi feito depois.
    =================================================================== */
-const COFRE_MAX=7;
+const COFRE_MAX=14;
 function cofreTotais(d){ const t={}; ['produtos','clientes','vendas','financeiro','funcionarios','vendedores','fornecedores','orcamentos','notasFiscais','movEstoque'].forEach(c=>{ t[c]=(Array.isArray(d[c])?d[c]:[]).length; }); return t; }
 function cofreListar(){ return idbAbrir().then(db=>new Promise(res=>{ if(!db || !db.objectStoreNames.contains(IDB_COFRE)) return res([]); try{
     const rq=db.transaction(IDB_COFRE,'readonly').objectStore(IDB_COFRE).getAll();
@@ -29937,6 +29970,7 @@ if(typeof window!=='undefined'){
   // Se ainda houver coisa na fila, avisa antes de fechar/atualizar. Mesmo que o
   // usuário siga em frente, nada se perde: a fila é reaplicada no próximo carregamento.
   try{ window.addEventListener('beforeunload', e=>{
+    try{ cofreSaidaGuardar('ao fechar'); }catch(_){}   // v03/11-B: cópia do fim do dia
     try{ if(_nuvemOffline || !nuvemConfigurada()) return;
       try{ outboxFlush(); }catch(_){}   // varre AGORA o que estava agendado, para a fila não perder o último save
       const o=outboxLer(); const n=Object.keys(o).reduce((s,k)=>s+(o[k]||[]).length,0);
