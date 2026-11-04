@@ -48,7 +48,7 @@ const CONFIG_EMPRESA = {
      Aparece no topo do menu e no rodapé das Configurações. Troque a cada publicação.
      MANTENHA O FORMATO 'vDD/MM-X' — é ele que o sistema usa para comparar as máquinas
      da loja e avisar quando alguma ficou para trás.                                  */
-  versao: 'v03/11-B',
+  versao: 'v04/11-C',
 
   /* 4) NUVEM (Supabase)  ------------------------------------------------------------
      Cole aqui a Project URL e a chave PUBLISHABLE do projeto Supabase DESTA empresa
@@ -5935,7 +5935,12 @@ function nfeResolverCliente(v){ if(!v) return {cli:null, religado:false, perdido
   let cli=v.clienteId?DB.get('clientes',v.clienteId):null;
   if(cli) return {cli, religado:false, perdido:false};
   const nome=((v.clienteNome||'')+'').trim();
-  if(nome){ const id=clienteIdPorNome(nome); if(id){ const c2=DB.get('clientes',id);
+  if(nome){ let id=clienteIdPorNome(nome);
+    if(!id){ // v04/11-A: o cadastro foi refeito mais de uma vez (duplicados com o mesmo nome): usa o mais completo
+      const n=normTxt(nome); const L=DB.all('clientes').filter(c=>c && normTxt(((c.nome||'')+'').trim())===n);
+      if(L.length>1){ const doc=c=>((c.cpf||'')+(c.cnpj||'')+(c.documento||'')+(c.doc||'')).replace(/\D/g,'');
+        L.sort((a,b)=>(doc(b).length-doc(a).length) || ((a.cadastroRapido?1:0)-(b.cadastroRapido?1:0)) || String(a._cri||a.cadastro||'').localeCompare(String(b._cri||b.cadastro||''))); id=L[0].id; } }
+    if(id){ const c2=DB.get('clientes',id);
       if(c2){ try{ DB.update('vendas',v.id,{clienteId:c2.id}); }catch(e){window.__es&&__es(e)}
         return {cli:c2, religado:true, perdido:false}; } } }
   return {cli:null, religado:false, perdido:!!v.clienteId}; }
@@ -28067,7 +28072,11 @@ function nuvemLimparRegistro(obj){ try{
 let _v3FalhasConsec=0;
 // Erro de REDE/SERVIDOR (temporário): NÃO deve descartar o registro — pausa e retoma.
 // Um servidor sobrecarregado (timeout) não significa que o dado é inválido.
-function _v3ErroRede(m){ m=(''+(m||'')).toLowerCase(); return /timeout|failed to fetch|networkerror|network error|load failed|connection|econnreset|fetch|\b429\b|\b500\b|\b502\b|\b503\b|\b504\b|too many|rate limit|overload|unavailable|deadlock|statement timeout|canceling statement/.test(m); }
+function _v3ErroRede(m){ m=(''+(m||'')).toLowerCase(); return /timeout|failed to fetch|networkerror|network error|load failed|connection|econnreset|fetch|\b429\b|\b5\d\d\b|too many|rate limit|overload|unavailable|deadlock|statement timeout|canceling statement|unexpected token|unexpected end|<html|<!doctype|cloudflare|gateway|origin|worker|idle|aborted|abort/.test(m); }
+/* v04/11-A: erro que é do CONTEÚDO do registro (o banco recusa o dado): só esses podem ser pulados. Qualquer
+   outro erro (servidor sobrecarregado respondendo página de erro, 52x, etc.) é tratado como rede e tentado depois —
+   antes, uma resposta de erro do Cloudflare era lida como "erro de dados" e o cadastro era PULADO para sempre. */
+function _v3ErroDados(m){ m=(''+(m||'')).toLowerCase(); return /invalid input|invalid json|unsupported unicode|\\u0000|violates|check constraint|not-null|null value|value too long|22p0|22021|23\d{3}|row-level security|permission denied|42501/.test(m); }
 // A lista de registros "não enviados" é guardada no navegador para NÃO sumir ao recarregar
 // a página (senão a pessoa nunca mais veria quais cadastros ficaram para trás).
 function _v3PuladosEnsure(){ if(!window._v3PuladosInit){ window._v3PuladosInit=true; try{ const j=JSON.parse(localStorage.getItem(LSK('v3_pulados'))||'[]'); if(Array.isArray(j) && !(window._v3PuladosInfo&&window._v3PuladosInfo.length)) window._v3PuladosInfo=j; }catch(e){window.__es&&__es(e)} } window._v3PuladosInfo=window._v3PuladosInfo||[]; return window._v3PuladosInfo; }
@@ -28104,8 +28113,8 @@ async function nuvemV3UpsertLote(sb, lote){
     if(ok2){ _v3FalhasConsec=0; return {ok:true, pulados:0}; }
     // Registro GRANDE demais (imagem colada, etc.): não adianta retentar → PULA e segue.
     if(tamKB>900){ try{ _v3PuladosEnsure().push({col:lote[0].col, id:lote[0].id, motivo:'muito grande ('+Math.round(tamKB)+' KB)'}); _v3PuladosSave(); }catch(e){window.__es&&__es(e)} return {ok:true, pulados:1}; }
-    // Erro de REDE/servidor (timeout, sobrecarga): NÃO pula — pausa e retoma depois (o registro pode estar OK).
-    if(_v3ErroRede(msg2) || _v3ErroRede(msg)){ return {ok:false, rede:true, motivo:msg2||msg}; }
+    // v04/11-A: só PULA quando o erro é claramente do CONTEÚDO do registro; rede/servidor/desconhecido = tenta depois
+    if(!_v3ErroDados(msg2||msg)){ return {ok:false, rede:true, motivo:msg2||msg}; }
     // Erro persistente de DADOS (conteúdo que o banco recusa): registro problemático → PULA e segue.
     _v3FalhasConsec++;
     try{ _v3PuladosEnsure().push({col:lote[0].col, id:lote[0].id, motivo:msg2||msg}); _v3PuladosSave(); }catch(e){window.__es&&__es(e)}
@@ -29360,7 +29369,7 @@ function pendDashCardHTML(){ try{ const G=pendColetar().filter(g=>g.n>0); if(!G.
    sobrecarga (erro, timeout) e volta ao normal quando ele responde bem de novo. */
 let _nuvemFalhasSeguidas=0;
 const NUVEM_JANELA_BASE=3000, NUVEM_JANELA_MAX=120000;
-const NUVEM_JANELA_LEVE=1500, NUVEM_JANELA_LEVE_MAX=30000;   // v2/v3 (por coleção/registro): janela curta p/ sincronizar quase em tempo real; a janela cresce sozinha se o servidor reclamar
+const NUVEM_JANELA_LEVE=300, NUVEM_JANELA_LEVE_MAX=30000;   // v04/11-B: 0,3 s — o que foi salvo vai para a nuvem na hora   // v2/v3 (por coleção/registro): janela curta p/ sincronizar quase em tempo real; a janela cresce sozinha se o servidor reclamar
 function nuvemJanelaEnvio(){
   const leve = (typeof nuvemV3On==='function' && nuvemV3On()) || nuvemCfg().v2;   // só a v1 (base inteira) precisa da janela larga
   const base0 = leve ? NUVEM_JANELA_LEVE : NUVEM_JANELA_BASE;
@@ -29387,6 +29396,38 @@ function nuvemConexaoFalha(rede){
 }
 function nuvemAutoSet(v){ nuvemCfgSalvar({ rt: !!v }); if(v){ nuvemBootSync(); toast('Tempo real ligado','ok'); } else { nuvemRealtimeStop(); nuvemStatus('idle'); toast('Tempo real desligado','ok'); } if(STATE.route==='nuvem') viewNuvem(); }
 function nuvemFlushPending(){ if(_nuvemPendingPush && nuvemClient()){ _nuvemPendingPush=false; nuvemSalvar(); } }
+/* ============================================================================
+   v04/11-B — GRAVAÇÃO COM CONFIRMAÇÃO NA NUVEM
+   Tudo o que é salvo vai para a nuvem em até 0,3 s. Enquanto houver QUALQUER registro deste computador
+   ainda não confirmado pela nuvem, o indicador mostra "Enviando N…" e, passados 15 s, uma faixa
+   vermelha fixa diz o que está preso e tenta de novo a cada 20 s — nada fica preso em silêncio.
+   Quando a nuvem confirma, aparece "Salvo na nuvem ✓".
+   ============================================================================ */
+let _pendDesde=0, _pendUltN=0, _pendUltTent=0, _pendUltSalvo=0;
+function nuvemPendentesContar(){ try{ if(!(typeof nuvemV3On==='function' && nuvemV3On() && nuvemV3Cfg().migrado)) return 0; return nuvemV3Pendentes(nuvemV3Cfg().envio).length; }catch(e){ return 0; } }
+function nuvemPendentesVigia(){ try{
+    if(window.__abaPausada || !DB.__booted || NUVEM_LOADING || !nuvemConfigurada() || !nuvemClient()) return;
+    const n=nuvemPendentesContar(); const ag=Date.now();
+    if(n>0){ if(!_pendDesde) _pendDesde=ag;
+      const seg=Math.round((ag-_pendDesde)/1000);
+      if(!window._v3PushEmCurso) nuvemStatus('sync','Enviando '+n+' registro(s) para a nuvem…');
+      if(seg>=15){ nuvemPendentesFaixa(n, seg); if(ag-_pendUltTent>20000 && !window._v3PushEmCurso && !nuvemPausado()){ _pendUltTent=ag; try{ nuvemSalvar(); }catch(e){} } }
+    } else {
+      if(_pendDesde){ _pendDesde=0; nuvemPendentesFaixa(0,0); if(!_nuvemFalhasSeguidas) nuvemStatus('on','Tudo salvo na nuvem ✓');
+        if(ag-_pendUltSalvo>4000){ _pendUltSalvo=ag; try{ toast('Salvo na nuvem ✓','ok'); }catch(e){} } }
+      else nuvemPendentesFaixa(0,0); }
+    _pendUltN=n; }catch(e){} }
+function nuvemPendentesFaixa(n, seg){ try{ let el=document.getElementById('nuvem-pendentes');
+    if(!n){ if(el) el.style.display='none'; return; }
+    if(!el){ el=document.createElement('div'); el.id='nuvem-pendentes';
+      el.style.cssText='position:fixed;left:0;right:0;top:0;z-index:9000;background:#b91c1c;color:#fff;font-size:13px;padding:7px 14px;display:flex;gap:10px;align-items:center;justify-content:center;flex-wrap:wrap;box-shadow:0 2px 8px rgba(0,0,0,.3)';
+      document.body.appendChild(el); }
+    const mot=(window._nuvemUltimoErroEnvio||'')+''; const mm=Math.floor(seg/60);
+    el.innerHTML='<span>'+(typeof ico==='function'?ico('alert'):'⚠')+' <b>'+n+' registro(s) salvos neste computador ainda NÃO foram confirmados na nuvem</b> (há '+(mm?(mm+' min'):(seg+' s'))+') — estão guardados aqui e o sistema continua tentando. Não feche este computador.'+(mot?(' <span style="opacity:.85;font-size:11.5px">Motivo: '+esc(mot.slice(0,120))+'</span>'):'')+'</span>'
+      +'<button class="btn btn-sm" style="background:#fff;color:#b91c1c;border:0" onclick="_pendUltTent=Date.now();nuvemSalvar();toast(\'Enviando agora…\',\'ok\')">Enviar agora</button>'
+      +'<button class="btn btn-sm" style="background:transparent;color:#fff;border:1px solid #fff9" onclick="nuvemDiagnostico()">Diagnóstico</button>';
+    el.style.display='flex'; }catch(e){} }
+try{ setInterval(nuvemPendentesVigia, 5000); }catch(e){}
 function nuvemUiBusy(){ const mb=document.getElementById('modal-bg'); if(mb && mb.classList.contains('open')) return true;
   if(window.__inEditor) return true;                                                            // editor aberto (ex.: criando orçamento, mesmo sem itens ainda)
   const a=document.activeElement; if(a && /^(INPUT|SELECT|TEXTAREA)$/.test(a.tagName||'')) return true;
@@ -33609,6 +33650,13 @@ function focusPayload(n){ const emp=DB._load().empresa||{}; const cli=n.clienteI
     else if(ieLimpa && !/isento/i.test(ieLimpa)){ p.indicador_inscricao_estadual_destinatario=1; p.inscricao_estadual_destinatario=ieLimpa.replace(/\D/g,'')||ieLimpa; }
     else if(cli.contribuinteICMS==='Isento'||/isento/i.test(ieLimpa)){ p.indicador_inscricao_estadual_destinatario=2; }
     else { p.indicador_inscricao_estadual_destinatario=9; } }
+  // v04/11-C: NFC-e — a SEFAZ só aceita destinatário IDENTIFICADO (CPF/CNPJ). Cliente sem documento (ex.: cadastro
+  // rápido só com nome) ia com nome + CEP + UF e a nota era REJEITADA. Sem CPF/CNPJ o cupom sai como consumidor
+  // final não identificado; com CPF, o endereço só vai se estiver COMPLETO (rua, número, bairro, cidade, UF, CEP).
+  if(modelo==='65'){
+    const _end=['cep_destinatario','logradouro_destinatario','numero_destinatario','bairro_destinatario','municipio_destinatario','uf_destinatario'];
+    if(!p.cpf_destinatario && !p.cnpj_destinatario){ delete p.nome_destinatario; delete p.indicador_inscricao_estadual_destinatario; delete p.inscricao_estadual_destinatario; _end.forEach(k=>delete p[k]); }
+    else if(!_end.every(k=>p[k]) || String(p.cep_destinatario||'').length!==8){ _end.forEach(k=>delete p[k]); } }
   // consumidor final: NFC-e sempre; NF-e = sim, exceto destinatário contribuinte (com IE)
   p.consumidor_final = (modelo==='65') ? 1 : (p.indicador_inscricao_estadual_destinatario===1 ? 0 : 1);
   // formas de pagamento (grupo pag — obrigatório na NFC-e; recomendado na NF-e 4.0)
