@@ -48,7 +48,7 @@ const CONFIG_EMPRESA = {
      Aparece no topo do menu e no rodapé das Configurações. Troque a cada publicação.
      MANTENHA O FORMATO 'vDD/MM-X' — é ele que o sistema usa para comparar as máquinas
      da loja e avisar quando alguma ficou para trás.                                  */
-  versao: 'v04/11-C',
+  versao: 'v04/11-E',
 
   /* 4) NUVEM (Supabase)  ------------------------------------------------------------
      Cole aqui a Project URL e a chave PUBLISHABLE do projeto Supabase DESTA empresa
@@ -1888,7 +1888,7 @@ const DB = {
     else this._ensure();
     return this.cache; },
   _ensure(){ // backfill de coleções para compatibilidade ao evoluir o schema
-    const cols=['produtos','clientes','fornecedores','vendedores','transportadoras','funcionarios','servicos','contasBancarias','centroCustos','planoContas','gruposCP','vendas','financeiro','movEstoque','compras','cotacoes','servicosContratados','servicosPrestados','devolucoes','creditos','creditoMovs','orcamentos','categorias','indicadores','tarefas','agenda','caixaSessoes','caixaMovs','maquinas','contratosAluguel','notasFiscais','beneficiosFiscais','recebimentos','pedidosOnline','ordensCompra','cotacaoRespostas','clientesSaaS','mensalidades','cheques','conciliacaoTx','veiculos','abastecimentos','manutencoes','chamados','contratos','licencas','implantacoes','leads','gruposProd','subgruposProd','notasRecebidas','prospecEmpresas','calcObraServicos','listaPedidos','produtosFalta','transferencias','marcas','lixeira','ofxImportacoes','dispositivos','listasEscolares','gruposVariacao'];
+    const cols=['produtos','clientes','fornecedores','vendedores','transportadoras','funcionarios','servicos','contasBancarias','centroCustos','planoContas','gruposCP','vendas','financeiro','movEstoque','compras','cotacoes','servicosContratados','servicosPrestados','devolucoes','creditos','creditoMovs','orcamentos','categorias','indicadores','tarefas','agenda','caixaSessoes','caixaMovs','maquinas','contratosAluguel','notasFiscais','beneficiosFiscais','recebimentos','pedidosOnline','ordensCompra','cotacaoRespostas','clientesSaaS','mensalidades','cheques','conciliacaoTx','veiculos','abastecimentos','manutencoes','chamados','contratos','licencas','implantacoes','leads','gruposProd','subgruposProd','notasRecebidas','prospecEmpresas','calcObraServicos','listaPedidos','produtosFalta','transferencias','marcas','lixeira','ofxImportacoes','dispositivos','listasEscolares','gruposVariacao','nfeEntRasc'];
     let changed=false; cols.forEach(c=>{ if(!Array.isArray(this.cache[c])){ this.cache[c]=[]; changed=true; } });
     if(!this.cache.empresa){ this.cache.empresa={nome:EMPRESA_NOME(),cidade:(CFG_E.cidade||'')}; changed=true; }
     // UF da loja: se não estiver preenchida, deduz (cidade "Cidade/UF" → CEP → DDD do telefone) e grava,
@@ -2022,7 +2022,7 @@ function abaAssumir(){ try{ const b=document.getElementById('aba-assumir'); if(b
    num diário à parte. Se um registro some da base sem ter sido EXCLUÍDO (sem lápide e fora da
    lixeira) — aba atrasada, falha de sincronização, base sobrescrita — o sistema devolve sozinho.
    ====================================================================================== */
-var DIARIO_COLS=['vendas','notasFiscais','caixaMovs','caixaSessoes','financeiro','orcamentos','devolucoes','movEstoque','produtos','creditos','clientes'];
+var DIARIO_COLS=['vendas','notasFiscais','caixaMovs','caixaSessoes','financeiro','orcamentos','devolucoes','movEstoque','produtos','creditos','clientes','nfeEntRasc','compras','notasRecebidas','fornecedores'];
 function diarioSemImagem(x){ let cl=null; try{ for(const f in x){ const v=x[f]; if(typeof v==='string' && v.indexOf('data:image')===0){ if(!cl) cl=Object.assign({},x); cl[f]=''; } } }catch(e){} return cl||x; }
 /* Marca do que JÁ foi confirmado na nuvem: só o que veio depois dela pode ter ficado só neste computador. */
 function diarioMarcaEnvio(){ try{ const nc=(typeof nuvemCfg==='function')?(nuvemCfg()||{}):{}; if(!(nc.url&&nc.key)) return 0;
@@ -26909,7 +26909,7 @@ async function nuvemAppSessao(){
    Requer ter rodado o SQL de segurança e criado a conta da loja em Authentication. Para desligar, ponha false. */
 const NUVEM_SECURE = (CFG_E.nuvemSegura !== false);
 /* coleções (listas de registros com id) que são mescladas registro-a-registro entre aparelhos */
-const NUVEM_COLS = ['produtos','clientes','fornecedores','vendedores','transportadoras','funcionarios','servicos','contasBancarias','centroCustos','planoContas','gruposCP','vendas','financeiro','movEstoque','compras','cotacoes','servicosContratados','servicosPrestados','devolucoes','creditos','creditoMovs','orcamentos','categorias','indicadores','tarefas','agenda','caixaSessoes','caixaMovs','maquinas','contratosAluguel','notasFiscais','beneficiosFiscais','recebimentos','pedidosOnline','ordensCompra','cotacaoRespostas','clientesSaaS','mensalidades','cheques','conciliacaoTx','veiculos','abastecimentos','manutencoes','chamados','contratos','licencas','implantacoes','leads','gruposProd','subgruposProd','cfopContrapartida','kitsPromo','crmDeals','crmRespostas','prospecEmpresas','calcObraServicos','listaPedidos','produtosFalta','marcas','notasRecebidas','transferencias','lixeira','ofxImportacoes','folha','dispositivos','listasEscolares','gruposVariacao'];
+const NUVEM_COLS = ['produtos','clientes','fornecedores','vendedores','transportadoras','funcionarios','servicos','contasBancarias','centroCustos','planoContas','gruposCP','vendas','financeiro','movEstoque','compras','cotacoes','servicosContratados','servicosPrestados','devolucoes','creditos','creditoMovs','orcamentos','categorias','indicadores','tarefas','agenda','caixaSessoes','caixaMovs','maquinas','contratosAluguel','notasFiscais','beneficiosFiscais','recebimentos','pedidosOnline','ordensCompra','cotacaoRespostas','clientesSaaS','mensalidades','cheques','conciliacaoTx','veiculos','abastecimentos','manutencoes','chamados','contratos','licencas','implantacoes','leads','gruposProd','subgruposProd','cfopContrapartida','kitsPromo','crmDeals','crmRespostas','prospecEmpresas','calcObraServicos','listaPedidos','produtosFalta','marcas','notasRecebidas','transferencias','lixeira','ofxImportacoes','folha','dispositivos','listasEscolares','gruposVariacao','nfeEntRasc'];
 let NUVEM_SB=null, NUVEM_SB_URL=null, NUVEM_LOADING=false, _nuvemTimer=null, NUVEM_AUTH_USER=null, _nuvemOffline=false;
 let NUVEM_RT=null, NUVEM_RT_TENANT=null, _nuvemLastPushTs='', _nuvemPendingPush=false, _nuvemPendingApply=false, _nuvemRtTick=null, _nuvemReautAviso=false;
 function nuvemCfg(){ let c={}; try{ c=JSON.parse(localStorage.getItem(NUVEM_CFG_KEY)||'{}')||{}; }catch(e){ c={}; }
@@ -33655,8 +33655,13 @@ function focusPayload(n){ const emp=DB._load().empresa||{}; const cli=n.clienteI
   // final não identificado; com CPF, o endereço só vai se estiver COMPLETO (rua, número, bairro, cidade, UF, CEP).
   if(modelo==='65'){
     const _end=['cep_destinatario','logradouro_destinatario','numero_destinatario','bairro_destinatario','municipio_destinatario','uf_destinatario'];
+    // v04/11-E: CPF/CNPJ com dígito errado no cadastro é recusado pela SEFAZ (rejeição 207/209). No cupom o
+    // cliente é opcional: nesse caso sai SEM identificar o cliente (a venda continua ligada ao cadastro) e avisa.
+    let _docOk=true; try{ if(p.cpf_destinatario && typeof validaCPF==='function' && !validaCPF(p.cpf_destinatario)) _docOk=false; if(p.cnpj_destinatario && typeof validaCNPJ==='function' && !validaCNPJ(p.cnpj_destinatario)) _docOk=false; }catch(e){}
+    if(!_docOk){ try{ toast('CPF/CNPJ do cadastro de '+((p.nome_destinatario||'cliente')+'')+' está INVÁLIDO — o cupom sai sem identificar o cliente. Corrija o documento no cadastro.','err'); }catch(e){} delete p.cpf_destinatario; delete p.cnpj_destinatario; }
     if(!p.cpf_destinatario && !p.cnpj_destinatario){ delete p.nome_destinatario; delete p.indicador_inscricao_estadual_destinatario; delete p.inscricao_estadual_destinatario; _end.forEach(k=>delete p[k]); }
-    else if(!_end.every(k=>p[k]) || String(p.cep_destinatario||'').length!==8){ _end.forEach(k=>delete p[k]); } }
+    else { delete p.inscricao_estadual_destinatario; p.indicador_inscricao_estadual_destinatario=9;
+      if(!_end.every(k=>p[k]) || String(p.cep_destinatario||'').length!==8) _end.forEach(k=>delete p[k]); } }
   // consumidor final: NFC-e sempre; NF-e = sim, exceto destinatário contribuinte (com IE)
   p.consumidor_final = (modelo==='65') ? 1 : (p.indicador_inscricao_estadual_destinatario===1 ? 0 : 1);
   // formas de pagamento (grupo pag — obrigatório na NFC-e; recomendado na NF-e 4.0)
@@ -34520,24 +34525,40 @@ function wizAddSubgrupo(){ const gNome=(prompt('Grupo do novo subgrupo (ex.: Des
    guarda tudo o que já foi feito (fornecedor, itens, vínculos, preços, fiscal, parcelas) neste
    computador; em Notas Recebidas aparece o quadro "Lançamentos salvos" com o botão para continuar
    exatamente do ponto em que parou. O XML não é duplicado: fica na nota recebida e é religado ao retomar. */
-function nfentRascLer(){ try{ const d=DB._load(); const r=d.nfeEntRascunhos; return (r&&typeof r==='object'&&!Array.isArray(r))?r:{}; }catch(e){ return {}; } }
-function nfentRascGravar(map){ try{ const d=DB._load(); d.nfeEntRascunhos=map; DB._persist(); }catch(e){window.__es&&__es(e)} try{ rascEspelharIDB(); }catch(e){window.__es&&__es(e)} }
+/* v04/11-D: os lançamentos salvos vivem na coleção `nfeEntRasc` (UM registro por nota), que SINCRONIZA com a
+   nuvem como qualquer cadastro — aparecem em todos os computadores e nunca dependem só do navegador. O mapa
+   antigo (`nfeEntRascunhos`, só local) é migrado uma vez para a coleção; o espelho no IndexedDB continua como
+   retaguarda. As funções abaixo mantêm a mesma "cara" de antes (mapa chave → lançamento). */
+function nfentRascMigrarAntigo(){ try{ const d=DB._load(); const r=d.nfeEntRascunhos; if(!r || typeof r!=='object' || Array.isArray(r)) return 0; let n=0;
+    Object.keys(r).forEach(k=>{ const x=r[k]; if(!x || !x.wiz) return; const ex=DB.get('nfeEntRasc',k);
+      if(!ex || String(x.salvoEm||'')>String(ex.salvoEm||'')){ if(ex) DB.update('nfeEntRasc',k,Object.assign({},x,{id:k})); else DB.insert('nfeEntRasc',Object.assign({},x,{id:k})); n++; } });
+    delete d.nfeEntRascunhos; DB._persist(); if(n){ try{ logAcao('Lançamentos de nota salvos passaram a sincronizar na nuvem', n+' lançamento(s)'); }catch(e){} }
+    return n; }catch(e){ return 0; } }
+function nfentRascLer(){ try{ nfentRascMigrarAntigo(); const m={}; DB.all('nfeEntRasc').forEach(x=>{ if(x && x.id!=null && x.wiz) m[x.id]=x; }); return m; }catch(e){ return {}; } }
+function nfentRascGravar(map){ try{ map=map||{}; const ids=new Set(Object.keys(map));
+    DB.all('nfeEntRasc').slice().forEach(x=>{ if(x && x.id!=null && !ids.has(String(x.id))) DB.remove('nfeEntRasc',x.id); });
+    ids.forEach(k=>{ const x=map[k]; if(!x || !x.wiz) return; const ex=DB.get('nfeEntRasc',k);
+      if(!ex){ DB.insert('nfeEntRasc',Object.assign({},x,{id:k})); }
+      else if(x!==ex && (String(x.salvoEm||'')!==String(ex.salvoEm||'') || x.step!==ex.step || x.itens!==ex.itens)){ DB.update('nfeEntRasc',k,Object.assign({},x,{id:k})); } });
+    try{ nuvemPushJa(); }catch(e){}
+  }catch(e){window.__es&&__es(e)} try{ rascEspelharIDB(); }catch(e){window.__es&&__es(e)} }
 /* ESPELHO DOS RASCUNHOS no IndexedDB (cabe muito mais que o armazenamento comum do navegador e não é
    reescrito pela sincronização): lançamentos de nota de entrada salvos e o rascunho da nota avulsa.
    Se a base do navegador perder algum (falta de espaço, releitura), ele volta daqui ao abrir. */
 function rascIdbChave(){ let t=''; try{ t=nuvemTenant(); }catch(e){} return 'rasc|'+(t||''); }
-function rascEspelharIDB(){ try{ const d=DB._load(); const payload={ nfeEntRascunhos:(d.nfeEntRascunhos&&typeof d.nfeEntRascunhos==='object')?d.nfeEntRascunhos:{}, nfaRascunho:d.nfaRascunho||null };
+function rascEspelharIDB(){ try{ const d=DB._load(); const payload={ nfeEntRascunhos:nfentRascLer(), nfaRascunho:d.nfaRascunho||null };
     const raw=JSON.stringify(payload); const k=rascIdbChave();
     return idbAbrir().then(db=>{ if(!db || !db.objectStoreNames.contains(IDB_COFRE)) return false; try{ const tx=db.transaction(IDB_COFRE,'readwrite'); tx.objectStore(IDB_COFRE).put({k, ts:new Date().toISOString(), motivo:'rascunhos', rasc:true, raw}); return true; }catch(e){ return false; } }); }catch(e){ return Promise.resolve(false); } }
 let _rascRestaurado=false;
 async function rascRestaurarDoIDB(){ try{ const reg=await cofreLer(rascIdbChave()); if(!reg||!reg.raw) { _rascRestaurado=true; try{ rascEspelharIDB(); }catch(e){} return 0; }
     const o=JSON.parse(reg.raw)||{}; const d=DB._load(); let n=0;
-    const cur=(d.nfeEntRascunhos&&typeof d.nfeEntRascunhos==='object'&&!Array.isArray(d.nfeEntRascunhos))?d.nfeEntRascunhos:{};
+    const cur=nfentRascLer(); let mudou=false;
     const esp=(o.nfeEntRascunhos&&typeof o.nfeEntRascunhos==='object')?o.nfeEntRascunhos:{};
     Object.keys(esp).forEach(k=>{ const a=cur[k], b=esp[k]; if(!b||!b.wiz) return; if(nfentRascJaLancado(b)) return;
-      if(!a || String(b.salvoEm||'')>String(a.salvoEm||'')){ cur[k]=b; n++; } });
-    if(!d.nfaRascunho && o.nfaRascunho && o.nfaRascunho.nfa){ d.nfaRascunho=o.nfaRascunho; n++; }
-    if(n){ d.nfeEntRascunhos=cur; DB._persist(); try{ toast(n+' lançamento(s) salvo(s) recuperado(s) da cópia de segurança deste computador','ok'); }catch(e){} }
+      if(!a || String(b.salvoEm||'')>String(a.salvoEm||'')){ cur[k]=b; n++; mudou=true; } });
+    if(!d.nfaRascunho && o.nfaRascunho && o.nfaRascunho.nfa){ d.nfaRascunho=o.nfaRascunho; n++; DB._persist(); }
+    if(mudou) nfentRascGravar(cur);
+    if(n){ try{ toast(n+' lançamento(s) salvo(s) recuperado(s) da cópia de segurança deste computador','ok'); }catch(e){} }
     _rascRestaurado=true; try{ rascEspelharIDB(); }catch(e){} return n; }catch(e){ _rascRestaurado=true; return 0; } }
 /* PROCURAR LANÇAMENTOS PERDIDOS: varre as cópias do cofre local (1 por dia, até 7 dias) e a cópia rápida do
    navegador atrás de lançamentos de nota salvos que não estão mais na lista — e deixa o operador trazer de volta. */
@@ -34580,9 +34601,9 @@ function wizSalvarRascunho(sair){
   const m=nfentRascLer();
   m[k]={ wiz:w, salvoEm:new Date().toISOString(), usuario:(typeof CURRENT_USER!=='undefined'&&CURRENT_USER&&CURRENT_USER.nome)||'', numero:WIZ.nf.nNF||'', serie:WIZ.nf.serie||WIZ.nf.serieNF||'', fornecedor:WIZ.fornNome||WIZ.nf.emitNome||'', valor:+WIZ.nf.vNF||0, itens:(WIZ.itens||[]).length, step:WIZ.step };
   nfentRascGravar(m);
-  let _gravou=false; try{ const bruto=localStorage.getItem(DB.K)||''; _gravou=bruto.indexOf(JSON.stringify(k).slice(1,-1))>=0 && bruto.indexOf('nfeEntRascunhos')>=0; }catch(e){}
+  let _gravou=false; try{ _gravou=!!DB.get('nfeEntRasc',k); }catch(e){}
   try{ logAcao('Lançamento de nota salvo', 'NF '+(WIZ.nf.nNF||'')+' · '+(WIZ.fornNome||WIZ.nf.emitNome||'')+' · passo '+WIZ.step); }catch(e){window.__es&&__es(e)}
-  if(_gravou) toast('Lançamento salvo — continue depois em Notas Recebidas › Lançamentos salvos','ok');
+  if(_gravou) toast('Lançamento salvo e enviado para a nuvem — continue depois em Notas Recebidas › Lançamentos salvos (em qualquer computador)','ok');
   else toast('Lançamento guardado na cópia de segurança deste computador (o armazenamento principal do navegador está cheio) — ele volta sozinho ao abrir. Libere espaço em Sistema › Armazenamento.','err');
   if(sair){ wizReset(); NFENT.tab='recebidas'; viewNfeEntrada(); }
   return true; }
