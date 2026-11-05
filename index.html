@@ -48,7 +48,7 @@ const CONFIG_EMPRESA = {
      Aparece no topo do menu e no rodapé das Configurações. Troque a cada publicação.
      MANTENHA O FORMATO 'vDD/MM-X' — é ele que o sistema usa para comparar as máquinas
      da loja e avisar quando alguma ficou para trás.                                  */
-  versao: 'v05/11-B',
+  versao: 'v05/11-C',
 
   /* 4) NUVEM (Supabase)  ------------------------------------------------------------
      Cole aqui a Project URL e a chave PUBLISHABLE do projeto Supabase DESTA empresa
@@ -35486,7 +35486,8 @@ function nfentHistFiltrados(){
   return ent;
 }
 function nfentHistRows(){ const ent=nfentHistFiltrados();
-  return ent.length?ent.map(c=>`<tr style="${c.situacao==='cancelada'?'opacity:.55':''}"><td class="tnum">${esc(c.numeroNF||'—')}${c.serieNF?'/'+esc(c.serieNF):''}</td><td class="t-strong nfh-forn">${esc(c.fornecedorNome||'—')}</td><td class="t-mut tnum nfh-chave">${esc((c.chaveNFe||'').replace(/(.{4})/g,'$1 ').trim())}</td><td class="t-right tnum">${NUM((c.itens||[]).length)}</td><td class="t-right t-strong tnum">${BRL(c.total||0)}</td><td class="t-mut tnum">${fDate(c.data)}</td><td class="nfh-acoes-td"><div class="nfh-acoes"><button class="btn btn-ghost btn-sm nfh-b-conf" onclick="nfentConferenciaCompra('${c.id}')" title="Ver a conferência de preços gerada nesta entrada">${ico('doc')} Conferência</button> <button class="btn btn-ghost btn-sm nfh-b-preco" onclick="nfentAlterarPrecos('${c.id}')" title="Alterar o preço de venda e a margem dos produtos desta nota">${ico('money')} Alteração de preços</button>${c.situacao==='cancelada'?'':` <button class="btn btn-ghost btn-sm nfh-b-corr" onclick="nfentCorrigir('${c.id}')" title="Corrigir os itens desta nota (produto, quantidade e valor) sem lançar estoque nem financeiro de novo">${ico('edit')} Corrigir itens</button>`}${c.situacao==='cancelada'?` <span class="tag neg">Cancelada</span>`:` <button class="btn btn-ghost btn-sm nfh-b-canc" onclick="compraCancelar('${c.id}')" title="Cancela a entrada: estorna estoque e remove contas a pagar em aberto">${ico('x')} Cancelar entrada</button>`}</div></td></tr>`).join('')
+  const _dupK=(function(){ try{ const m={}; comprasDuplicadas().forEach(g=>g.extras.forEach(c=>{ m[c.id]=1; })); return m; }catch(e){ return {}; } })();
+  return ent.length?ent.map(c=>`<tr style="${c.situacao==='cancelada'?'opacity:.55':''}${_dupK[c.id]?'background:#fef2f2':''}"><td class="tnum">${esc(c.numeroNF||'—')}${c.serieNF?'/'+esc(c.serieNF):''}${_dupK[c.id]?' <span class="tag neg" style="font-size:10px">DUPLICADA</span>':''}</td><td class="t-strong nfh-forn">${esc(c.fornecedorNome||'—')}</td><td class="t-mut tnum nfh-chave">${esc((c.chaveNFe||'').replace(/(.{4})/g,'$1 ').trim())}</td><td class="t-right tnum">${NUM((c.itens||[]).length)}</td><td class="t-right t-strong tnum">${BRL(c.total||0)}</td><td class="t-mut tnum">${fDate(c.data)}</td><td class="nfh-acoes-td"><div class="nfh-acoes"><button class="btn btn-ghost btn-sm nfh-b-conf" onclick="nfentConferenciaCompra('${c.id}')" title="Ver a conferência de preços gerada nesta entrada">${ico('doc')} Conferência</button> <button class="btn btn-ghost btn-sm nfh-b-preco" onclick="nfentAlterarPrecos('${c.id}')" title="Alterar o preço de venda e a margem dos produtos desta nota">${ico('money')} Alteração de preços</button>${c.situacao==='cancelada'?'':` <button class="btn btn-ghost btn-sm nfh-b-corr" onclick="nfentCorrigir('${c.id}')" title="Corrigir os itens desta nota (produto, quantidade e valor) sem lançar estoque nem financeiro de novo">${ico('edit')} Corrigir itens</button>`}${c.situacao==='cancelada'?` <span class="tag neg">Cancelada</span>`:` <button class="btn btn-ghost btn-sm nfh-b-canc" onclick="compraCancelar('${c.id}')" title="Cancela a entrada: estorna estoque e remove contas a pagar em aberto">${ico('x')} Cancelar entrada</button>`}</div></td></tr>`).join('')
     :`<tr><td colspan="7"><div class="empty" style="padding:34px">${(NFENT.qHist||'').trim()?'Nenhuma nota encontrada para essa busca':'Nenhuma nota lançada ainda'}</div></td></tr>`;
 }
 function nfentHistFiltrar(){ const b=document.getElementById('nfent-hist-body'); if(b) b.innerHTML=nfentHistRows();
@@ -35603,6 +35604,7 @@ function nfentRecebidasHTML(){
    <div class="card">
      <div class="card-head" style="flex-wrap:wrap;gap:8px"><div><h3>${ico('doc')} Histórico de Notas de Entrada</h3><div class="ch-sub"><span id="nfent-hist-count">${nfentHistFiltrados().length}</span> nota(s) lançada(s)</div></div>
        <input id="nfent-hist-q" class="pill-filter" placeholder="Buscar por nº da nota ou fornecedor..." value="${esc(NFENT.qHist||'')}" oninput="NFENT.qHist=this.value; nfentHistFiltrar()" style="min-width:240px"></div>
+     ${(function(){ try{ return comprasDuplicadasBannerHTML(); }catch(e){ return ''; } })()}
      <div class="tbl-wrap" id="nfent-hist-wrap"><table><thead><tr><th>Número/Série</th><th>Fornecedor</th><th>Chave NF-e</th><th class="t-right">Itens</th><th class="t-right">Valor</th><th>Data</th><th>Ações</th></tr></thead><tbody id="nfent-hist-body">${nfentHistRows()}</tbody></table></div>
    </div>`;
 }
