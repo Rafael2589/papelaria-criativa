@@ -48,7 +48,7 @@ const CONFIG_EMPRESA = {
      Aparece no topo do menu e no rodapé das Configurações. Troque a cada publicação.
      MANTENHA O FORMATO 'vDD/MM-X' — é ele que o sistema usa para comparar as máquinas
      da loja e avisar quando alguma ficou para trás.                                  */
-  versao: 'v05/11-A',
+  versao: 'v05/11-B',
 
   /* 4) NUVEM (Supabase)  ------------------------------------------------------------
      Cole aqui a Project URL e a chave PUBLISHABLE do projeto Supabase DESTA empresa
@@ -34489,7 +34489,7 @@ function entradasOrfasEstornar(){ const o=entradasOrfas(); if(!o.length){ closeM
   try{ go(STATE.route); }catch(e){} }
 function viewNfeEntrada(){ if(!WIZ) wizReset(); try{ nfentConciliarLancadas(); }catch(e){window.__es&&__es(e)} try{ nfentRascLimparLancados(); }catch(e){window.__es&&__es(e)}
   try{ nfentJuntarDuplicadas({silencioso:false}); }catch(e){window.__es&&__es(e)}   // nota repetida nunca chega à lista
-  document.getElementById('view').innerHTML=`<div id="nfent-orfas">${(function(){ try{ return entradasOrfasBannerHTML(); }catch(e){ return ''; } })()}</div><div id="nfent-body"></div>`;
+  document.getElementById('view').innerHTML=`<div id="nfent-orfas">${(function(){ try{ return comprasDuplicadasBannerHTML(); }catch(e){ return ''; } })()}${(function(){ try{ return entradasOrfasBannerHTML(); }catch(e){ return ''; } })()}</div><div id="nfent-body"></div>`;
   // Sem abas: a tela mostra "Notas Recebidas" por padrão. O assistente de entrada só aparece
   // quando uma nota é aberta (Lançar, Buscar no SEFAZ ou Procurar XML no computador).
   if(NFENT.tab==='entrada') wizRender(); else document.getElementById('nfent-body').innerHTML=nfentRecebidasHTML();
@@ -35137,9 +35137,31 @@ function dbTransacao(fn){ const d=DB._load(); let snap=null;
     try{ e._revertido=!!snap; }catch(_){}
     throw e; }
   finally{ DB._bulk--; if(!DB._bulk) DB._persist(); } }
-function wizFinalizar(){ if(_wizFinalizando) return; _wizFinalizando=true;
+/* v05/11-B: pergunta à NUVEM se esta nota já foi lançada em OUTRO computador (a trava local só enxerga o que
+   já chegou aqui — era assim que a mesma nota entrava 2 ou 3 vezes, uma por computador). */
+async function nfentConferirNuvem(nf){ try{
+    const sb=(typeof nuvemClient==='function')?nuvemClient():null; if(!sb || !(typeof nuvemV3On==='function' && nuvemV3On() && nuvemV3Cfg().migrado)) return {ok:true, semNuvem:true};
+    if(typeof navigator!=='undefined' && navigator.onLine===false) return {ok:false, motivo:'sem internet'};
+    const t=nuvemTenant(); const k=chaveNorm(nf&&nf.chave); const linhas=[];
+    if(k){ const r=await nuvemComTimeout(sb.from('acervo_reg').select('col,id,dados,del,mod').eq('tenant',t).eq('col','compras').eq('dados->>chaveNFe', nf.chave), 15000); if(r.error) return {ok:false, motivo:r.error.message||'erro'}; (r.data||[]).forEach(x=>{ if(x&&!x.del) linhas.push(x); });
+      if(!linhas.length && nf.chave!==k){ const r2=await nuvemComTimeout(sb.from('acervo_reg').select('col,id,dados,del,mod').eq('tenant',t).eq('col','compras').eq('dados->>chaveNFe', k), 15000); if(!r2.error) (r2.data||[]).forEach(x=>{ if(x&&!x.del) linhas.push(x); }); } }
+    const viva=linhas.filter(x=>x.dados && x.dados.situacao!=='cancelada');
+    if(viva.length){ try{ nuvemV3Aplicar(linhas); DB._persist(); }catch(e){} return {ok:true, existe:viva[0].dados}; }
+    return {ok:true}; }catch(e){ return {ok:false, motivo:(e&&e.message)||''+e}; } }
+async function wizFinalizar(){ if(_wizFinalizando) return; _wizFinalizando=true;
   const _btn=[...document.querySelectorAll('button')].find(b=>/Confirmar e Finalizar/i.test(b.textContent||'')); if(_btn){ _btn.disabled=true; }
-  try{ dbTransacao(()=>wizFinalizarExec()); }
+  try{
+    if(WIZ && WIZ.nf && !WIZ._nuvemConferida){
+      toast('Conferindo na nuvem se esta nota já foi lançada…','ok');
+      const r=await nfentConferirNuvem(WIZ.nf);
+      if(r.ok && r.existe){ try{ alert('ESTA NOTA JÁ FOI LANÇADA EM OUTRO COMPUTADOR — a entrada foi cancelada para não duplicar.\n\nNota '+((WIZ.nf&&WIZ.nf.nNF)||'—')+' de '+((WIZ.nf&&WIZ.nf.emitNome)||'')+' · lançada em '+fDate(r.existe.data||'')+'.\n\nA entrada já existente foi trazida para este computador.'); }catch(e){}
+        toast('Nota já lançada em outro computador — entrada cancelada para não duplicar','err');
+        if(WIZ._recebidaId){ try{ DB.update('notasRecebidas',WIZ._recebidaId,{status:'lancada'}); }catch(_){} }
+        try{ nfentRascRemover(nfentRascChave(WIZ)); }catch(_){}
+        wizReset(); NFENT.tab='recebidas'; viewNfeEntrada(); return; }
+      if(!r.ok){ if(!confirm('NÃO CONSEGUI CONFERIR NA NUVEM se esta nota já foi lançada em outro computador.\n\nMotivo: '+String(r.motivo||'').slice(0,160)+'\n\nSe ela já tiver sido lançada, o estoque e o contas a pagar ficam em DOBRO.\n\nLançar mesmo assim?')) return; }
+      WIZ._nuvemConferida=true; }
+    dbTransacao(()=>wizFinalizarExec()); }
   catch(e){ console.error('wizFinalizar',e); try{ alert('A ENTRADA NÃO FOI FINALIZADA.\n\nErro: '+((e&&e.message)||e)+'\n\n'+(e&&e._revertido?'NADA foi lançado: o estoque, os produtos, o contas a pagar e a nota ficaram exatamente como antes. ':'')+'Os dados do assistente continuam aqui: confira os passos e tente de novo. Se repetir, mande um print desta mensagem.'); }catch(_){} }
   finally{ _wizFinalizando=false; if(_btn && document.body.contains(_btn)) _btn.disabled=false; } }
 function wizFinalizarExec(){ const nf=WIZ.nf;
@@ -35397,12 +35419,43 @@ function wizConferencia(itens, fornNome, nf){
    <div class="modal-foot no-print">${confBtnCustoHTML()}<button class="btn btn-ghost btn-sm" onclick="confEtiquetasAbrir((window._confEtqItens||[]), CONF_REABRIR)">${ico('scan')} Imprimir etiquetas</button><div style="flex:1"></div><button class="btn btn-ghost" onclick="closeModal()">Fechar</button><button class="btn btn-primary" onclick="printArea('wiz-conf-print')">${ico('print')} Imprimir / PDF</button></div>`,true);
 }
 /* Histórico de Notas de Entrada — filtro por nº da nota, fornecedor ou chave. */
+/* ===== v05/11-B: ENTRADAS DUPLICADAS (mesma nota lançada mais de uma vez) =====
+   Mesma chave de acesso (ou mesmo CNPJ + número + série) lançada em mais de um registro vivo. Fica a mais
+   antiga; as demais têm o estoque e o financeiro estornados e saem do histórico (ficam marcadas como
+   duplicadas, com registro na auditoria). A nota recebida continua "lançada". */
+function nfentChaveDup(c){ const k=chaveNorm(c&&c.chaveNFe); if(k) return 'k|'+k;
+  const cnpj=((c&&(c.cnpj||c.fornecedorCnpj))||'').replace(/\D/g,''); const num=_numLimpo(c&&c.numeroNF); if(cnpj.length===14 && num) return 'n|'+cnpj+'|'+num+'|'+_numLimpo(c&&c.serieNF); return ''; }
+function comprasDuplicadas(){ const g={}; DB.all('compras').forEach(c=>{ if(!c || c.situacao==='cancelada' || c.duplicadaDe) return; const k=nfentChaveDup(c); if(!k) return; (g[k]=g[k]||[]).push(c); });
+  const out=[]; Object.keys(g).forEach(k=>{ const L=g[k]; if(L.length<2) return; L.sort((a,b)=>String(a._cri||a.lancadaEm||'').localeCompare(String(b._cri||b.lancadaEm||''))); out.push({chave:k, manter:L[0], extras:L.slice(1)}); });
+  return out; }
+function comprasDuplicadasBannerHTML(){ const D=comprasDuplicadas(); if(!D.length) return ''; const n=D.reduce((s,g)=>s+g.extras.length,0);
+  return `<div class="card card-pad" style="margin-bottom:14px;border:1px solid #fecaca;background:#fef2f2;display:flex;gap:12px;align-items:center;flex-wrap:wrap">
+    <div style="flex:1;min-width:240px;font-size:13px;line-height:1.5">${ico('alert')} <b>${NUM(D.length)} nota(s) de entrada lançada(s) em DUPLICIDADE</b> (${NUM(n)} lançamento(s) a mais): ${D.slice(0,5).map(g=>'NF '+esc(g.manter.numeroNF||'')+' ×'+(g.extras.length+1)).join(', ')}${D.length>5?'…':''} — o estoque e o contas a pagar estão somados em dobro.</div>
+    <button class="btn btn-amber btn-sm" onclick="comprasDuplicadasUnir()">${ico('check')} Unir duplicadas (estorna estoque e financeiro)</button></div>`; }
+function comprasDuplicadasUnir(){ const D=comprasDuplicadas(); if(!D.length){ toast('Nenhuma entrada duplicada','ok'); return; }
+  const n=D.reduce((s,g)=>s+g.extras.length,0);
+  if(!confirm('Unir '+D.length+' nota(s) lançada(s) em duplicidade?\n\nDe cada nota fica a PRIMEIRA entrada; as outras '+n+' têm:\n• o estoque dos itens estornado\n• as parcelas em aberto canceladas (parcela já paga vira crédito do fornecedor)\n• o lançamento retirado do histórico (fica registrado como duplicado)\n\nContinuar?')) return;
+  let feitos=0, un=0; const res=[];
+  try{ dbTransacao(()=>{ D.forEach(g=>{ g.extras.forEach(c=>{
+      const lancou=c.estoqueLancado!==false && c.situacao!=='pendente';
+      if(lancou){ (c.itens||[]).forEach(i=>{ if(!i || !i.produtoId || i.usoConsumo) return; const q=+i.qtd||0; if(!(q>0)) return; const p=DB.get('produtos',i.produtoId); if(!p) return;
+          DB.update('produtos',p.id,{estoque:Math.round(((+p.estoque||0)-q)*1000)/1000});
+          DB.insert('movEstoque',{produtoId:p.id,tipo:'saida',qtd:q,data:today(),compraId:c.id,motivo:'Estorno — entrada duplicada da NF '+(c.numeroNF||'')}); un+=q; }); }
+      DB.all('movEstoque').filter(m=>m && m.compraId===c.id && m.tipo==='entrada').forEach(m=>{ try{ DB.update('movEstoque',m.id,{orfaEstornada:true, duplicada:true}); }catch(e){} });
+      const rev=estornarFinanceiroCompra(c,{motivo:'Entrada duplicada da NF '+(c.numeroNF||'')+' — unificada'});
+      DB.update('compras',c.id,{situacao:'cancelada', duplicadaDe:g.manter.id, duplicadaEm:new Date().toISOString(), canceladaEm:today(), financeiroEstornado:true});
+      res.push('NF '+(c.numeroNF||'')+' ('+(c.fornecedorNome||'')+')'+(rev&&(rev.nCanc||rev.nRef)?(' · '+estornoResumoTxt(rev)):'')); feitos++; }); }); });
+  }catch(e){ try{ alert('Não foi possível unir (nada foi alterado): '+((e&&e.message)||e)); }catch(_){} return; }
+  try{ logAcao('Entradas duplicadas unificadas', feitos+' lançamento(s) retirado(s) · '+NUM(un)+' unidade(s) estornada(s) · '+res.join(' | ')); }catch(e){}
+  try{ nuvemPushJa(); }catch(e){}
+  toast(feitos+' lançamento(s) duplicado(s) retirado(s) — estoque ('+NUM(un)+' un.) e financeiro estornados','ok');
+  try{ viewNfeEntrada(); }catch(e){} }
 function nfentHistFiltrados(){
   const q=(NFENT.qHist||'').toLowerCase().trim(); const qd=q.replace(/\D/g,'');
   // Ordena pela ordem de LANÇAMENTO (a última entrada lançada no topo). Notas novas têm o carimbo
   // "lancadaEm"; as antigas (sem carimbo) usam a ordem em que foram inseridas no sistema.
   const all=DB.all('compras'); const _idx=new Map(); all.forEach((c,i)=>_idx.set(c.id,i));
-  let ent=all.filter(c=>c.chaveNFe).sort((a,b)=>{
+  let ent=all.filter(c=>c.chaveNFe && !c.duplicadaDe).sort((a,b)=>{   // v05/11-B: duplicada unificada sai do histórico
     const la=a.lancadaEm||'', lb=b.lancadaEm||'';
     if(la&&lb){ if(lb!==la) return lb.localeCompare(la); }
     else if(la&&!lb) return -1;
