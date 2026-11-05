@@ -48,7 +48,7 @@ const CONFIG_EMPRESA = {
      Aparece no topo do menu e no rodapé das Configurações. Troque a cada publicação.
      MANTENHA O FORMATO 'vDD/MM-X' — é ele que o sistema usa para comparar as máquinas
      da loja e avisar quando alguma ficou para trás.                                  */
-  versao: 'v04/11-E',
+  versao: 'v05/11-A',
 
   /* 4) NUVEM (Supabase)  ------------------------------------------------------------
      Cole aqui a Project URL e a chave PUBLISHABLE do projeto Supabase DESTA empresa
@@ -34420,7 +34420,11 @@ const WIZ_STEPS=['Upload XML','Fornecedor','Itens','Revisão Fiscal','Financeiro
    contagem: a órfã só é marcada, sem mexer no estoque de novo. */
 function entradasOrfas(){ try{
   const todas=DB.all('movEstoque');
-  const movs=todas.filter(m=>m && m.tipo==='entrada' && !m.orfaEstornada && m.produtoId && /^(NF-e entrada|Entrada de nota \(manual\))/.test(m.motivo||''));
+  const _lim=Date.now()-30*60000;   // v05/11-A: movimento com menos de 30 min pode ser de uma nota que ainda está chegando da nuvem
+  const movs=todas.filter(m=>{ if(!m || m.tipo!=='entrada' || m.orfaEstornada || !m.produtoId || !/^(NF-e entrada|Entrada de nota \(manual\))/.test(m.motivo||'')) return false;
+    const t=Date.parse(m._cri||m._mod||'')||0; if(t && t>_lim) return false;
+    if(m.compraId){ return !DB.get('compras',m.compraId); }   // ligado à compra: existe → nunca é órfão (mesmo que a qtd tenha sido corrigida)
+    return true; });
   if(!movs.length) return [];
   const k=(pid,data,q)=>pid+'|'+(''+(data||'')).slice(0,10)+'|'+Math.round((+q||0)*1000);
   const vagas=new Map(); const add=key=>vagas.set(key,(vagas.get(key)||0)+1);
@@ -34442,11 +34446,27 @@ function entradasOrfasBannerHTML(){ const o=entradasOrfas(); if(!o.length) retur
   return `<div class="card card-pad" style="margin-bottom:14px;border:1px solid #fecaca;background:#fef2f2;display:flex;gap:12px;align-items:center;flex-wrap:wrap">
     <div style="flex:1;min-width:240px;font-size:13px;line-height:1.5">${ico('alert')} <b>${NUM(o.length)} entrada(s) de estoque de notas que NÃO foram finalizadas</b> — o estoque foi somado sem a nota ter sido lançada${est.length?` (${NUM(est.length)} a estornar)`:''}.</div>
     <button class="btn btn-amber btn-sm" onclick="entradasOrfasModal()">${ico('check')} Ver e estornar</button></div>`; }
-function entradasOrfasModal(){ const o=entradasOrfas(); if(!o.length){ toast('Nenhuma entrada de estoque sem nota encontrada','ok'); return; }
+/* v05/11-A: antes de chamar de "órfã", confere NA NUVEM se a nota de entrada existe lá (ela pode ainda não ter chegado
+   a este computador, ou ter ficado presa noutro). Se existir, traz para cá e a órfã desaparece. */
+async function entradasOrfasConferirNuvem(o){ try{
+    const sb=(typeof nuvemClient==='function')?nuvemClient():null; if(!sb || !(typeof nuvemV3On==='function' && nuvemV3On() && nuvemV3Cfg().migrado)) return {ok:false, motivo:'sem nuvem'};
+    if(typeof navigator!=='undefined' && navigator.onLine===false) return {ok:false, motivo:'sem internet'};
+    const t=nuvemTenant(); const ids=[...new Set(o.map(x=>x.mov.compraId).filter(Boolean))]; const datas=[...new Set(o.map(x=>(''+(x.mov.data||'')).slice(0,10)).filter(Boolean))];
+    const linhas=[];
+    if(ids.length){ const r=await nuvemComTimeout(sb.from('acervo_reg').select('col,id,dados,del,mod').eq('tenant',t).eq('col','compras').in('id',ids), 15000); if(r.error) return {ok:false, motivo:r.error.message||'erro'}; (r.data||[]).forEach(x=>{ if(x && !x.del) linhas.push(x); }); }
+    for(const d of datas.slice(0,10)){ const r=await nuvemComTimeout(sb.from('acervo_reg').select('col,id,dados,del,mod').eq('tenant',t).eq('col','compras').eq('dados->>data',d), 15000); if(r.error) return {ok:false, motivo:r.error.message||'erro'}; (r.data||[]).forEach(x=>{ if(x && !x.del && !linhas.some(l=>l.id===x.id)) linhas.push(x); }); }
+    let n=0; if(linhas.length){ n=nuvemV3Aplicar(linhas); if(n){ DB._persist(); } }
+    return {ok:true, trazidas:n}; }catch(e){ return {ok:false, motivo:(e&&e.message)||''+e}; } }
+async function entradasOrfasModal(){ let o=entradasOrfas(); if(!o.length){ toast('Nenhuma entrada de estoque sem nota encontrada','ok'); return; }
+  toast('Conferindo na nuvem se as notas existem…','ok');
+  const conf=await entradasOrfasConferirNuvem(o);
+  o=entradasOrfas();
+  if(!o.length){ toast('As notas de entrada foram encontradas na nuvem e trazidas para este computador — nenhuma entrada ficou sem nota','ok'); try{ go(STATE.route); }catch(e){} return; }
+  if(!conf.ok){ try{ alert('Não foi possível conferir na nuvem se estas notas existem ('+(conf.motivo||'')+').\n\nNÃO estorne agora: a nota pode estar em outro computador ou ainda chegando. Tente de novo com a internet funcionando.'); }catch(e){} return; }
   window.__orfas=o; const est=o.filter(x=>!x.acertado);
   openModal(`<div class="modal-head"><h3>${ico('alert')} Estoque somado por notas não finalizadas</h3><button class="btn-icon btn-ghost" onclick="closeModal()">${ico('x')}</button></div>
    <div class="modal-body">
-    <p class="t-mut" style="font-size:12.5px;margin:0 0 10px">Estas entradas de estoque não têm nota de entrada lançada (a entrada deu erro ou travou antes de terminar). Ao estornar, a quantidade sai do estoque de cada produto e a movimentação fica registrada. Itens marcados "já acertado pela contagem" tiveram contagem de inventário depois — o saldo já está certo e não é mexido.</p>
+    <p class="t-mut" style="font-size:12.5px;margin:0 0 10px">Conferido na nuvem: nenhuma nota de entrada corresponde a estas entradas de estoque (a entrada deu erro ou travou antes de terminar). Ao estornar, a quantidade sai do estoque de cada produto e a movimentação fica registrada. Itens marcados "já acertado pela contagem" tiveram contagem de inventário depois — o saldo já está certo e não é mexido.</p>
     <div class="tbl-wrap" style="max-height:360px;overflow:auto"><table><thead><tr><th>Produto</th><th>SKU</th><th>Data</th><th>Origem</th><th class="t-right">Qtd somada</th><th class="t-right">Estoque hoje</th><th class="t-right">Após estorno</th></tr></thead><tbody>
     ${o.map(x=>`<tr><td><b>${esc(x.p.nome||'')}</b></td><td class="t-mut">${esc(x.p.sku||'')}</td><td class="tnum">${x.mov.data?fDate(x.mov.data):'—'}</td><td class="t-mut" style="font-size:11.5px">${esc(x.mov.motivo||'')}</td>
       <td class="t-right tnum">${NUM(x.qtd)}</td><td class="t-right tnum">${NUM(+x.p.estoque||0)}</td>
@@ -35168,6 +35188,7 @@ function wizFinalizarGravar(nf){
     if(!t) t=DB.insert('transportadoras',{nome,cnpj:nf.transpCNPJ||'',ie:nf.transpIE||'',tipo:'PJ',cidade:nf.transpMun||'',estado:nf.transpUF||'',situacao:'ativo'});
     transpId=t.id; transpNome=nome; }
   // produtos + estoque
+  const _compraId=uid();   // v05/11-A: a compra e os movimentos de estoque nascem com o mesmo vínculo
   const itensCompra=WIZ.itens.filter(it=>it._incluir!==false).map(it=>{ let pid; const inativo = it.finalidade && it.finalidade!=='Revenda';
     const qtdEstoque = Math.round((+it.qCom||0)*1000)/1000;
     // USO E CONSUMO / IMOBILIZADO: não cadastra, não mexe em produto nem em estoque.
@@ -35211,7 +35232,7 @@ function wizFinalizarGravar(nf){
       if(WIZ.lancarEstoque) upd.estoque=(p.estoque||0)+qtdEstoque;
       DB.update('produtos',pid,upd);
     }
-    if(pid && WIZ.lancarEstoque) DB.insert('movEstoque',{produtoId:pid,tipo:'entrada',qtd:qtdEstoque,data:nf.data,motivo:'NF-e entrada (assistente)'+((+it.fator||1)>1?(' · '+(+it.qBase||0)+'x'+(+it.fator||1)):'')});
+    if(pid && WIZ.lancarEstoque) DB.insert('movEstoque',{produtoId:pid,tipo:'entrada',qtd:qtdEstoque,data:nf.data,compraId:_compraId,motivo:'NF-e entrada (assistente)'+((+it.fator||1)>1?(' · '+(+it.qBase||0)+'x'+(+it.fator||1)):'')});   // v05/11-A: ligado à compra
     return {produtoId:pid,nome:it.xProd,qtd:qtdEstoque,preco:it.custoCalc,custo:it.custoCalc,valorItem:Math.round((+it.vUnCom||0)*100)/100,cProd:it.cProd||'',ean:(it.cEAN||it.cEANTrib||'')}; });
   try{ nfeXmlGuardar(nf); }catch(e){window.__es&&__es(e)}   // guarda o XML da nota (lida do computador) para reaplicar códigos de barras depois
   // compra — guarda os produtos que foram CADASTRADOS por esta entrada (para poder desfazer numa devolução total)
@@ -35219,7 +35240,7 @@ function wizFinalizarGravar(nf){
   // Snapshot da CONFERÊNCIA DE PREÇOS gerada nesta entrada (para reabrir depois no histórico).
   const confPreco=WIZ.itens.filter(it=>it._incluir!==false).map(it=>{ const p=it.associarId?DB.get('produtos',it.associarId):null;
     return { cProd:it.cProd||'', sku:(p&&p.sku)||'', nome:(p&&p.nome)||it.xProd||'', qtd:Math.round((+it.qCom||0)*1000)/1000, custo:Math.round((+it.custoCalc||0)*100)/100, precoVenda:Math.round((+it.precoVenda||0)*100)/100 }; });
-  const compra=DB.insert('compras',{fornecedorId:WIZ.fornId||null,fornecedorNome:fornNome,transportadoraId:transpId||null,transportadoraNome:transpNome||'',data:nf.data,situacao:'recebida',total:nf.vNF,itens:itensCompra,estoqueLancado:!!WIZ.lancarEstoque,chaveNFe:nf.chave,numeroNF:nf.nNF,serieNF:nf.serie,produtosCriados:produtosCriados,confPreco:confPreco,lancadaEm:new Date().toISOString()});
+  const compra=DB.insert('compras',{id:_compraId,fornecedorId:WIZ.fornId||null,fornecedorNome:fornNome,transportadoraId:transpId||null,transportadoraNome:transpNome||'',data:nf.data,situacao:'recebida',total:nf.vNF,itens:itensCompra,estoqueLancado:!!WIZ.lancarEstoque,chaveNFe:nf.chave,numeroNF:nf.nNF,serieNF:nf.serie,produtosCriados:produtosCriados,confPreco:confPreco,lancadaEm:new Date().toISOString()});
   // financeiro
   if(WIZ.finGerar){ const parcVal=WIZ.parcelas.filter(p=>(+p.valor||0)>0); const nParc=parcVal.length; const pad3=x=>(''+x).padStart(3,'0');
     parcVal.forEach((p,pi)=>{
