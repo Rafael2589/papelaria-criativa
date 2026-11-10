@@ -48,7 +48,7 @@ const CONFIG_EMPRESA = {
      Aparece no topo do menu e no rodapé das Configurações. Troque a cada publicação.
      MANTENHA O FORMATO 'vDD/MM-X' — é ele que o sistema usa para comparar as máquinas
      da loja e avisar quando alguma ficou para trás.                                  */
-  versao: 'v05/11-C',
+  versao: 'v07/11-A',
 
   /* 4) NUVEM (Supabase)  ------------------------------------------------------------
      Cole aqui a Project URL e a chave PUBLISHABLE do projeto Supabase DESTA empresa
@@ -575,6 +575,35 @@ html.sync-lock #app, html.sync-lock .app, html.sync-lock #sidebar, html.sync-loc
 @media(max-width:760px){ .meta-it + .meta-it{border-left:0;padding-left:0} .meta-hero .n{font-size:32px} }
 .bi-banner > div:first-child:not(.bi-ico):not(.bi-tx){display:none !important}
 .bi-banner svg{max-width:30px;max-height:30px}
+.anual-mrow{cursor:pointer}.anual-mrow:hover{background:var(--surface-2)}
+.rep-bar{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin:0 0 18px;position:sticky;top:0;z-index:5;background:var(--bg,var(--surface));padding:8px 0}
+.rep-busca{display:flex;align-items:center;gap:8px;background:var(--surface-2);border:1px solid var(--field-line);border-radius:10px;padding:8px 13px;flex:1;min-width:240px;max-width:520px;color:var(--muted)}
+.rep-busca svg{width:16px;height:16px;flex:none}
+.rep-busca input{border:none;background:transparent;outline:none;flex:1;font-size:14px;color:var(--ink,inherit);min-width:0}
+.rep-busca:focus-within{border-color:var(--brand,#0d9488);box-shadow:0 0 0 3px rgba(13,148,136,.15)}
+.rep-busca-x{border:none;background:transparent;cursor:pointer;color:var(--muted);padding:0;display:flex}
+.rep-cat-h{cursor:pointer;user-select:none;border-radius:8px;padding:4px 6px;margin-left:-6px;margin-right:-6px}
+.rep-cat-h:hover{background:var(--surface-2)}
+.rep-cat-h:focus-visible{outline:2px solid var(--brand,#0d9488)}
+.rep-chev{transition:transform .18s;color:var(--muted);flex:none}
+.rep-cat.rec .rep-chev{transform:rotate(-90deg)}
+.rep-cat.rec{margin-bottom:10px}
+.rep-cat.rec .rep-cat-h{margin-bottom:0}
+.rep-rows{display:flex;flex-direction:column;border:1px solid var(--line);border-radius:var(--r);overflow:hidden;background:var(--surface)}
+.rep-row{display:flex;align-items:center;gap:13px;padding:10px 14px;cursor:pointer;border-bottom:1px solid var(--line-2,var(--line))}
+.rep-row:last-child{border-bottom:none}
+.rep-row:hover,.rep-row:focus-visible{background:var(--surface-2);outline:none}
+.rep-row-ic{width:34px;height:34px;border-radius:9px;color:#fff;display:flex;align-items:center;justify-content:center;flex:none}
+.rep-row-ic svg{width:18px;height:18px}
+.rep-row-tx{display:flex;flex-direction:column;gap:1px;min-width:0;flex:1}
+.rep-row-tx b{font-size:14px;font-weight:650}
+.rep-row-tx small{font-size:12px;color:var(--muted);line-height:1.35}
+.rep-row-tag{font-size:10.5px;color:var(--muted);border:1px solid var(--line);border-radius:20px;padding:1px 8px;flex:none}
+.rep-row-go{display:flex;align-items:center;gap:4px;font-size:12px;font-weight:600;color:var(--brand,#0d9488);flex:none;opacity:.75}
+.rep-row:hover .rep-row-go{opacity:1}
+.rep-row-go svg{width:13px;height:13px}
+.rep-hl{background:#fde68a;color:inherit;border-radius:3px;padding:0 1px}
+@media(max-width:700px){.rep-row-go,.rep-row-tag{display:none}.rep-row-tx small{display:none}}
 .rep-cat{margin-bottom:30px}
 .rep-cat-h{display:flex;align-items:center;gap:10px;margin-bottom:14px}
 .rep-cat-h h3{font-size:16px;font-weight:700;letter-spacing:-.3px}
@@ -3358,23 +3387,26 @@ function metaMesCard(){
    produtos/categorias/clientes/vendedores, formas de pagamento e
    comparação com o ano anterior. Reaproveita os agregadores do ANL.
    ============================================================ */
-let ANUAL={ ano: (new Date()).getFullYear() };
+let ANUAL={ ano: (new Date()).getFullYear(), mes: 0 };   // mes: 0 = ano todo, 1..12 = só aquele mês
+const MESES_LONGO=['Janeiro','Fevereiro','Março','Abril','Maio','Junho','Julho','Agosto','Setembro','Outubro','Novembro','Dezembro'];
+/* Pertence ao mês escolhido? (mes 0/vazio = ano todo) */
+function anualNoMes(dataISO, mes){ return !mes || (+(dataISO||'').slice(5,7))===+mes; }
 
 /* Faturamento de uma venda já existe em vendaFaturamento; aqui só somamos
    por recortes que o resumo anual precisa. */
 function anualRange(ano){ return [ano+'-01-01', ano+'-12-31']; }
-function anualVendas(ano){ return ANL.salesIn(anualRange(ano)).filter(v=>v.status!=='cancelada'); }
+function anualVendas(ano, mes){ return ANL.salesIn(anualRange(ano)).filter(v=>v.status!=='cancelada' && anualNoMes(v.data,mes)); }
 
 /* Despesas pagas no ano (contas a pagar já baixadas ou com vencimento no ano).
    Usa a data de baixa quando existe; senão o vencimento. */
-function anualDespesas(ano){
+function anualDespesas(ano, mes){
   const de=ano+'-01-01', ate=ano+'-12-31';
   return DB.all('financeiro').filter(f=>f.tipo==='pagar').filter(f=>{
     const d=(f.dataPagamento||f.pagoEm||f.vencimento||'').slice(0,10);
-    return d>=de && d<=ate;
+    return d>=de && d<=ate && anualNoMes(d,mes);
   });
 }
-function anualDespesaTotal(ano){ return anualDespesas(ano).reduce((s,f)=>s+(+f.valor||0),0); }
+function anualDespesaTotal(ano, mes){ return anualDespesas(ano,mes).reduce((s,f)=>s+(+f.valor||0),0); }
 
 /* Faturamento e lucro por mês (12 posições). */
 function anualPorMes(ano){
@@ -3396,15 +3428,15 @@ function anualAnosDisponiveis(){
 const MESES_CURTO=['Jan','Fev','Mar','Abr','Mai','Jun','Jul','Ago','Set','Out','Nov','Dez'];
 
 /* Despesas do ano agrupadas por categoria (para a análise financeira). */
-function anualDespesaPorCategoria(ano){
-  const m={}; anualDespesas(ano).forEach(f=>{ const c=(f.categoria||'Sem categoria').trim()||'Sem categoria';
+function anualDespesaPorCategoria(ano, mes){
+  const m={}; anualDespesas(ano,mes).forEach(f=>{ const c=(f.categoria||'Sem categoria').trim()||'Sem categoria';
     m[c]=(m[c]||0)+(+f.valor||0); });
   return Object.entries(m).map(([nome,valor])=>({nome,valor})).sort((a,b)=>b.valor-a.valor);
 }
 /* Situação das contas do ano: recebido x a receber, pago x a pagar. */
-function anualContasResumo(ano){
+function anualContasResumo(ano, mes){
   const de=ano+'-01-01', ate=ano+'-12-31';
-  const noAno=f=>{ const d=(f.dataPagamento||f.pagoEm||f.vencimento||f.emissao||'').slice(0,10); return d>=de&&d<=ate; };
+  const noAno=f=>{ const d=(f.dataPagamento||f.pagoEm||f.vencimento||f.emissao||'').slice(0,10); return d>=de&&d<=ate&&anualNoMes(d,mes); };
   const rec=DB.all('financeiro').filter(f=>f.tipo==='receber' && noAno(f));
   const pag=DB.all('financeiro').filter(f=>f.tipo==='pagar' && noAno(f));
   const recebido=rec.filter(f=>f.status==='recebido'||f.status==='pago').reduce((s,f)=>s+(+f.valor||0),0);
@@ -3420,28 +3452,38 @@ function viewAnual(){
   const anos=anualAnosDisponiveis();
   if(anos.indexOf(ANUAL.ano)<0) ANUAL.ano=anos[0];
   const ano=ANUAL.ano;
-  const vendas=anualVendas(ano);
+  const mf=(+ANUAL.mes>=1&&+ANUAL.mes<=12)?+ANUAL.mes:0;        // filtro mensal (0 = ano todo)
+  const per=mf?(MESES_LONGO[mf-1]+'/'+ano):String(ano);          // rótulo do período mostrado
+  const perAnt=mf?(MESES_LONGO[mf-1]+'/'+(ano-1)):String(ano-1);
+  const vendasAno=anualVendas(ano);                              // ano inteiro (gráfico e tabela mês a mês)
+  const vendas=mf?anualVendas(ano,mf):vendasAno;
   const t=ANL.totais(vendas);
-  const despTot=anualDespesaTotal(ano);
+  const tAno=mf?ANL.totais(vendasAno):t;
+  const despTot=anualDespesaTotal(ano,mf);
+  const despTotAno=mf?anualDespesaTotal(ano):despTot;
   const resultado=t.lucro-despTot;           // lucro bruto das vendas menos despesas do ano
   const mes=anualPorMes(ano);
 
   // ano anterior para comparação
-  const vAnt=anualVendas(ano-1); const tAnt=ANL.totais(vAnt); const despAnt=anualDespesaTotal(ano-1);
+  const vAnt=anualVendas(ano-1,mf); const tAnt=ANL.totais(vAnt); const despAnt=anualDespesaTotal(ano-1,mf);
   const temAnt=vAnt.length>0;
 
   // melhores e piores meses (só meses com faturamento)
   const mesesComDados=mes.rec.map((r,i)=>({i,r,l:mes.luc[i]})).filter(x=>x.r>0);
   const melhorMes=mesesComDados.slice().sort((a,b)=>b.r-a.r)[0];
   const piorMes=mesesComDados.slice().sort((a,b)=>a.r-b.r)[0];
-  const mediaMes=mesesComDados.length? t.receita/mesesComDados.length : 0;
+  const mediaMes=mesesComDados.length? tAno.receita/mesesComDados.length : 0;
+  const diasComVenda=new Set(vendas.map(v=>v.data)).size;
+  const mediaDia=diasComVenda? t.receita/diasComVenda : 0;
 
-  const topProd=ANL.porProduto(vendas).slice(0,8);
+  const prodTodos=ANL.porProduto(vendas);
+  const topProd=prodTodos.slice(0,8);
+  const topProdQtd=prodTodos.slice().sort((a,b)=>(b.qtd-a.qtd)||(b.receita-a.receita)).slice(0,8);
   const topCat=ANL.porCategoria(vendas).slice(0,6);
   // --- análise financeira (à prova de falha: nunca deixa a seção sumir) ---
   let despCat=[], contas={recebido:0,aReceber:0,pago:0,aPagar:0};
-  try{ despCat=anualDespesaPorCategoria(ano)||[]; }catch(e){ despCat=[]; }
-  try{ contas=anualContasResumo(ano)||contas; }catch(e){window.__es&&__es(e)}
+  try{ despCat=anualDespesaPorCategoria(ano,mf)||[]; }catch(e){ despCat=[]; }
+  try{ contas=anualContasResumo(ano,mf)||contas; }catch(e){window.__es&&__es(e)}
   const margemBruta=t.receita? t.lucro/t.receita*100 : 0;
   const pctDesp=t.receita? despTot/t.receita*100 : 0;
   const margemLiq=t.receita? resultado/t.receita*100 : 0;
@@ -3465,33 +3507,39 @@ function viewAnual(){
    <div class="toolbar" style="justify-content:space-between;flex-wrap:wrap;gap:10px;margin-bottom:14px">
      <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
        <b style="font-size:15px">Ano</b>
-       <select class="pill-filter" onchange="ANUAL.ano=+this.value;viewAnual()" style="min-width:120px">
+       <select class="pill-filter" id="anual-ano" onchange="ANUAL.ano=+this.value;viewAnual()" style="min-width:120px">
          ${anos.map(a=>`<option value="${a}" ${a===ano?'selected':''}>${a}</option>`).join('')}
        </select>
-       ${temAnt?`<span class="t-mut" style="font-size:12.5px">comparando com ${ano-1}</span>`:`<span class="t-mut" style="font-size:12.5px">sem base do ano anterior</span>`}
+       <b style="font-size:15px">Mês</b>
+       <select class="pill-filter" id="anual-mes" onchange="ANUAL.mes=+this.value;viewAnual()" style="min-width:140px">
+         <option value="0" ${!mf?'selected':''}>Ano todo</option>
+         ${MESES_LONGO.map((m,i)=>`<option value="${i+1}" ${mf===i+1?'selected':''}>${m}</option>`).join('')}
+       </select>
+       ${mf?`<button class="btn btn-ghost btn-sm" onclick="ANUAL.mes=Math.max(1,ANUAL.mes-1);viewAnual()" ${mf<=1?'disabled':''} title="Mês anterior">‹</button><button class="btn btn-ghost btn-sm" onclick="ANUAL.mes=Math.min(12,ANUAL.mes+1);viewAnual()" ${mf>=12?'disabled':''} title="Próximo mês">›</button>`:''}
+       ${temAnt?`<span class="t-mut" style="font-size:12.5px">comparando com ${perAnt}</span>`:`<span class="t-mut" style="font-size:12.5px">sem base de ${perAnt}</span>`}
      </div>
      <button class="btn btn-ghost btn-sm" onclick="anualImprimir()">${ico('print')} Imprimir / PDF</button>
    </div>
 
-   ${vendas.length? '' : `<div class="card card-pad" style="text-align:center;padding:40px;color:var(--muted)">${ico('chart')}<h3 style="margin:10px 0 4px">Nenhuma venda em ${ano}</h3><p>Escolha outro ano no seletor acima.</p></div>`}
+   ${vendas.length? '' : `<div class="card card-pad" style="text-align:center;padding:40px;color:var(--muted)">${ico('chart')}<h3 style="margin:10px 0 4px">Nenhuma venda em ${per}</h3><p>Escolha outro ${mf?'mês ou ano':'ano'} nos seletores acima.</p></div>`}
 
    ${vendas.length? `
    <div class="kpis" style="margin-bottom:16px">
-     ${kpiCard('Faturamento do ano', BRL(t.receita), 'cart', '#0d9488', 'Receita das vendas'+(temAnt?' &nbsp;'+cmp(t.receita,tAnt.receita):''))}
+     ${kpiCard(mf?'Faturamento do mês':'Faturamento do ano', BRL(t.receita), 'cart', '#0d9488', 'Receita das vendas'+(temAnt?' &nbsp;'+cmp(t.receita,tAnt.receita):''))}
      ${kpiCard('Lucro bruto', BRL(t.lucro), 'up', '#16a34a', 'Margem de '+PCT(t.margem)+(temAnt?' &nbsp;'+cmp(t.lucro,tAnt.lucro):''))}
-     ${kpiCard('Despesas pagas', BRL(despTot), 'down', '#dc2626', 'Contas a pagar do ano'+(temAnt?' &nbsp;'+cmp(despTot,despAnt):''))}
+     ${kpiCard('Despesas pagas', BRL(despTot), 'down', '#dc2626', 'Contas a pagar '+(mf?'do mês':'do ano')+(temAnt?' &nbsp;'+cmp(despTot,despAnt):''))}
      ${kpiCard('Resultado', BRL(resultado), 'fin', resultado>=0?'#2563eb':'#dc2626', 'Lucro bruto − despesas')}
    </div>
 
    <div class="kpis" style="margin-bottom:16px">
-     ${kpiCard('Pedidos no ano', NUM(t.pedidos), 'sales', '#7c3aed', (temAnt?cmp(t.pedidos,tAnt.pedidos):'&nbsp;'))}
+     ${kpiCard(mf?'Pedidos no mês':'Pedidos no ano', NUM(t.pedidos), 'sales', '#7c3aed', (temAnt?cmp(t.pedidos,tAnt.pedidos):'&nbsp;'))}
      ${kpiCard('Ticket médio', BRL(t.ticket), 'target', '#d97706', 'Por pedido'+(temAnt?' &nbsp;'+cmp(t.ticket,tAnt.ticket):''))}
      ${kpiCard('Itens vendidos', NUM(t.itens), 'box', '#0891b2', '')}
-     ${kpiCard('Média por mês', BRL(mediaMes), 'chart', '#0d9488', mesesComDados.length+' mês(es) com vendas')}
+     ${mf?kpiCard('Média por dia', BRL(mediaDia), 'chart', '#0d9488', diasComVenda+' dia(s) com vendas'):kpiCard('Média por mês', BRL(mediaMes), 'chart', '#0d9488', mesesComDados.length+' mês(es) com vendas')}
    </div>
 
    <div class="card card-pad" style="margin-bottom:16px">
-     <b style="font-size:15px">${ico('fin')} Análise de resultado financeiro — ${ano}</b>
+     <b style="font-size:15px">${ico('fin')} Análise de resultado financeiro — ${per}</b>
      <p class="t-mut" style="font-size:12px;margin:2px 0 12px">Demonstrativo simplificado: da receita até o resultado. Visão gerencial — não substitui o fechamento contábil.</p>
      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:18px">
 
@@ -3501,7 +3549,7 @@ function viewAnual(){
          <div class="dre-row"><span class="t-mut">(−) Custo das mercadorias (CMV)</span><span class="tnum" style="color:var(--neg)">${BRL(t.custo)}</span></div>
          <div class="dre-row" style="border-top:1px solid var(--line-2);border-bottom:1px solid var(--line-2);padding:6px 0;margin:2px 0">
            <span class="t-strong">(=) Lucro bruto</span><span class="tnum t-strong" style="color:var(--pos)">${BRL(t.lucro)} <span class="t-mut" style="font-size:11px">(${PCT(margemBruta)})</span></span></div>
-         <div class="dre-row"><span class="t-mut">(−) Despesas do ano</span><span class="tnum" style="color:var(--neg)">${BRL(despTot)}</span></div>
+         <div class="dre-row"><span class="t-mut">(−) Despesas ${mf?'do mês':'do ano'}</span><span class="tnum" style="color:var(--neg)">${BRL(despTot)}</span></div>
          <div class="dre-row" style="border-top:2px solid var(--line);padding-top:6px;margin-top:2px">
            <span class="t-strong" style="font-size:15px">(=) Resultado</span>
            <span class="tnum t-strong" style="font-size:15px;color:${resultado>=0?'var(--pos)':'var(--neg)'}">${BRL(resultado)}</span></div>
@@ -3516,7 +3564,7 @@ function viewAnual(){
              <div style="display:flex;justify-content:space-between;font-size:12.5px;margin-bottom:2px">
                <span>${esc(d.nome)}</span><span class="tnum">${BRL(d.valor)} <span class="t-mut">(${PCT(despTot?d.valor/despTot*100:0)})</span></span></div>
              <div style="height:7px;background:var(--surface-2);border-radius:4px;overflow:hidden"><div style="height:100%;width:${Math.round(d.valor/maxDespCat*100)}%;background:#dc2626"></div></div>
-           </div>`).join('') : '<p class="t-mut" style="font-size:12.5px">Nenhuma despesa lançada neste ano.</p>'}
+           </div>`).join('') : '<p class="t-mut" style="font-size:12.5px">Nenhuma despesa lançada '+(mf?'neste mês':'neste ano')+'.</p>'}
        </div>
 
      </div>
@@ -3524,12 +3572,12 @@ function viewAnual(){
      <div class="kpis" style="margin-top:16px">
        ${kpiCard('Margem bruta', PCT(margemBruta), 'pct', '#16a34a', 'Lucro bruto ÷ receita')}
        ${kpiCard('Despesas s/ receita', PCT(pctDesp), 'down', '#dc2626', 'Quanto da receita vira despesa')}
-       ${kpiCard('Recebido no ano', BRL(contas.recebido), 'up', '#0d9488', contas.aReceber>0?('Ainda a receber: '+BRL(contas.aReceber)):'Tudo recebido')}
-       ${kpiCard('Pago no ano', BRL(contas.pago), 'down', '#d97706', contas.aPagar>0?('Ainda a pagar: '+BRL(contas.aPagar)):'Tudo pago')}
+       ${kpiCard(mf?'Recebido no mês':'Recebido no ano', BRL(contas.recebido), 'up', '#0d9488', contas.aReceber>0?('Ainda a receber: '+BRL(contas.aReceber)):'Tudo recebido')}
+       ${kpiCard(mf?'Pago no mês':'Pago no ano', BRL(contas.pago), 'down', '#d97706', contas.aPagar>0?('Ainda a pagar: '+BRL(contas.aPagar)):'Tudo pago')}
      </div>
 
      ${(function(){ const av=[];
-        if(margemLiq<0) av.push({c:'var(--neg)',t:'O ano fechou com <b>prejuízo</b> de '+BRL(Math.abs(resultado))+'. As despesas ('+BRL(despTot)+') superaram o lucro bruto ('+BRL(t.lucro)+').'});
+        if(margemLiq<0) av.push({c:'var(--neg)',t:(mf?'O mês fechou':'O ano fechou')+' com <b>prejuízo</b> de '+BRL(Math.abs(resultado))+'. As despesas ('+BRL(despTot)+') superaram o lucro bruto ('+BRL(t.lucro)+').'});
         else if(margemLiq<5 && t.receita>0) av.push({c:'#d97706',t:'Margem líquida apertada ('+PCT(margemLiq)+'). Sobra pouco depois das despesas — vale revisar as maiores linhas de custo.'});
         else if(t.receita>0) av.push({c:'var(--pos)',t:'Resultado saudável: '+PCT(margemLiq)+' de margem líquida sobre a receita.'});
         if(pctDesp>margemBruta && t.receita>0) av.push({c:'var(--neg)',t:'As despesas consomem mais do que o lucro bruto gera. Cada real vendido não está cobrindo custo + despesa.'});
@@ -3541,7 +3589,7 @@ function viewAnual(){
 
    <div class="card card-pad" style="margin-bottom:16px">
      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">
-       <b>Faturamento e lucro mês a mês — ${ano}</b>
+       <b>Faturamento e lucro mês a mês — ${ano}</b>${mf?` <span class="t-mut" style="font-size:12px">(ano inteiro; ${MESES_LONGO[mf-1]} destacado na tabela)</span>`:''}
        ${melhorMes?`<span class="t-mut" style="font-size:12.5px">Melhor mês: <b>${MESES_CURTO[melhorMes.i]}</b> (${BRL(melhorMes.r)})</span>`:''}
      </div>
      <div style="position:relative;height:300px;width:100%;overflow:hidden"><canvas id="anual-chart" style="display:block"></canvas></div>
@@ -3551,8 +3599,8 @@ function viewAnual(){
      <b>Resumo mês a mês</b>
      <div class="tbl-wrap" style="margin-top:8px">
        <table><thead><tr><th>Mês</th><th class="t-right">Faturamento</th><th class="t-right">Lucro</th><th class="t-right">Pedidos</th><th class="t-right">Despesas</th><th style="width:130px">Peso no ano</th></tr></thead><tbody>
-       ${mes.rec.map((r,i)=>{ if(!r && !mes.desp[i]) return ''; const pct=t.receita? r/t.receita*100:0;
-         return `<tr>
+       ${mes.rec.map((r,i)=>{ if(!r && !mes.desp[i]) return ''; const pct=tAno.receita? r/tAno.receita*100:0;
+         return `<tr ${mf===i+1?'style="background:var(--surface-2);box-shadow:inset 3px 0 0 #0d9488"':''} onclick="ANUAL.mes=${i+1};viewAnual()" title="Ver só ${MESES_LONGO[i]}" class="anual-mrow">
            <td class="t-strong">${MESES_CURTO[i]}</td>
            <td class="t-right tnum">${BRL(r)}</td>
            <td class="t-right tnum ${mes.luc[i]<0?'':''}" ${mes.luc[i]<0?'style="color:var(--neg)"':''}>${BRL(mes.luc[i])}</td>
@@ -3561,17 +3609,23 @@ function viewAnual(){
            <td><div style="height:8px;background:var(--surface-2);border-radius:4px;overflow:hidden"><div style="height:100%;width:${Math.round(pct)}%;background:#0d9488"></div></div></td>
          </tr>`; }).join('')}
        </tbody><tfoot><tr style="border-top:2px solid var(--line)">
-         <td class="t-strong">Total</td><td class="t-right tnum t-strong">${BRL(t.receita)}</td>
-         <td class="t-right tnum t-strong">${BRL(t.lucro)}</td><td class="t-right tnum t-strong">${NUM(t.pedidos)}</td>
-         <td class="t-right tnum t-strong">${BRL(despTot)}</td><td></td></tr></tfoot></table>
+         <td class="t-strong">Total ${ano}</td><td class="t-right tnum t-strong">${BRL(tAno.receita)}</td>
+         <td class="t-right tnum t-strong">${BRL(tAno.lucro)}</td><td class="t-right tnum t-strong">${NUM(tAno.pedidos)}</td>
+         <td class="t-right tnum t-strong">${BRL(despTotAno)}</td><td></td></tr></tfoot></table>
      </div>
    </div>
 
    <div class="anual-ranks" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(400px,1fr));gap:16px;margin-bottom:16px">
      <div class="card card-pad">
-       <b>Produtos que mais faturaram</b>
+       <b>Produtos que mais faturaram</b> <span class="t-mut" style="font-size:12px">— ${per}</span>
        <div class="tbl-wrap" style="margin-top:8px"><table><thead><tr><th>Produto</th><th class="t-right">Receita</th><th class="t-right">Qtd</th></tr></thead><tbody>
        ${topProd.length?topProd.map(p=>`<tr><td>${esc(p.nome||'—')}</td><td class="t-right tnum">${BRL(p.receita)}</td><td class="t-right tnum t-mut">${fmtQ(p.qtd)}</td></tr>`).join(''):'<tr><td colspan="3" class="t-mut" style="text-align:center;padding:16px">Sem dados</td></tr>'}
+       </tbody></table></div>
+     </div>
+     <div class="card card-pad" id="anual-top-qtd">
+       <b>Produtos mais vendidos (quantidade)</b> <span class="t-mut" style="font-size:12px">— ${per}</span>
+       <div class="tbl-wrap" style="margin-top:8px"><table><thead><tr><th>Produto</th><th class="t-right">Qtd</th><th class="t-right">Receita</th></tr></thead><tbody>
+       ${topProdQtd.length?topProdQtd.map(p=>`<tr><td>${esc(p.nome||'—')}</td><td class="t-right tnum t-strong">${fmtQ(p.qtd)}</td><td class="t-right tnum t-mut">${BRL(p.receita)}</td></tr>`).join(''):'<tr><td colspan="3" class="t-mut" style="text-align:center;padding:16px">Sem dados</td></tr>'}
        </tbody></table></div>
      </div>
      <div class="card card-pad">
@@ -18776,6 +18830,71 @@ function crFichasQtd(){ return fichaAbertas().length; }
 function crSegTabs(){ const at=FIN.recTab||'todas';
   const abas=[['todas','Todas',null],['boletos','Boletos a Receber',crBoletosQtd()],['ficha','Fichas Cliente a Receber',crFichasQtd()]];
   return `<div class="seg">${abas.map(([v,l,n])=>`<button class="${at===v?'on':''}" onclick="crTab('${v}')">${l}${n!=null?` (${NUM(n)})`:''}</button>`).join('')}</div>`; }
+
+/* ===================================================================
+   ORIGEM DA CONTA — DATA DA COMPRA/VENDA E ITENS COMPRADOS
+   Nas listas de Contas a Pagar e a Receber, cada título mostra a data em que a COMPRA (ou a venda)
+   foi realizada — diferente do vencimento e da data de pagamento — e um botão "itens" que abre o que
+   foi comprado. Contas a pagar → compra de entrada (compraId, ou o mesmo nº de NF + fornecedor).
+   Contas a receber → venda (vendaId) ou nota consolidada (notaId → pedidos que ela juntou).
+   Só lê: não grava nada nem altera cadastros.
+=================================================================== */
+function finOrigemIdx(){
+  const x={ compras:null, vendas:null, notas:null, fins:null, comprasNF:null };
+  const mapa=(col)=>{ const m={}; DB.all(col).forEach(r=>{ if(r&&r.id) m[r.id]=r; }); return m; };
+  x.get=(col,id)=>{ if(!id) return null; if(!x[col]) x[col]=mapa(col==='fins'?'financeiro':(col==='compras'?'compras':(col==='vendas'?'vendas':'notasFiscais'))); return x[col][id]||null; };
+  x.nf=(num)=>{ if(!x.comprasNF){ x.comprasNF={}; DB.all('compras').forEach(c=>{ const k=(''+(c&&c.numeroNF||'')).replace(/\D/g,'').replace(/^0+/,''); if(k){ (x.comprasNF[k]=x.comprasNF[k]||[]).push(c); } }); }
+    return x.comprasNF[(''+(num||'')).replace(/\D/g,'').replace(/^0+/,'')]||[]; };
+  return x;
+}
+/* Resolve de onde veio o título: { docs:[{tipo,rotulo,data,quem,nf,itens,total}], data, extraDatas } */
+function finOrigem(f, X){
+  X=X||finOrigemIdx(); const docs=[];
+  const itensDe=(arr)=>(arr||[]).filter(i=>i&&(i.nome||i.produtoId)).map(i=>{ const q=+i.qtd||0, pr=+(i.preco!=null?i.preco:(i.custo||0))||0; return {nome:i.nome||'—',qtd:q,preco:pr,total:Math.round(q*pr*100)/100,un:i.unidade||i.un||''}; });
+  if(f.tipo==='pagar'){
+    let c=X.get('compras',f.compraId);
+    if(!c && f.nf){ const lista=X.nf(f.nf); const nomeF=normTxt(f.fornecedorNome||'');
+      c=lista.find(k=>(f.fornecedorId&&k.fornecedorId===f.fornecedorId)||(nomeF&&normTxt(k.fornecedorNome||'')===nomeF))||null; }
+    if(c) docs.push({tipo:'compra',rotulo:'Compra'+(c.numeroNF?(' · NF '+c.numeroNF):''),data:(c.data||'').slice(0,10),quem:c.fornecedorNome||f.fornecedorNome||'',nf:c.numeroNF||'',itens:itensDe(c.itens),total:+c.total||0});
+  } else {
+    const addVenda=(v)=>{ if(!v) return; if(docs.some(d=>d.id===v.id)) return;
+      docs.push({id:v.id,tipo:'venda',rotulo:'Pedido '+(v.numero?('PV-'+v.numero):'(sem nº)'),data:(v.data||'').slice(0,10),quem:v.clienteNome||f.clienteNome||'',nf:'',itens:itensDe(v.itens),total:+v.total||0}); };
+    if(f.vendaId) addVenda(X.get('vendas',f.vendaId));
+    if(!docs.length && f.notaId){ const n=X.get('notas',f.notaId);
+      if(n){ (n.consolidadaDe||[]).forEach(fid=>{ const ff=X.get('fins',fid); if(ff&&ff.vendaId) addVenda(X.get('vendas',ff.vendaId)); });
+        if(n.vendaId) addVenda(X.get('vendas',n.vendaId));
+        if(!docs.length && (n.itensSnap||n.itens||[]).length) docs.push({tipo:'nota',rotulo:'Nota '+(n.numero||''),data:(n.data||'').slice(0,10),quem:n.clienteNome||f.clienteNome||'',nf:n.numero||'',itens:itensDe(n.itensSnap||n.itens),total:+n.valor||0}); } }
+  }
+  const datas=[...new Set(docs.map(d=>d.data).filter(Boolean))].sort();
+  return { docs, data:datas[0]||'', extra:Math.max(0,datas.length-1), datas, temItens:docs.some(d=>d.itens.length) };
+}
+/* Pedaço de HTML para a célula de data: "Compra em dd/mm/aaaa" + botão "itens". */
+function finOrigemHTML(f, X, rotulo){
+  let o; try{ o=finOrigem(f,X); }catch(e){ window.__es&&__es(e); return ''; }
+  const data=o.data||'';
+  if(!data && !o.temItens) return '';
+  const lbl=rotulo||(f.tipo==='pagar'?'Compra':'Venda');
+  const dd=data?`<span class="t-mut tnum" style="font-size:11px" title="Data em que a ${lbl.toLowerCase()} foi realizada${o.extra?(' (primeira de '+(o.extra+1)+': '+o.datas.map(fDate).join(', ')+')'):''}">${ico('cart')} ${lbl}: <b>${fDate(data)}</b>${o.extra?` +${o.extra}`:''}</span>`:'';
+  const bt=o.temItens?`<button class="btn btn-ghost btn-sm fin-itens-btn" style="padding:1px 7px;font-size:10.5px;margin-left:${data?'6px':'0'}" title="Ver os itens ${f.tipo==='pagar'?'comprados':'vendidos'}" onclick="finItensVer('${f.id}')">${ico('list')} itens</button>`:'';
+  return `<div class="fin-origem" style="margin-top:3px;white-space:nowrap">${dd}${bt}</div>`;
+}
+function finItensVer(id){
+  const f=DB.get('financeiro',id); if(!f){ toast('Conta não encontrada','err'); return; }
+  const o=finOrigem(f); const pagar=f.tipo==='pagar';
+  const corpo=o.docs.length? o.docs.map(d=>{ const soma=d.itens.reduce((s,i)=>s+i.total,0);
+    return `<div style="margin-bottom:14px">
+      <div style="display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap;margin-bottom:6px"><b>${esc(d.rotulo)}</b>
+        <span class="t-mut" style="font-size:12.5px">${d.data?('Realizada em <b>'+fDate(d.data)+'</b>'):'Sem data'}${d.quem?(' · '+esc(d.quem)):''}</span></div>
+      ${d.itens.length?`<div class="tbl-wrap"><table><thead><tr><th>Produto</th><th class="t-right">Qtd</th><th class="t-right">${pagar?'Custo unit.':'Preço unit.'}</th><th class="t-right">Total</th></tr></thead><tbody>
+        ${d.itens.map(i=>`<tr><td>${esc(i.nome)}</td><td class="t-right tnum">${fmtQ(i.qtd)}${i.un?(' '+esc(i.un)):''}</td><td class="t-right tnum t-mut">${BRL(i.preco)}</td><td class="t-right tnum t-strong">${BRL(i.total)}</td></tr>`).join('')}
+        </tbody><tfoot><tr style="border-top:2px solid var(--line)"><td class="t-strong" colspan="3">Total dos itens (${NUM(d.itens.length)})</td><td class="t-right tnum t-strong">${BRL(soma)}</td></tr></tfoot></table></div>`
+      :'<p class="t-mut" style="font-size:12.5px">Sem itens registrados neste documento.</p>'}</div>`; }).join('')
+    : '<div class="empty"><h4>Sem itens ligados a esta conta</h4><p class="t-mut">Esta conta foi lançada à mão ou não tem compra/venda vinculada.</p></div>';
+  openModal(`<div class="modal-head"><h3>${pagar?'Itens comprados':'Itens vendidos'}</h3><button class="btn-icon btn-ghost" onclick="closeModal()">${ico('x')}</button></div>
+  <div class="modal-body" id="fin-itens-print">
+    <div class="t-mut" style="font-size:12.5px;margin-bottom:10px">${esc(f.descricao||'')} · <b>${BRL(f.valor)}</b> · vencimento ${fDate(f.vencimento)}</div>${corpo}</div>
+  <div class="modal-foot no-print"><button class="btn btn-ghost" onclick="closeModal()">Fechar</button><button class="btn btn-primary" onclick="printArea('fin-itens-print')">${ico('print')} Imprimir / PDF</button></div>`, true);
+}
 function crTab(v){ FIN.recTab=v; viewContasReceber(); }
 function viewContasReceber(){
   /* Mesma regra da tela de Contas a Pagar: a seleção do usuário não se apaga num
@@ -18856,6 +18975,7 @@ function crRender(){
   crBulk();
   if(!rows.length){ el.innerHTML=`<div class="empty"><h4>Nenhuma conta a receber encontrada</h4></div>`; return; }
   const allSel=rows.length&&rows.every(f=>FIN.recSel.has(f.id));
+  const OX=finOrigemIdx();
   el.innerHTML=`<table><thead><tr>
     <th style="width:34px"><input type="checkbox" ${allSel?'checked':''} onchange="crToggleAll(this.checked)"></th>
     <th>Cliente</th><th>Descrição</th><th>Forma / Categoria</th>
@@ -18877,6 +18997,7 @@ function crRender(){
       <td class="t-right tnum t-strong" style="color:var(--pos)">${BRL(f.valor)}${finParcialInfo(f).temParcial?`<div class="t-mut" style="font-size:11px;font-weight:600;color:var(--amber)">falta ${BRL(finSaldoAberto(f))}</div>`:''}</td>
       <td class="t-right">${finAjusteCell(f)}</td>
       <td><div class="tnum ${venc?'':'t-mut'}" style="${venc?'color:var(--neg);font-weight:600':''}">${fDate(f.vencimento)}${venc?' ⚠':''}</div>
+        ${finOrigemHTML(f,OX,'Compra')}
         <div style="margin-top:3px">${venc?'<span class="tag neg">Vencido</span>':`<span class="tag ${f.status==='recebido'?'pos':'warn'}">${f.status==='recebido'?'Recebido':'Pendente'}</span>`}${(f.status==='recebido'&&(f.recebidoData||f.pagoData))?`<div class="t-mut tnum" style="font-size:10.5px;margin-top:2px" title="Data do recebimento">em ${fDate(f.recebidoData||f.pagoData)}</div>`:''}${finConciliadoTag(f)}</div>
         ${finParcialInfo(f).temParcial?`<div style="margin-top:3px">${finParcialTag(f)}</div>`:''}</td>
       <td class="t-right" style="width:196px"><div style="display:flex;flex-wrap:wrap;gap:2px;justify-content:flex-end;align-items:center">
@@ -19142,6 +19263,7 @@ function cpRender(){
   const rows=cpFiltered(); const el=document.getElementById('cp-table'); if(!el)return; cpBulk();
   if(!rows.length){ el.innerHTML=`<div class="empty"><h4>Nenhuma conta a pagar encontrada</h4></div>`; return; }
   const allSel=rows.length&&rows.every(f=>FIN.pagSel.has(f.id));
+  const OX=finOrigemIdx();
   el.innerHTML=`<table><thead><tr>
     <th style="width:26px"><input type="checkbox" ${allSel?'checked':''} onchange="cpToggleAll(this.checked)"></th>
     <th>Fornecedor</th><th>Descrição</th><th>Grupo</th><th>Subgrupo</th>
@@ -19160,7 +19282,7 @@ function cpRender(){
       <td class="t-mut cp-gr">${esc(f.centroCusto||'—')}${f.centroCusto?`<button class="btn-icon btn-ghost" title="Ver todas as despesas deste subgrupo (com impressão)" onclick="despGrupoRel('${jsq((f.categoria||'—'))}','${jsq((f.centroCusto||''))}')" style="color:var(--brand)">${ico('doc')}</button>`:''}</td>
       <td class="t-right tnum t-strong" style="color:var(--neg)">${BRL(f.valor)}</td>
       <td class="t-right">${finAjusteCell(f)}</td>
-      <td class="tnum ${venc?'':'t-mut'}" style="${venc?'color:var(--neg);font-weight:600':''}">${fDate(f.vencimento)}${venc?' ⚠':''}</td>
+      <td class="tnum ${venc?'':'t-mut'}" style="${venc?'color:var(--neg);font-weight:600':''}">${fDate(f.vencimento)}${venc?' ⚠':''}${finOrigemHTML(f,OX,'Compra')}</td>
       <td class="t-center">${venc?'<span class="tag neg">Vencido</span>':`<span class="tag ${f.status==='pago'?'pos':'warn'}">${f.status==='pago'?'Pago':'Pendente'}</span>`}${(f.status==='pago'&&f.pagoData)?`<div class="t-mut tnum" style="font-size:10.5px;margin-top:3px" title="Data do pagamento">pago em ${fDate(f.pagoData)}</div>`:''}${finConciliadoTag(f)?`<div>${finConciliadoTag(f)}</div>`:''}</td>
       <td class="t-right cp-acoes" style="white-space:nowrap">
         ${f.status!=='pago'?`<button class="btn-icon btn-ghost" title="Marcar como pago" onclick="finQuitar('${f.id}','cpRender')">${ico('check')}</button>`:''}
@@ -21313,7 +21435,7 @@ const REPORTS=[
    return {cols:[{k:'codigo',label:'Código',f:v=>v?('#'+v):'—'},{k:'data',label:'Data',f:fD},{k:'clienteNome',label:'Cliente'},{k:'indicadorNome',label:'Indicador'},{k:'valor',label:'Valor da compra',a:'r',f:fM},{k:'pct',label:'%',a:'r',f:v=>NUM(v)+'%'},{k:'comissao',label:'Prêmio gerado',a:'r',f:fM},{k:'usada',label:'Prêmio usado',a:'r',f:v=>v?fM(v):'—'}],
      rows, totals:[{label:'Pedidos',val:NUM(rows.length)},{label:'Valor total',val:BRL(tv)},{label:'Prêmio gerado',val:BRL(tc),color:'#db2777'},{label:'Prêmio usado',val:BRL(tu)},{label:'Saldo de prêmio',val:BRL(Math.round((tc-tu)*100)/100),color:'#15803d'}]}; }},
 /* ---------- FINANCEIRO ---------- */
-{id:'rep-recebimentos',pessoa:true,cat:'Financeiro',titulo:'Recebimentos',cor:'#15803d',icon:'money',desc:'Pagamentos recebidos: data, cliente, valor, forma e se foi parcial.',
+{id:'rep-recebimentos',pessoa:true,cat:'Financeiros',titulo:'Recebimentos',cor:'#15803d',icon:'money',desc:'Pagamentos recebidos: data, cliente, valor, forma e se foi parcial.',
  search:['clienteNome','formas'],searchPh:'Cliente ou forma...',
  run(f){ const rows=DB.all('recebimentos').filter(r=>inRange(r.data,f)&&mq(f,r.clienteNome,r.formas)).slice().sort((a,b)=>((b.data||'')+'').localeCompare((a.data||'')+''));
    const tot=rows.reduce((s,r)=>s+(+r.valor||0),0);
@@ -21796,25 +21918,81 @@ document.addEventListener('keydown',function(e){ if(e.key==='F12'||e.keyCode===1
   try{ if(typeof STATE!=='undefined' && STATE.route==='rep' && !STATE.report) viewRep(); }catch(_){} } });
 
 /* ---------- hub de relatórios (espelha o Gestão Forte) ---------- */
+/* ---------- TELA DE RELATÓRIOS: lista, busca e categorias que recolhem ----------
+   - Visão em LISTA (padrão) ou em CARTÕES (como era antes) — o botão do topo alterna.
+   - Campo de busca: acha pelo nome, pela descrição ou pela categoria, sem acento e em qualquer ordem.
+   - Cada categoria recolhe/expande clicando no título; "Recolher tudo" deixa só as categorias.
+   - A escolha (lista/cartões, categorias recolhidas) fica guardada neste navegador. */
+const REP_UI_KEY='gp_rep_ui';
+function repUiLer(){ try{ const o=JSON.parse(localStorage.getItem(REP_UI_KEY)||'{}'); return (o&&typeof o==='object')?o:{}; }catch(e){ return {}; } }
+function repUiGravar(){ try{ localStorage.setItem(REP_UI_KEY, JSON.stringify({view:STATE.repView||'lista', recolhidas:STATE.repRecolhidas||{}})); }catch(e){} }
+function repUiIniciar(){ if(STATE.repUiOk) return; STATE.repUiOk=true; const o=repUiLer();
+  STATE.repView=(o.view==='cards')?'cards':'lista'; STATE.repRecolhidas=(o.recolhidas&&typeof o.recolhidas==='object')?o.recolhidas:{}; STATE.repBusca=STATE.repBusca||''; }
+function repLista(){ return REPORTS.filter(r=>!r.secret || window._repSecret); }
+function repCasaBusca(r, toks){ if(!toks.length) return true;
+  const b=normTxt([r.titulo,r.desc,r.cat,'relatorios de '+r.cat].join(' ')); return toks.every(t=>b.includes(t)); }
+function repHl(txt, toks){ txt=(txt==null?'':''+txt); if(!toks.length) return esc(txt);
+  const norm=normTxt(txt); if(norm.length!==txt.length) return esc(txt);      // se tirar o acento muda o tamanho, não marca (nunca quebra o texto)
+  const marca=new Array(txt.length).fill(false);
+  toks.forEach(t=>{ if(t.length<2) return; let k=norm.indexOf(t); while(k>=0){ for(let a=k;a<k+t.length;a++) marca[a]=true; k=norm.indexOf(t,k+t.length); } });
+  let out='',aberto=false,buf='';
+  for(let a=0;a<txt.length;a++){ if(marca[a]!==aberto){ out+=aberto?('<mark class="rep-hl">'+esc(buf)+'</mark>'):esc(buf); buf=''; aberto=marca[a]; } buf+=txt[a]; }
+  out+=aberto?('<mark class="rep-hl">'+esc(buf)+'</mark>'):esc(buf); return out; }
+function repChevron(){ return '<svg class="rep-chev" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg>'; }
+function repListaHTML(){
+  const toks=tokensDe(STATE.repBusca||''); const busca=toks.length>0; const modo=STATE.repView||'lista';
+  const todos=repLista(); let achados=0;
+  const cats=REP_CATS.map(cat=>{
+    const meta=CAT_META[cat]; const doCat=todos.filter(r=>r.cat===cat); if(!doCat.length) return '';
+    const reps=doCat.filter(r=>repCasaBusca(r,toks)); if(busca && !reps.length) return '';
+    achados+=reps.length;
+    const rec=!busca && !!(STATE.repRecolhidas||{})[cat];        // durante a busca, tudo que casou fica aberto
+    const corpo=rec?'':(modo==='cards'
+      ? `<div class="rep-grid">${reps.map(r=>`<button class="rep-card" style="background:${r.cor}" onclick="openReport('${r.id}')">
+          <div class="rc-ic">${ico(r.icon)}</div><h4>${repHl(r.titulo,toks)}</h4><p>${repHl(r.desc,toks)}</p>
+          <span class="rc-go">Clique aqui ${ico('up')}</span></button>`).join('')}</div>`
+      : `<div class="rep-rows">${reps.map(r=>`<div class="rep-row" role="button" tabindex="0" onclick="openReport('${r.id}')" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();openReport('${r.id}')}">
+          <span class="rep-row-ic" style="background:${r.cor}">${ico(r.icon)}</span>
+          <span class="rep-row-tx"><b>${repHl(r.titulo,toks)}</b><small>${repHl(r.desc,toks)}</small></span>
+          ${r.date?'<span class="rep-row-tag" title="Tem filtro de período">período</span>':''}
+          <span class="rep-row-go">Abrir ${ico('up')}</span></div>`).join('')}</div>`);
+    return `<div class="rep-cat ${rec?'rec':''}" data-cat="${esc(cat)}">
+      <div class="rep-cat-h" role="button" tabindex="0" onclick="repToggleCat('${cat}')" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();repToggleCat('${cat}')}" title="${rec?'Expandir':'Recolher'} esta categoria">
+        <span class="rep-cat-ic" style="color:${meta.cor}">${ico(meta.icon)}</span><h3>Relatórios de ${cat.toLowerCase()}</h3><span class="ln"></span>
+        <span class="t-mut" style="font-size:12.5px">${busca?(reps.length+' de '+doCat.length):doCat.length}</span>${repChevron()}</div>
+      ${corpo}</div>`; }).join('');
+  const vazio=busca&&!achados?`<div class="empty">${ico('search')}<h4>Nenhum relatório encontrado</h4><p class="t-mut">Nada para “${esc(STATE.repBusca)}”. Tente outra palavra — por exemplo “vendas”, “estoque”, “cliente” ou “nota”.</p></div>`:'';
+  return { html:cats+vazio, achados, total:todos.length };
+}
+function repListaRender(){ const el=document.getElementById('rep-lista'); if(!el) return;
+  const r=repListaHTML(); el.innerHTML=r.html;
+  const c=document.getElementById('rep-cont'); if(c) c.textContent=(tokensDe(STATE.repBusca||'').length? (r.achados+' de '+r.total+' relatórios') : (r.total+' relatórios'));
+  const x=document.getElementById('rep-busca-x'); if(x) x.style.display=(STATE.repBusca||'')?'':'none';
+  const rt=document.getElementById('rep-recolher-btn'); if(rt){ const todasRec=REP_CATS.every(c2=>!repLista().some(r2=>r2.cat===c2) || (STATE.repRecolhidas||{})[c2]); rt.innerHTML=todasRec?'Expandir tudo':'Recolher tudo'; }
+  document.querySelectorAll('.rep-vseg button').forEach(b=>b.classList.toggle('on', b.dataset.v===(STATE.repView||'lista')));
+}
+function repBuscar(v){ STATE.repBusca=v||''; repListaRender(); }
+function repBuscaLimpar(){ STATE.repBusca=''; const i=document.getElementById('rep-busca'); if(i){ i.value=''; i.focus(); } repListaRender(); }
+function repToggleCat(cat){ STATE.repRecolhidas=STATE.repRecolhidas||{}; if(STATE.repRecolhidas[cat]) delete STATE.repRecolhidas[cat]; else STATE.repRecolhidas[cat]=true; repUiGravar(); repListaRender(); }
+function repRecolherTudo(){ const cats=REP_CATS.filter(c=>repLista().some(r=>r.cat===c)); const todasRec=cats.every(c=>(STATE.repRecolhidas||{})[c]);
+  STATE.repRecolhidas={}; if(!todasRec) cats.forEach(c=>STATE.repRecolhidas[c]=true);
+  STATE.repBusca=''; const i=document.getElementById('rep-busca'); if(i) i.value=''; repUiGravar(); repListaRender(); }
+function repVisao(v){ STATE.repView=(v==='cards')?'cards':'lista'; repUiGravar(); repListaRender(); }
 function viewRep(){
-  STATE.report=null;
+  STATE.report=null; repUiIniciar();
   const feat=`<div class="bi-banner" onclick="openReport('bi')">
     <div class="bi-ico">${ico('bulb')}</div>
     <div class="bi-tx"><h3>Painel de Inteligência (BI)</h3><p>Indicadores com comparação ao período anterior, insights, caixa realizado, contas a receber/pagar, inadimplência, evolução de 12 meses, despesas por categoria, ponto de equilíbrio, estoque, DRE, vendedores, curva ABC, sazonalidade e melhores clientes.</p></div>
     <span class="bi-go">Abrir ${ico('up')}</span></div>`;
-  const cats=REP_CATS.map(cat=>{
-    const meta=CAT_META[cat]; const reps=REPORTS.filter(r=>r.cat===cat && (!r.secret || window._repSecret));
-    if(!reps.length) return '';
-    return `<div class="rep-cat">
-      <div class="rep-cat-h"><span class="rep-cat-ic" style="color:${meta.cor}">${ico(meta.icon)}</span><h3>Relatórios de ${cat.toLowerCase()}</h3><span class="ln"></span><span class="t-mut" style="font-size:12.5px">${reps.length}</span></div>
-      <div class="rep-grid">
-        ${reps.map(r=>`<button class="rep-card" style="background:${r.cor}" onclick="openReport('${r.id}')">
-          <div class="rc-ic">${ico(r.icon)}</div>
-          <h4>${esc(r.titulo)}</h4><p>${esc(r.desc)}</p>
-          <span class="rc-go">Clique aqui ${ico('up')}</span></button>`).join('')}
-      </div></div>`;
-  }).join('');
-  document.getElementById('view').innerHTML=feat+cats;
+  const barra=`<div class="rep-bar no-print">
+    <div class="rep-busca">${ico('search')}<input id="rep-busca" type="text" autocomplete="off" placeholder="Buscar relatório (ex.: estoque, nota, cliente)" value="${esc(STATE.repBusca||'')}" oninput="repBuscar(this.value)" onkeydown="if(event.key==='Escape'){repBuscaLimpar()}">
+      <button class="rep-busca-x" id="rep-busca-x" onclick="repBuscaLimpar()" title="Limpar busca" style="${STATE.repBusca?'':'display:none'}">${ico('x')}</button></div>
+    <span class="t-mut" id="rep-cont" style="font-size:12.5px;white-space:nowrap"></span>
+    <div class="spacer" style="flex:1"></div>
+    <button class="btn btn-ghost btn-sm" id="rep-recolher-btn" onclick="repRecolherTudo()">Recolher tudo</button>
+    <div class="seg rep-vseg"><button data-v="lista" onclick="repVisao('lista')">Lista</button><button data-v="cards" onclick="repVisao('cards')">Cartões</button></div></div>`;
+  document.getElementById('view').innerHTML=feat+barra+'<div id="rep-lista"></div>';
+  repListaRender();
 }
 
 /* ---------- filtro Pessoa física / Pessoa jurídica nos relatórios ----------
