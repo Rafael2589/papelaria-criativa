@@ -48,7 +48,7 @@ const CONFIG_EMPRESA = {
      Aparece no topo do menu e no rodapé das Configurações. Troque a cada publicação.
      MANTENHA O FORMATO 'vDD/MM-X' — é ele que o sistema usa para comparar as máquinas
      da loja e avisar quando alguma ficou para trás.                                  */
-  versao: 'v10/11-D',
+  versao: 'v11/11-D',
 
   /* 4) NUVEM (Supabase)  ------------------------------------------------------------
      Cole aqui a Project URL e a chave PUBLISHABLE do projeto Supabase DESTA empresa
@@ -2658,7 +2658,7 @@ function uiRedesenhar(){
     // seleção (marcar títulos, produtos, notas...) — redesenhar aqui desmarcaria
     // tudo e ainda perderia a posição da rolagem. A tela se atualiza assim que ele
     // terminar. A seleção só é descartada quando ele TROCA DE TELA (ver go()).
-    if(selQtdAtiva()>0) return;
+    if(selQtdAtiva()>0){ try{ uiAgendarAtualizacao(); }catch(e){window.__es&&__es(e)} return; }   // tenta de novo quando terminar a seleção
     // NADA MUDOU nos dados desde a última vez que esta mesma tela foi desenhada? Então não
     // redesenha — era isso que fazia os gráficos dos relatórios "se mexerem" o tempo todo:
     // cada envio/conferência da nuvem redesenhava a tela e o gráfico animava de novo.
@@ -2711,6 +2711,40 @@ function uiAgendarAtualizacao(){
 /* Compatibilidade: onde antes aparecia um aviso para clicar, agora a tela se
    atualiza sozinha (ou logo que o operador ficar livre). */
 function uiAvisoAtualizar(){ uiAtualizarDados(); }
+/* VIGIA DO CAIXA E DO PAINEL: estas duas telas ficam abertas o dia todo e mostram totais do dia.
+   A cada 15 s confere se chegou venda/sessão/movimento novo (de outra máquina ou da nuvem) e, se a
+   tela não estiver ocupada (janela aberta, digitando), redesenha NO LUGAR. Mostra "atualizado às". */
+function uiHoraAgora(){ try{ return new Date().toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit',second:'2-digit'}); }catch(e){ return ''; } }
+function uiCarimboAtualizado(){ try{ const el=document.getElementById('caixa-atu'); if(el) el.textContent='\u00b7 atualizado às '+uiHoraAgora(); }catch(e){window.__es&&__es(e)} }
+function uiAssinaturaDia(){ try{
+  let sig=''; ['vendas','caixaSessoes','caixaMovs'].forEach(function(c){ const a=DB.all(c)||[]; let mx=''; for(let i=0;i<a.length;i++){ const m=a[i]._mod||a[i]._cri||''; if(m>mx) mx=m; } sig+=c+':'+a.length+':'+mx+'|'; });
+  return sig; }catch(e){ return ''; } }
+function uiVigiaTela(){
+  try{
+    const r=(STATE&&STATE.route)||'';
+    if(r!=='caixa' && r!=='dash') return;
+    if(typeof CURRENT_USER==='undefined' || !CURRENT_USER) return;
+    if(document.hidden) return;
+    const rev=(DB._rev||0);
+    if(window._uiVigiaRev!==rev){
+      window._uiVigiaRev=rev;
+      const sig=uiAssinaturaDia();
+      if(window._uiVigiaSig===undefined){ window._uiVigiaSig=sig; }   // primeira conferência: só registra
+      else if(sig!==window._uiVigiaSig){ window._uiVigiaSig=sig; window._uiVigiaPend=true; }
+    }
+    if(window._uiVigiaPend){
+      const mb=document.getElementById('modal-bg'); if(mb && mb.classList.contains('open')) return;
+      if(window.__inEditor) return;
+      const ac=document.activeElement; if(ac && (/^(INPUT|SELECT|TEXTAREA)$/.test(ac.tagName||'') || ac.isContentEditable)) return;
+      if(Date.now()-(window._uiLastAct||0) < 2500) return;
+      window._uiVigiaPend=false;
+      window._uiRevDesenhada=-1;   // força: há dado novo do dia
+      uiRedesenhar();
+    }
+    uiCarimboAtualizado();
+  }catch(e){window.__es&&__es(e)}
+}
+try{ setInterval(uiVigiaTela, 15000); }catch(e){window.__es&&__es(e)}
 function uiAvisoFechar(){ const el=document.getElementById('ui-atualizar'); if(el) el.remove(); }
 function uiAtualizarAgora(){ uiRedesenhar(); }
 function routeFromHash(){ try{ const m=(location.hash||'').match(/^#\/([a-zA-Z0-9_-]+)$/); if(m && (NAV_ITEMS[m[1]]||m[1]==='dash')) return m[1]; }catch(e){window.__es&&__es(e)} return null; }
@@ -19280,6 +19314,7 @@ function cpVisaoBotoesHTML(){ const v=FIN.pagVisao;
       <button class="${v==='contas'?'on':''}" onclick="cpVisao('contas')">${ico('list')} Contas</button>
       <button class="${v==='cheques'?'on':''}" onclick="cpVisao('cheques')">${ico('doc')} Cheques</button>
       <button class="${v==='todos'?'on':''}" onclick="cpVisao('todos')">${ico('layers')} Todos juntos</button></div>
+    <button class="btn btn-ghost btn-sm no-print" onclick="nuvemConferirManual()" title="Confere com a nuvem e traz o que este computador ainda não recebeu (últimos 30 dias)">${ico('sync')} Conferir com a nuvem</button>
     <button class="btn btn-amber btn-sm" onclick="pagForm()">${ico('plus')} Nova Conta</button>
     <button class="btn btn-amber btn-sm" onclick="chqForm()">${ico('plus')} Novo Cheque</button>`; }
 /* "Contas" (só as contas), "Cheques" (só os cheques) ou "Todos juntos" (uma lista só, por vencimento). */
@@ -25990,7 +26025,7 @@ function viewCaixa(){
   const _outro=!!(CAIXA.verSid && s.id===CAIXA.verSid && !caixaSessaoDoUsuario(s));
   document.getElementById('view').innerHTML=`
    ${(caixaEhAdmin() && CAIXA.tab!=='todos')?caixaTodosHTML(s.id):''}
-   <div class="toolbar" style="margin-bottom:14px"><div><span class="tag pos">${ico('bank')} Caixa Aberto</span> <span class="t-mut" style="font-size:12px">${esc(s.caixaNome||'Caixa')} · ${esc(s.operador||'')} · aberto ${esc(s.aberturaHora||(s.abertura||'').slice(11,16))}</span>${_outro?` <span class="tag warn">caixa de outro operador</span> <button class="btn btn-ghost btn-sm" onclick="CAIXA.verSid=null;viewCaixa()">Voltar ao meu</button>`:''}</div>
+   <div class="toolbar" style="margin-bottom:14px"><div><span class="tag pos">${ico('bank')} Caixa Aberto</span> <span class="t-mut" style="font-size:12px">${esc(s.caixaNome||'Caixa')} · ${esc(s.operador||'')} · aberto ${esc(s.aberturaHora||(s.abertura||'').slice(11,16))} <span id="caixa-atu" class="no-print">\u00b7 atualizado às ${uiHoraAgora()}</span></span>${_outro?` <span class="tag warn">caixa de outro operador</span> <button class="btn btn-ghost btn-sm" onclick="CAIXA.verSid=null;viewCaixa()">Voltar ao meu</button>`:''}</div>
      <div class="spacer"></div>
      <button class="btn btn-ghost btn-sm" onclick="caixaMovModal('sangria')">${ico('money')} Sangria</button>
      <button class="btn btn-ghost btn-sm" onclick="caixaMovModal('suprimento')">${ico('plus')} Suprimento</button>
@@ -28037,6 +28072,92 @@ async function nuvemV3PullMod(sb, tenant, cfg){
   return {ok:true, aplicados:r.aplicados, leve:true};
 }
 
+/* CONFERÊNCIA DE SEGURANÇA DO DIA (v11/11-A)
+   A leitura normal anda por marcadores (seq/mod). Se uma venda chega ao servidor fora de ordem
+   (confirmou depois de outras) ou vem de um aparelho com relógio atrasado, o marcador já passou
+   dela e ela pode NUNCA aparecer em outro computador — foi o que fez o caixa mostrar menos vendas
+   que o painel. Aqui, a cada poucos minutos, relê só os CABEÇALHOS do que mudou desde ontem
+   (leve) e baixa o que este computador ainda não tem. Não apaga nem sobrescreve nada: usa a
+   mesma aplicação segura da leitura normal (o mais novo vence). */
+const V3_REC_INTERVALO_MS=180000;
+async function nuvemV3ReconciliarHoje(motivo, dias){
+  if(window._v3RecEmCurso) return {ok:false, motivo:'em curso'};
+  try{
+    if(typeof CURRENT_USER==='undefined' || !CURRENT_USER) return {ok:false, motivo:'sem login'};
+    if(typeof _nuvemOffline!=='undefined' && _nuvemOffline) return {ok:false, motivo:'offline'};
+    if(nuvemPausado() || !nuvemV3On() || !nuvemV3Cfg().migrado) return {ok:false, motivo:'v3 inativo'};
+    if(typeof NUVEM_LOADING!=='undefined' && NUVEM_LOADING) return {ok:false, motivo:'carregando'};
+    const sb=nuvemClient(); if(!sb) return {ok:false, motivo:'sem cliente'};
+    window._v3RecEmCurso=true;
+    const tenant=nuvemTenant();
+    const nd=Math.max(1, +dias||1);
+    const ini=new Date(); ini.setHours(0,0,0,0); ini.setDate(ini.getDate()-nd);   // desde o início de ontem (ou de N dias atrás, na conferência manual)
+    const desdeIso=new Date(ini.getTime()-V3_FOLGA_MS).toISOString();
+    let cursor=desdeIso, pagina=0; const heads=[]; const maxPag=nd>2?60:6;
+    while(pagina<maxPag){ pagina++;
+      const res=await nuvemComTimeout(sb.from('acervo_reg').select('col,id,del,mod').eq('tenant',tenant).gt('mod',cursor).order('mod',{ascending:true}).limit(V3_LOTE_LEITURA), 25000);
+      if(res.error) return {ok:false, motivo:res.error.message||'falha na leitura'};
+      const L=res.data||[]; if(!L.length) break;
+      for(let j=0;j<L.length;j++) heads.push(L[j]);
+      cursor=L[L.length-1].mod; if(L.length<V3_LOTE_LEITURA) break; }
+    const r=await nuvemV3AplicarLeve(sb, tenant, heads);
+    if(r==='CHEIO'){
+      if(nd>2){ const f=await nuvemV3PullModFull(sb, tenant, nuvemV3Cfg(), desdeIso); window._v3RecUlt={ quando:new Date().toISOString(), conferidos:heads.length, recuperados:(f&&f.aplicados)||0, motivo:(motivo||'')+' (completa)' }; return {ok:!!(f&&f.ok!==false), aplicados:(f&&f.aplicados)||0, conferidos:heads.length}; }
+      return {ok:true, aplicados:0, motivo:'muita coisa — fica para a leitura normal'}; }
+    if(!r.ok) return {ok:false, motivo:r.motivo||'falha'};
+    window._v3RecUlt={ quando:new Date().toISOString(), conferidos:heads.length, recuperados:r.aplicados||0, motivo:motivo||'' };
+    if(r.aplicados){
+      nuvemV3PersistApplied(r.aplicados, r.cols, new Date().toISOString());
+      try{ logAcao('Conferência do dia', 'Trouxe '+r.aplicados+' registro(s) que não tinham chegado a este computador'); }catch(e){window.__es&&__es(e)}
+    }
+    return {ok:true, aplicados:r.aplicados||0, conferidos:heads.length};
+  }catch(e){ return {ok:false, motivo:(e&&e.message)||''+e}; }
+  finally{ window._v3RecEmCurso=false; }
+}
+/* Botão "Conferir com a nuvem": o operador pede a conferência na hora (últimos 30 dias). */
+async function nuvemConferirManual(dias){
+  if(window._v3RecEmCurso){ toast('Conferência já em andamento…'); return; }
+  try{ toast('Conferindo com a nuvem…'); }catch(e){}
+  // aparelho preso no modo antigo? tenta religar o modo por registro antes
+  try{ if(!(nuvemV3On() && nuvemV3Cfg().migrado)){ window._v3Checked=false; await nuvemV3Check(); } }catch(e){window.__es&&__es(e)}
+  const r=await nuvemV3ReconciliarHoje('manual', dias||30);
+  try{
+    if(!r || !r.ok){ toast('Não consegui conferir agora'+((r&&r.motivo)?(' ('+r.motivo+')'):'')+'. Verifique a internet e o login da nuvem.','err'); return; }
+    if(r.aplicados){ toast('Pronto: trouxe '+NUM(r.aplicados)+' registro(s) que faltavam neste computador','ok'); try{ buildNav(); }catch(e){} try{ uiRedesenhar(); }catch(e){window.__es&&__es(e)} }
+    else toast('Este computador já está em dia com a nuvem ✓','ok');
+  }catch(e){window.__es&&__es(e)}
+}
+/* CONFERÊNCIA AUTOMÁTICA (v11/11-D) — ninguém precisa clicar em nada:
+   · logo depois de entrar no sistema: confere os últimos 30 dias (no máximo 1 vez a cada 6 h por computador);
+   · a cada 1 h: confere os últimos 7 dias;
+   · a cada 3 min: confere desde ontem;
+   · ao voltar para a janela do sistema: confere desde ontem.
+   Tudo leve (só cabeçalhos) e só baixa o que falta; nada é apagado nem sobrescrito. */
+window._v3RecBoot=window._v3RecBoot||Date.now();
+function nuvemV3RecAutoTick(){
+  try{
+    if(document.hidden) return;
+    if(typeof CURRENT_USER==='undefined' || !CURRENT_USER) return;
+    if(window._v3RecEmCurso) return;
+    const agora=Date.now();
+    // 1) conferência profunda (30 dias) uma vez por abertura — repete a tentativa até conseguir
+    if(!window._v3RecProfunda && (agora-window._v3RecBoot)>40000){
+      let ultP=0; try{ ultP=+localStorage.getItem(LSK('rec_prof'))||0; }catch(e){}
+      if(agora-ultP < 6*3600e3){ window._v3RecProfunda=true; }   // já feita há pouco neste computador
+      else { nuvemV3ReconciliarHoje('abertura',30).then(function(r){ if(r && r.ok){ window._v3RecProfunda=true; window._v3RecUltHora=agora; try{ localStorage.setItem(LSK('rec_prof'), String(Date.now())); }catch(e){} } }).catch(function(){}); return; }
+    }
+    // 2) a cada 1 h: 7 dias
+    if(!window._v3RecUltHora || (agora-window._v3RecUltHora)>3600e3){
+      window._v3RecUltHora=agora; nuvemV3ReconciliarHoje('hora',7); return; }
+    // 3) a cada 3 min: desde ontem
+    if(!window._v3RecUltCurta || (agora-window._v3RecUltCurta)>=V3_REC_INTERVALO_MS-5000){
+      window._v3RecUltCurta=agora; nuvemV3ReconciliarHoje('periodico'); }
+  }catch(e){window.__es&&__es(e)}
+}
+try{
+  setInterval(nuvemV3RecAutoTick, 30000);
+  document.addEventListener('visibilitychange', function(){ try{ if(!document.hidden){ window._v3RecUltCurta=Date.now(); setTimeout(function(){ nuvemV3ReconciliarHoje('voltou'); }, 3000); } }catch(e){window.__es&&__es(e)} });
+}catch(e){window.__es&&__es(e)}
 /* Aplica as linhas lidas sobre a base local, sem atropelar edição mais nova. */
 function nuvemV3Aplicar(linhas){
   const d=DB._load(); d._meta=d._meta||{}; d._meta.del=d._meta.del||{};
@@ -29034,7 +29155,7 @@ async function nuvemV3Check(){ if(nuvemV3On() && nuvemV3Cfg().migrado) return tr
   try{ const { data, error }=await sb.from('acervo_reg').select('col').eq('tenant',nuvemTenant()).eq('col','__config').limit(1).maybeSingle();
     // Só considera a checagem "feita" quando o servidor respondeu de fato. Assim uma falha
     // de rede momentânea não deixa o aparelho preso no modo errado até recarregar a página.
-    if(!error) window._v3Checked=true;
+    if(!error && (data || NUVEM_AUTH_USER || !nuvemSecureOn())) window._v3Checked=true;   // v11/11-B: resposta VAZIA antes do login (RLS) não é "não há v3" — antes travava o aparelho no modo antigo até recarregar
     if(data){ nuvemCfgSalvar({ v3:true, v2:false, v3Migrado:true }); window._v2Checked=true; _v2Sig={}; _v2ConfHash=null;
       try{ toast('Sincronização por registro (v3) ativada neste aparelho','ok'); }catch(e){window.__es&&__es(e)} return true; } }catch(e){window.__es&&__es(e)}
   return false; }
@@ -30878,6 +30999,7 @@ function viewNuvem(){ const c=nuvemCfg(); const conf=!!(c.url&&c.key); const lib
        <div><div class="t-mut" style="font-size:11px">Modo</div><b>${c.v2?'por coleção (v2)':'base inteira (v1)'}</b>${(typeof nuvemV3On==='function'&&nuvemV3On())?' · por registro':''} · tempo real ${c.rt!==false?'ligado':'<span style="color:#dc2626">desligado</span>'}</div>
      </div>
    </div>
+   <div class="card card-pad" style="${W};margin-bottom:14px;display:flex;gap:12px;align-items:center;flex-wrap:wrap"><div style="flex:1;min-width:220px"><b style="font-size:13px">Conferir com a nuvem agora</b><div class="t-mut" style="font-size:12px">Se este computador mostra menos coisas que outro (contas, vendas...), clique: ele compara os últimos 30 dias com a nuvem e baixa só o que faltar. Nada é apagado.</div></div><button class="btn btn-amber btn-sm" onclick="nuvemConferirManual()">${ico('sync')} Conferir com a nuvem</button></div>
    ${dispCardHTML(W)}
    ${testeCardHTML(W)}
    ${nq?`<div class="card card-pad" style="${W};margin-bottom:14px;border-left:4px solid var(--neg);background:var(--amber-soft)">
