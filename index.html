@@ -48,7 +48,7 @@ const CONFIG_EMPRESA = {
      Aparece no topo do menu e no rodapé das Configurações. Troque a cada publicação.
      MANTENHA O FORMATO 'vDD/MM-X' — é ele que o sistema usa para comparar as máquinas
      da loja e avisar quando alguma ficou para trás.                                  */
-  versao: 'v07/11-A',
+  versao: 'v10/11-D',
 
   /* 4) NUVEM (Supabase)  ------------------------------------------------------------
      Cole aqui a Project URL e a chave PUBLISHABLE do projeto Supabase DESTA empresa
@@ -604,6 +604,7 @@ html.sync-lock #app, html.sync-lock .app, html.sync-lock #sidebar, html.sync-loc
 .rep-row-go svg{width:13px;height:13px}
 .rep-hl{background:#fde68a;color:inherit;border-radius:3px;padding:0 1px}
 @media(max-width:700px){.rep-row-go,.rep-row-tag{display:none}.rep-row-tx small{display:none}}
+.prod-promo-row{background:rgba(225,29,42,.06)}.prod-promo-row td:first-child{box-shadow:inset 4px 0 0 #e11d2a}.prod-promo-row:hover{background:rgba(225,29,42,.10)}
 .rep-cat{margin-bottom:30px}
 .rep-cat-h{display:flex;align-items:center;gap:10px;margin-bottom:14px}
 .rep-cat-h h3{font-size:16px;font-weight:700;letter-spacing:-.3px}
@@ -3232,6 +3233,67 @@ const META_REL={
   hoje:{ titulo:'Faturamento de hoje', tipo:'vendas', explica:'Valor cheio das vendas concluídas hoje (PDV e pedidos faturados), inclusive as a prazo.' },
   metadia:{ titulo:'Meta diária', tipo:'dias', explica:'A meta do mês dividida pelos dias trabalhados (segunda a sábado, menos os feriados cadastrados em Vendas › Configurações).' }
 };
+/* ===================================================================
+   CONFERÊNCIA DO FATURAMENTO DO DIA — painel x caixa
+   O "Faturamento do dia" do painel soma a LOJA TODA (toda venda concluída com a data do dia).
+   O "Total Vendas" da tela do Caixa soma só UMA sessão de caixa (um operador). Os dois só batem
+   se a loja tiver um único caixa e nenhuma venda fora dele. Esta conferência reparte as vendas do
+   painel entre os caixas e mostra, com o motivo, o que ficou fora de qualquer caixa.
+   Só lê: não altera nenhuma venda nem caixa.
+=================================================================== */
+function fatDiaConferencia(dia){
+  dia=dia||today();
+  const vendas=DB.all('vendas').filter(v=>vendaConcluida(v) && (v.data||'').slice(0,10)===dia);
+  const todasSess=DB.all('caixaSessoes'); const sesIds=new Set(todasSess.map(x=>x&&x.id));
+  const sess=todasSess.filter(x=>x && caixaDiaSessao(x)===dia).slice().sort((a,b)=>String(a.abertura||'').localeCompare(String(b.abertura||'')));
+  const dono={};                                             // id da venda -> sessão em que o caixa a conta
+  const linhas=sess.map(x=>{ const vs=caixaVendasSessao(x.id); vs.forEach(v=>{ if(!(v.id in dono)) dono[v.id]=x.id; });
+    const sv=caixaSomaVendas(vs); return {x, totalCaixa:sv.total, nCaixa:sv.count, n:0, fat:0, vendas:[]}; });
+  const porSess={}; linhas.forEach(l=>porSess[l.x.id]=l);
+  const MOTIVOS={
+    fiscal:'Retidas por pendência fiscal — a nota ainda não foi autorizada, e o caixa só conta a venda depois disso',
+    semsessao:'Sem caixa — não passaram por nenhuma sessão de caixa (ex.: pedido feito pelo vendedor e faturado depois)',
+    sumiu:'O caixa em que foram feitas não existe mais',
+    outrodia:'Feitas em um caixa de outro dia' };
+  const fora={}; const rotulo={}; let totalPainel=0;
+  vendas.forEach(v=>{ const f=vendaFaturamento(v); totalPainel+=Math.round(f*100);
+    const sid=dono[v.id];
+    if(sid && porSess[sid]){ const l=porSess[sid]; l.n++; l.fat+=Math.round(f*100); l.vendas.push(v); rotulo[v.id]=(l.x.caixaNome||'Caixa')+(l.x.operador?(' · '+l.x.operador):''); return; }
+    let k; if(v.fiscalPendente) k='fiscal'; else if(!v.sessaoId) k='semsessao'; else if(!sesIds.has(v.sessaoId)) k='sumiu'; else k='outrodia';
+    const g=fora[k]||(fora[k]={chave:k,txt:MOTIVOS[k],n:0,fat:0,vendas:[]}); g.n++; g.fat+=Math.round(f*100); g.vendas.push(v);
+    rotulo[v.id]=(k==='fiscal'?'Retida (fiscal)':(k==='semsessao'?'Sem caixa':(k==='sumiu'?'Caixa apagado':'Caixa de outro dia'))); });
+  linhas.forEach(l=>{ l.fat=l.fat/100; });
+  const foraArr=Object.values(fora).map(g=>({...g,fat:g.fat/100}));
+  return { dia, nPainel:vendas.length, totalPainel:totalPainel/100, linhas, fora:foraArr, rotulo };
+}
+function fatDiaConferenciaHTML(C){
+  const somaFora=C.fora.reduce((a,g)=>a+g.fat,0), nFora=C.fora.reduce((a,g)=>a+g.n,0);
+  const linhas=C.linhas.map(l=>{ const dif=Math.round((l.totalCaixa-l.fat)*100)/100;
+    return `<tr><td><b>${esc(l.x.caixaNome||'Caixa')}</b><div class="t-mut" style="font-size:11px">aberto ${esc(l.x.aberturaHora||horaLocalISO(l.x.abertura))}${l.x.status==='fechado'?(' · fechado '+esc(l.x.fechamentoHora||horaLocalISO(l.x.fechamento))):' · aberto agora'}</div></td>
+      <td>${esc(l.x.operador||'—')}</td><td class="t-right tnum">${NUM(l.n)}</td><td class="t-right tnum t-strong">${BRL(l.fat)}</td>
+      <td class="t-right tnum t-mut" title="${dif?('Diferença de '+BRL(Math.abs(dif))+' por crédito de troca / comissão de indicador usados como pagamento, ou vendas que o caixa conta e o painel não.'):'Igual ao painel'}">${BRL(l.totalCaixa)}${dif?' *':''}</td></tr>`; }).join('');
+  const foraRows=C.fora.map(g=>`<tr style="background:var(--amber-soft,#fff7e6)"><td colspan="2"><b>Fora de qualquer caixa</b><div class="t-mut" style="font-size:11.5px;max-width:520px">${esc(g.txt)}</div></td>
+      <td class="t-right tnum">${NUM(g.n)}</td><td class="t-right tnum t-strong">${BRL(g.fat)}</td><td class="t-right tnum t-mut">—</td></tr>`).join('');
+  return `<div class="card card-pad" style="margin-bottom:14px;border:1px solid var(--line)">
+    <b>De onde vem o faturamento do dia — ${fDate(C.dia)}</b>
+    <p class="t-mut" style="font-size:12.5px;margin:3px 0 10px">O painel soma a <b>loja toda</b>. A tela do Caixa mostra só <b>um</b> caixa. Abaixo, o painel repartido entre os caixas${nFora?', e o que ficou de fora deles':''}.</p>
+    <div class="tbl-wrap"><table><thead><tr><th>Caixa</th><th>Operador</th><th class="t-right">Vendas</th><th class="t-right">Faturamento (painel)</th><th class="t-right">Total na tela do Caixa</th></tr></thead><tbody>
+      ${linhas||'<tr><td colspan="5" class="t-mut" style="text-align:center;padding:12px">Nenhum caixa aberto hoje.</td></tr>'}${foraRows}
+    </tbody><tfoot><tr style="border-top:2px solid var(--line);font-weight:800"><td colspan="2">Faturamento do dia (painel)</td><td class="t-right tnum">${NUM(C.nPainel)}</td><td class="t-right tnum">${BRL(C.totalPainel)}</td><td></td></tr></tfoot></table></div>
+    ${C.linhas.some(l=>Math.abs(l.totalCaixa-l.fat)>0.004)?'<p class="t-mut" style="font-size:11.5px;margin-top:6px">* O caixa não conta o que foi pago com crédito de troca ou comissão de indicador (não entra dinheiro); o painel conta o valor cheio da venda.</p>':''}
+  </div>`;
+}
+function caixaLojaAviso(s,sv){ try{
+  const dia=caixaDiaSessao(s)||today(); if(dia!==today()) return '';
+  const C=fatDiaConferencia(dia); if(!C.nPainel) return '';
+  const difN=C.nPainel-sv.count; const difV=Math.round((C.totalPainel-sv.total)*100)/100;
+  if(difN===0 && Math.abs(difV)<0.005) return '';
+  return `<div class="card card-pad no-print" style="margin-bottom:14px;display:flex;align-items:center;gap:12px;flex-wrap:wrap;border:1px solid var(--line)">
+    <div style="color:var(--amber-d)">${ico('alert')}</div>
+    <div style="flex:1;min-width:240px;font-size:13px"><b>Esta tela mostra só este caixa</b> (${esc(s.caixaNome||'Caixa')}${s.operador?(' · '+esc(s.operador)):''}: ${NUM(sv.count)} vendas · ${BRL(sv.total)}).
+      <span class="t-mut">A loja inteira hoje, no painel: ${NUM(C.nPainel)} vendas · ${BRL(C.totalPainel)}. Diferença: ${NUM(difN)} venda(s) · ${BRL(difV)}.</span></div>
+    <button class="btn btn-ghost btn-sm" onclick="metaRelAbrir('hoje')">Ver de onde vem a diferença</button></div>`; }catch(e){ window.__es&&__es(e); return ''; } }
+
 function metaRelAbrir(chave){
   const cfg=META_REL[chave]||META_REL.faturamento;
   const ym=today().slice(0,7); const meta=metaMensalLoja();
@@ -3241,22 +3303,24 @@ function metaRelAbrir(chave){
   if(cfg.tipo==='vendas'){
     let vs=metaRelVendas(ym);
     if(chave==='hoje') vs=vs.filter(v=>(v.data||'').slice(0,10)===today());
+    let CF=null; if(chave==='hoje'){ try{ CF=fatDiaConferencia(today()); }catch(e){ window.__es&&__es(e); } }
     if(chave==='ticket') vs=vs.slice().sort((a,b)=>vendaFaturamento(b)-vendaFaturamento(a));
     const fat=Math.round(vs.reduce((s,v)=>s+vendaFaturamento(v),0)*100)/100;
     const luc=Math.round(vs.reduce((s,v)=>s+vendaLucro(v),0)*100)/100;
-    corpo = vs.length ? `<div class="tbl-wrap"><table><thead><tr><th>Pedido</th><th>Data</th><th>Cliente</th><th>Vendedor</th><th>Pagamento</th><th class="t-right">Valor</th><th class="t-right">Lucro</th><th class="t-right">Margem</th></tr></thead><tbody>
+    corpo = (CF?fatDiaConferenciaHTML(CF):'') + (vs.length ? `<div class="tbl-wrap"><table><thead><tr><th>Pedido</th><th>Data</th><th>Cliente</th><th>Vendedor</th><th>Pagamento</th>${CF?'<th>Caixa</th>':''}<th class="t-right">Valor</th><th class="t-right">Lucro</th><th class="t-right">Margem</th></tr></thead><tbody>
         ${vs.map(v=>{ const f=vendaFaturamento(v), l=vendaLucro(v); return `<tr>
           <td class="tnum t-strong">#${esc(''+(v.numero||'—'))}</td><td class="tnum t-mut">${fDate(v.data)}</td>
           <td>${esc(v.clienteNome||'Consumidor')}</td><td class="t-mut">${esc(v.vendedorNome||'—')}</td>
           <td class="t-mut" style="font-size:12px">${esc(v.formaPagamento||'—')}</td>
+          ${CF?`<td class="t-mut" style="font-size:12px">${esc(CF.rotulo[v.id]||'—')}</td>`:''}
           <td class="t-right tnum t-strong">${BRL(f)}</td>
           <td class="t-right tnum" style="color:var(--pos)">${BRL(l)}</td>
           <td class="t-right tnum">${PCT(f>0?l/f*100:0)}</td></tr>`; }).join('')}
         </tbody><tfoot><tr style="border-top:2px solid var(--line);font-weight:800">
-          <td colspan="5" class="t-right">Total — ${vs.length} venda(s)</td>
+          <td colspan="${CF?6:5}" class="t-right">Total — ${vs.length} venda(s)</td>
           <td class="t-right tnum">${BRL(fat)}</td><td class="t-right tnum" style="color:var(--pos)">${BRL(luc)}</td>
           <td class="t-right tnum">${PCT(fat>0?luc/fat*100:0)}</td></tr></tfoot></table></div>`
-      : `<div class="empty" style="padding:26px">${ico('cart')}<h4>Nenhuma venda em ${esc(mesTxt)}</h4></div>`;
+      : `<div class="empty" style="padding:26px">${ico('cart')}<h4>Nenhuma venda em ${esc(mesTxt)}</h4></div>`);
     rodape = `<b>${vs.length}</b> venda(s) · Faturamento <b>${BRL(fat)}</b> · Lucro <b style="color:var(--pos)">${BRL(luc)}</b> · Ticket médio <b>${BRL(vs.length?fat/vs.length:0)}</b>`;
   } else if(cfg.tipo==='receb'){
     const rs=metaRelRecebimentos(ym);
@@ -3360,7 +3424,7 @@ function metaMesCard(){
     </div>
     <div class="meta-grid">
       ${item('Faturamento do dia',BRL(fatHoje),fatHoje>0?'#15803d':'',
-        `${vHoje.length?`${vHoje.length} venda(s) hoje · ${fDate(hoje)}`:'nenhuma venda concluída hoje'}${metaDia>0?` · meta do dia ${BRL(metaDia)}`:''}`,
+        `${vHoje.length?`${vHoje.length} venda(s) hoje (loja toda) · ${fDate(hoje)}`:'nenhuma venda concluída hoje'}${metaDia>0?` · meta do dia ${BRL(metaDia)}`:''}`,
         'Valor cheio das vendas concluídas hoje (PDV e pedidos faturados), inclusive a prazo.','hoje')}
       ${item('Média por dia',BRL(mediaDia),'',
         dCorridos>0?`média dos ${dCorridos} dia(s) úteis já corridos`:'ainda sem dia útil fechado',
@@ -9043,6 +9107,7 @@ function viewProd(){
       <input class="pill-filter" id="prod-q" placeholder="Buscar produto..." oninput="renderProdTableD()" style="width:230px" value="${esc(PROD_Q)}">
       <span id="prod-filtros" style="display:contents">${prodFiltrosHTML()}</span>
       <select class="pill-filter" id="prod-flt" onchange="renderProdTable()"><option value="">Todos</option><option value="low">Só estoque crítico</option></select>
+      <span id="prod-promo-wrap" style="display:contents">${prodPromoBtnHTML()}</span>
       <button class="btn btn-ghost btn-sm" id="prod-prob-btn" onclick="prodProbToggle()" style="${PROD_PROB.aberto?'border-color:var(--amber);color:var(--amber-d)':''}">${ico('alert')} Problemas de cadastro${(function(){ const n=prodProblemasTotal(); return n?` <span class="badge" style="background:var(--neg);color:#fff;font-weight:800;font-size:10.5px;padding:0 6px;border-radius:9px;margin-left:2px">${NUM(n)}</span>`:''; })()}</button>
       <div class="spacer"></div>
       <button class="btn btn-ghost btn-sm" onclick="exportCSV('produtos')">${ico('dl')} CSV</button>
@@ -9230,17 +9295,17 @@ function prodTable(prods){ prods=prodOrdAplicar((prods||[]).slice());
   if(!prods.length) return `<div class="empty">${ico('box')}<h4>Nenhum produto</h4></div>`;
   const LIM=listLim('prod'); const totalN=prods.length; let nota=''; if(totalN>LIM){ prods=prods.slice(0,LIM); nota=listNota('prod', LIM, totalN, 'produtos'); }
   const _vis=prods.map(p=>p.id); const _todosVis=_vis.length>0 && _vis.every(id=>PROD_SEL.has(id));
-  return prodSelBarra()+nota+`<table><thead><tr><th style="width:28px"><input type="checkbox" ${_todosVis?'checked':''} onchange="prodSelVisiveis(this.checked)" title="Marcar/desmarcar os produtos desta lista"></th>${prodOrdTh('nome','Produto')}${prodOrdTh('sku','SKU')}${prodOrdTh('barras','Cód. barras')}${prodOrdTh('categoria','Categoria')}${prodOrdTh('custo','Custo','t-right')}${prodOrdTh('preco','Venda','t-right')}${prodOrdTh('margem','Margem','t-right')}${prodOrdTh('embalagem','Embalagem','t-right')}${prodOrdTh('estoque','Estoque','t-right')}<th></th></tr></thead><tbody>
-  ${prods.map(p=>{ const margem=(p.preco-p.custo)/p.preco*100; const crit=!p.servico && p.estoque<=p.estoqueMinimo;
-    return `<tr${PROD_SEL.has(p.id)?' style="background:var(--amber-soft,#fff7e6)"':''}>
+  return prodSelBarra()+nota+prodPromoResumoHTML(prods)+`<table><thead><tr><th style="width:28px"><input type="checkbox" ${_todosVis?'checked':''} onchange="prodSelVisiveis(this.checked)" title="Marcar/desmarcar os produtos desta lista"></th>${prodOrdTh('nome','Produto')}${prodOrdTh('sku','SKU')}${prodOrdTh('barras','Cód. barras')}${prodOrdTh('categoria','Categoria')}${prodOrdTh('custo','Custo','t-right')}${prodOrdTh('preco','Venda','t-right')}${prodOrdTh('margem','Margem','t-right')}${prodOrdTh('embalagem','Embalagem','t-right')}${prodOrdTh('estoque','Estoque','t-right')}<th></th></tr></thead><tbody>
+  ${prods.map(p=>{ const _pi=prodPromoInfo(p); const _pv=_pi.ativa?(+p.precoPromo):(+p.preco); const margem=(_pv-p.custo)/_pv*100; const crit=!p.servico && p.estoque<=p.estoqueMinimo;
+    return `<tr class="${_pi.ativa?'prod-promo-row':''}"${PROD_SEL.has(p.id)?' style="background:var(--amber-soft,#fff7e6)"':''}>
     <td><input type="checkbox" class="prod-sel-chk" ${PROD_SEL.has(p.id)?'checked':''} onchange="prodSelToggle('${p.id}',this.checked)"></td>
     <td><div class="prod-cell"><div class="prod-thumb" style="background:${p.cor}">${esc(p.nome[0])}</div>
-      <div><div class="t-strong">${esc(p.nome)}${p.usoConsumo?' <span class="tag" style="font-size:9.5px;background:var(--surface-2);color:var(--muted)">USO/CONSUMO</span>':''}</div><div class="t-mut" style="font-size:12px">${esc(p.marca||'')}</div></div></div></td>
+      <div><div class="t-strong">${esc(p.nome)}${prodPromoTag(p)}${p.usoConsumo?' <span class="tag" style="font-size:9.5px;background:var(--surface-2);color:var(--muted)">USO/CONSUMO</span>':''}</div><div class="t-mut" style="font-size:12px">${esc(p.marca||'')}</div></div></div></td>
     <td class="tnum t-mut" style="white-space:nowrap">${esc(p.sku||'—')}</td>
     <td class="tnum t-mut" style="white-space:nowrap;font-size:12px">${esc(p.codigoBarras||'—')}</td>
     <td class="t-mut">${esc(p.categoria)}${p.grupo&&p.grupo!==p.categoria?`<div style="font-size:11px">${esc(p.grupo)}${p.subgrupo?' › '+esc(p.subgrupo):''}</div>`:''}</td>
     <td class="t-right tnum t-mut">${BRL(p.custo)}</td>
-    <td class="t-right tnum t-strong">${BRL(p.preco)}</td>
+    ${prodPromoVendaCell(p)}
     <td class="t-right"><span class="tag ${margem>=35?'pos':margem>=20?'warn':'neg'}">${PCT(margem)}</span></td>
     <td class="t-right tnum t-mut">${(p.embalagemVenda&&+p.qtdPorEmbalagem>0)?(fmtQ(p.qtdPorEmbalagem)+' '+esc(p.unidade||'UN')+(p.embalagemTipo?' /'+esc(p.embalagemTipo):'')):'—'}</td>
     <td class="t-right">${p.servico?'<span class="tag" style="background:var(--blue-soft);color:var(--blue)">SERVIÇO</span>':`<b class="tnum" style="color:${crit?(p.estoque===0?'var(--neg)':'var(--amber-d)'):'var(--ink)'}">${fmtQ(p.estoque)}</b>`} <span class="t-mut" style="font-size:11px">${p.unidade}</span>${crit?`<div style="font-size:10.5px;color:var(--amber-d)">mín ${fmtQ(p.estoqueMinimo)}</div>`:''}</td>
@@ -9533,6 +9598,40 @@ function prodFiltroCat(v){ PROD_F.cat=v; PROD_F.grupo=''; PROD_F.sub=''; prodFil
 function prodFiltroGrupo(v){ PROD_F.grupo=v; PROD_F.sub=''; prodFiltrosRedesenha(); }
 function prodFiltroSub(v){ PROD_F.sub=v; renderProdTable(); }
 function prodFiltroMarca(v){ PROD_F.marca=v; renderProdTable(); }
+/* ===== PRODUTOS EM PROMOÇÃO =====
+   Produto "com preço promocional" = tem Preço promocional cadastrado. Na lista ele ganha destaque
+   (faixa vermelha à esquerda, etiqueta PROMO e preço promocional no lugar do preço normal) e o botão
+   "Em promoção" filtra só esses. A promoção vale pelo período do cadastro (início/fim):
+   vigente (vale hoje), agendada (ainda não começou), encerrada (já passou) ou inválida (preço
+   promocional maior ou igual ao normal — o PDV ignora). */
+let PROD_PROMO=false;
+function prodPromoInfo(p){ if(!p||!(+p.precoPromo>0)) return {tem:false};
+  const h=today(); const pr=+p.preco||0, pm=+p.precoPromo||0;
+  let estado='vigente';
+  if(!(pm<pr)) estado='invalida'; else if(p.promoInicio && h<p.promoInicio) estado='agendada'; else if(p.promoFim && h>p.promoFim) estado='encerrada';
+  return {tem:true, estado, ativa:estado==='vigente', pct:(pr>0&&pm<pr)?Math.round((1-pm/pr)*100):0, ini:p.promoInicio||'', fim:p.promoFim||''}; }
+function prodTemPromo(p){ return !!(p && +p.precoPromo>0); }
+function prodPromoToggle(){ PROD_PROMO=!PROD_PROMO; viewProd(); }
+function prodPromoBtnHTML(){ let n=0, v=0; DB.all('produtos').forEach(p=>{ if(prodTemPromo(p)){ n++; if(prodPromoInfo(p).ativa) v++; } });
+  return `<button class="btn btn-sm ${PROD_PROMO?'btn-amber':'btn-ghost'}" id="prod-promo-btn" onclick="prodPromoToggle()" style="${PROD_PROMO?'':'border:1px solid #e11d2a;color:#e11d2a'}" title="${PROD_PROMO?'Clique para voltar a mostrar todos os produtos':'Mostra só os produtos que têm preço promocional cadastrado'}">${ico('fire')} Em promoção <b>(${NUM(n)})</b>${v&&v!==n?` <span style="font-size:11px;font-weight:500">· ${NUM(v)} vigente(s)</span>`:''}</button>`; }
+function prodPromoResumoHTML(prods){ if(!PROD_PROMO) return '';
+  const c={vigente:0,agendada:0,encerrada:0,invalida:0}; prods.forEach(p=>{ const i=prodPromoInfo(p); if(i.tem) c[i.estado]++; });
+  const parte=(n,t,cor)=>n?`<span class="tag" style="background:${cor}1a;color:${cor};font-weight:600">${NUM(n)} ${t}</span>`:'';
+  return `<div class="no-print" style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;padding:8px 14px;border-bottom:1px solid var(--line);background:rgba(225,29,42,.05)">
+    <b style="font-size:13px;color:#e11d2a">${ico('fire')} Produtos com preço promocional</b>
+    ${parte(c.vigente,'vigente(s) hoje','#15803d')}${parte(c.agendada,'agendada(s)','#2563eb')}${parte(c.encerrada,'encerrada(s)','#6b7280')}${parte(c.invalida,'com preço promocional inválido','#b45309')}
+    <span class="t-mut" style="font-size:12px">Encerrada = a data final já passou; o PDV cobra o preço normal. Inválida = promocional maior ou igual ao preço normal.</span>
+    <div style="flex:1"></div><button class="btn btn-ghost btn-sm" onclick="prodPromoToggle()">${ico('x')} Mostrar todos</button></div>`; }
+function prodPromoVendaCell(p){ const i=prodPromoInfo(p);
+  if(!i.tem) return `<td class="t-right tnum t-strong">${BRL(p.preco)}</td>`;
+  if(i.ativa) return `<td class="t-right tnum"><div class="t-strong" style="color:#e11d2a">${BRL(p.precoPromo)}</div><div class="t-mut" style="font-size:11px;text-decoration:line-through">${BRL(p.preco)}</div><div style="font-size:10.5px;color:#e11d2a;font-weight:700">−${i.pct}%${i.fim?(' · até '+fDate(i.fim)):''}</div></td>`;
+  const msg=i.estado==='agendada'?('promoção agendada'+(i.ini?(' p/ '+fDate(i.ini)):'')):(i.estado==='encerrada'?('promoção encerrada'+(i.fim?(' em '+fDate(i.fim)):'')):'promocional ≥ preço normal');
+  return `<td class="t-right tnum"><div class="t-strong">${BRL(p.preco)}</div><div class="t-mut" style="font-size:10.5px" title="Preço promocional cadastrado: ${esc(BRL(p.precoPromo))}">${esc(msg)} (${BRL(p.precoPromo)})</div></td>`; }
+function prodPromoTag(p){ const i=prodPromoInfo(p); if(!i.tem) return '';
+  if(i.ativa) return ' <span class="tag" style="font-size:9.5px;background:#e11d2a;color:#fff;font-weight:700">PROMO</span>';
+  if(i.estado==='agendada') return ' <span class="tag" style="font-size:9.5px;background:#2563eb1a;color:#2563eb">PROMO AGENDADA</span>';
+  if(i.estado==='encerrada') return ' <span class="tag" style="font-size:9.5px;background:var(--surface-2);color:var(--muted)">PROMO ENCERRADA</span>';
+  return ' <span class="tag" style="font-size:9.5px;background:#b453091a;color:#b45309">PROMO INVÁLIDA</span>'; }
 function prodFiltrados(q,flt){ q=(q||'').toLowerCase(); const toks=tokensDe(q);
   const prods=prodProbAplicar(DB.all('produtos')).filter(p=>
        (!PROD_F.cat   || p.categoria===PROD_F.cat)
@@ -9540,12 +9639,14 @@ function prodFiltrados(q,flt){ q=(q||'').toLowerCase(); const toks=tokensDe(q);
     && (!PROD_F.sub   || p.subgrupo===PROD_F.sub)
     && (!PROD_F.marca || p.marca===PROD_F.marca)
     && (flt!=='low' || p.estoque<=p.estoqueMinimo)
+    && (!PROD_PROMO || prodTemPromo(p))
     && (!toks.length || toks.every(t=>buscaKey(p,prodBlob).includes(t))));
   return prodSearchSort(prods, q); }
 function renderProdTable(){
   PROD_Q=(document.getElementById('prod-q').value||'');  // guarda para sobreviver ao rebuild da tela
   const flt=(document.getElementById('prod-flt')||{}).value||'';
   document.getElementById('prod-table').innerHTML=prodTable(prodFiltrados(PROD_Q, flt));
+  try{ const w=document.getElementById('prod-promo-wrap'); if(w) w.innerHTML=prodPromoBtnHTML(); }catch(e){window.__es&&__es(e)}   // contagem do botão Em promoção acompanha as edições
 }
 let PF={};
 let PROD_AFTER_SAVE=null;
@@ -18711,6 +18812,30 @@ function finCorrecaoConfirmar(){
   toast('Correção de '+BRL(valor)+' registrada — '+(integral?'título quitado':'baixa parcial')+'. NÃO entrou no financeiro nem no caixa.','ok');
   const r=CORMOD.render; if(r && typeof window[r]==='function'){ try{ window[r](); }catch(e){window.__es&&__es(e)} }
 }
+/* ===== BANCO DO PAGAMENTO / RECEBIMENTO =====
+   Ao dar baixa numa conta (a pagar ou a receber) dá para indicar por qual banco o dinheiro saiu/entrou.
+   A lista é a de Financeiro › Contas Bancárias — as mesmas contas do cadastro. O que fica gravado no
+   título: bancoId (a conta cadastrada) e bancoNome (o nome naquele dia, para o histórico não se perder
+   se a conta for renomeada ou excluída). É só um registro: não mexe no saldo da conta nem na conciliação. */
+function finBancosAtivos(incluirId){ return DB.all('contasBancarias').filter(c=>c && (c.situacao!=='inativo' || c.id===incluirId))
+  .slice().sort((a,b)=>(a.nome||a.banco||'').localeCompare(b.nome||b.banco||'','pt-BR')); }
+function finBancoRotulo(c){ const nome=c.nome||c.banco||'Conta'; const det=[c.agencia?('ag. '+c.agencia):'', c.conta?('c/c '+c.conta):''].filter(Boolean).join(' · ');
+  return nome+(c.tipo==='Caixa'?' (caixa)':'')+(det?(' — '+det):''); }
+function finBancoOptions(sel){ const L=finBancosAtivos(sel);
+  return '<option value="">— Não informar —</option>'+L.map(c=>`<option value="${esc(c.id)}" ${c.id===sel?'selected':''}>${esc(finBancoRotulo(c))}</option>`).join('')
+    + ((sel && !L.some(c=>c.id===sel))?`<option value="${esc(sel)}" selected>(conta não existe mais)</option>`:''); }
+/* campo pronto para as janelas: id do <select> + texto */
+function finBancoField(idSel, selecionado, rec, wrapId, oculto){ const n=DB.all('contasBancarias').length;
+  return `<div class="field" ${wrapId?`id="${wrapId}"`:''} style="${oculto?'display:none':''}"><label>Banco ${rec?'onde foi recebido':'onde foi pago'} <span class="t-mut" style="font-weight:400;font-size:11px">— opcional</span></label>
+    ${n?`<select id="${idSel}" class="cc-sel" style="width:100%">${finBancoOptions(selecionado||'')}</select>`
+        :`<div class="t-mut" style="font-size:12px">Nenhuma conta bancária cadastrada. Cadastre em Financeiro › Contas Bancárias para poder escolher aqui.</div><input type="hidden" id="${idSel}" value="">`}
+  </div>`; }
+/* lê o select e devolve {bancoId, bancoNome} (ou nulos) */
+function finBancoLer(idSel){ const el=document.getElementById(idSel); const id=el?(el.value||''):''; if(!id) return {bancoId:null, bancoNome:null};
+  const c=DB.get('contasBancarias',id); return {bancoId:id, bancoNome:c?(c.nome||c.banco||''):((el.selectedOptions&&el.selectedOptions[0]&&el.selectedOptions[0].textContent)||'')}; }
+/* nome do banco de um título, para mostrar nas listas ('' se não informado) */
+function finBancoNome(f){ if(!f) return ''; if(f.bancoId){ const c=DB.get('contasBancarias',f.bancoId); if(c) return c.nome||c.banco||f.bancoNome||''; } return f.bancoNome||''; }
+function finBancoTag(f){ const n=finBancoNome(f); return n?`<div class="t-mut" style="font-size:10.5px;margin-top:2px;white-space:nowrap" title="Banco ${f.tipo==='receber'?'em que foi recebido':'em que foi pago'}">${ico('bank')} ${esc(n)}</div>`:''; }
 let PAGMOD={id:null,render:null,orig:0,tipo:'pagar',parcial:false};
 /* TOTAL: quita o título (diferença vira juros/desconto).
    PARCIAL: registra só o que está sendo pago agora; o resto continua em aberto. */
@@ -18747,6 +18872,7 @@ function finPagarModal(id,render){ const f=DB.get('financeiro',id); if(!f)return
      </div>
      <div class="field" id="pg-ajuste-wrap"><label>Juros ${rec?'recebidos':'pagos'}</label><input id="pg-ajuste" value="—" disabled style="font-weight:700"><div id="pg-ajuste-info" class="t-mut" style="font-size:11px;margin-top:4px">Calculado sozinho: valor ${rec?'recebido':'pago'} − valor original. Sem juros, fica "—".</div></div>
      <div id="pg-resta" style="font-size:12px;margin:-6px 0 2px"></div>
+     ${finBancoField('pg-banco', f.bancoId||'', rec)}
      ${rec?`<div class="field"><label>Forma do recebimento *</label><select id="pg-forma" class="cc-sel" style="width:100%"><option value="">Selecione a forma...</option>${FIC_FORMAS.filter(x=>!ficEhBoleto(x)).concat(['Outro']).map(x=>`<option>${x}</option>`).join('')}</select>
        <div class="t-mut" style="font-size:11px;margin-top:4px">${caixaSessaoAberta()?'O recebimento entra no caixa aberto e no histórico de recebimentos do cliente.':'<b style="color:var(--neg)">Caixa fechado</b> — o recebimento fica no histórico do cliente, mas não entra em nenhum caixa.'}</div></div>`:''}
    </div>
@@ -18790,6 +18916,7 @@ function finPagarConfirmar(){ const f=DB.get('financeiro',PAGMOD.id); if(!f)retu
   if(!(pago>0)){ toast('Informe o valor '+(rec?'recebido':'pago'),'err'); return; }
   const formaRec=rec?(((document.getElementById('pg-forma')||{}).value)||''):'';
   if(rec && !formaRec){ toast('Escolha a forma do recebimento (Dinheiro, PIX, cartão...)','err'); try{ document.getElementById('pg-forma').focus(); }catch(e){window.__es&&__es(e)} return; }
+  const _bk=finBancoLer('pg-banco');
   const dataPg=((document.getElementById('pg-data')||{}).value)||'';
   if(!/^\d{4}-\d{2}-\d{2}$/.test(dataPg)){ toast('Informe a data do '+(rec?'recebimento':'pagamento'),'err'); try{ document.getElementById('pg-data').focus(); }catch(e){window.__es&&__es(e)} return; }
   if(dataPg>today()){ toast('A data do '+(rec?'recebimento':'pagamento')+' não pode ser no futuro','err'); try{ document.getElementById('pg-data').focus(); }catch(e){window.__es&&__es(e)} return; }
@@ -18798,14 +18925,14 @@ function finPagarConfirmar(){ const f=DB.get('financeiro',PAGMOD.id); if(!f)retu
     const saldo=finSaldoAberto(f);
     if(pago>saldo+0.005){ toast('O valor passa do saldo em aberto ('+BRL(saldo)+')','err'); return; }
     const acum=Math.round((((+f.pagoParcial||0))+pago)*100)/100;
-    const baixas=(f.baixas||[]).concat([{data:dataPg, valor:pago, origem:(rec?'Recebimento parcial':'Pagamento parcial')}]);
+    const baixas=(f.baixas||[]).concat([Object.assign({data:dataPg, valor:pago, origem:(rec?'Recebimento parcial':'Pagamento parcial')}, _bk.bancoId?{bancoId:_bk.bancoId,bancoNome:_bk.bancoNome}:{})]);
     const quitou = acum >= ((+f.valor||0)-0.005);
     if(quitou){
       DB.update('financeiro',f.id,{pagoParcial:acum, baixas, status:rec?'recebido':'pago', valorPago:acum,
-        pagoData:dataPg, recebidoData:rec?dataPg:undefined});
+        pagoData:dataPg, recebidoData:rec?dataPg:undefined, bancoId:_bk.bancoId, bancoNome:_bk.bancoNome});
       toast('Última parcela — título quitado ('+BRL(acum)+')','ok');
     } else {
-      DB.update('financeiro',f.id,{pagoParcial:acum, baixas, status:'aberto'});
+      DB.update('financeiro',f.id,{pagoParcial:acum, baixas, status:'aberto'});   // baixa parcial: o banco fica registrado na própria baixa
       toast((rec?'Recebimento':'Pagamento')+' parcial de '+BRL(pago)+' registrado — falta '+BRL(Math.round((((+f.valor||0))-acum)*100)/100),'ok');
     }
     try{ logAcao((rec?'Recebimento':'Pagamento')+' parcial', (f.descricao||'')+' · '+BRL(pago)+' · saldo '+BRL(Math.max(0,Math.round((((+f.valor||0))-acum)*100)/100))); }catch(e){window.__es&&__es(e)}
@@ -18813,7 +18940,7 @@ function finPagarConfirmar(){ const f=DB.get('financeiro',PAGMOD.id); if(!f)retu
     const _r=PAGMOD.render; closeModal(); buildNav(); if(window[_r])window[_r](); return;
   }
   const orig=PAGMOD.orig; const ajuste=Math.round((pago-orig)*100)/100;
-  DB.update('financeiro',PAGMOD.id,{status:rec?'recebido':'pago',valorOriginal:orig,valor:pago,valorPago:pago,ajuste,ajusteTipo:ajuste>0?'juros':ajuste<0?'desconto':'',pagoData:dataPg,recebidoData:rec?dataPg:undefined,juros:ajuste>0?ajuste:0,desconto:ajuste<0?-ajuste:0});
+  DB.update('financeiro',PAGMOD.id,{status:rec?'recebido':'pago',valorOriginal:orig,valor:pago,valorPago:pago,ajuste,ajusteTipo:ajuste>0?'juros':ajuste<0?'desconto':'',pagoData:dataPg,recebidoData:rec?dataPg:undefined,juros:ajuste>0?ajuste:0,desconto:ajuste<0?-ajuste:0,bancoId:_bk.bancoId,bancoNome:_bk.bancoNome});
   if(!rec && f.vendaId){ const ainda=DB.all('financeiro').some(x=>x.vendaId===f.vendaId&&x.status==='aberto'&&x.id!==f.id); }
   if(rec) finPagarRegistrarCaixa(DB.get('financeiro',f.id), pago, formaRec, false, dataPg);
   if(rec && f.vendaId){ const ainda=DB.all('financeiro').some(x=>x.vendaId===f.vendaId&&['aberto','pendente'].includes(x.status)&&x.id!==f.id); if(!ainda){ try{ DB.update('vendas',f.vendaId,{status:'pago'}); }catch(e){window.__es&&__es(e)} } }
@@ -18998,7 +19125,7 @@ function crRender(){
       <td class="t-right">${finAjusteCell(f)}</td>
       <td><div class="tnum ${venc?'':'t-mut'}" style="${venc?'color:var(--neg);font-weight:600':''}">${fDate(f.vencimento)}${venc?' ⚠':''}</div>
         ${finOrigemHTML(f,OX,'Compra')}
-        <div style="margin-top:3px">${venc?'<span class="tag neg">Vencido</span>':`<span class="tag ${f.status==='recebido'?'pos':'warn'}">${f.status==='recebido'?'Recebido':'Pendente'}</span>`}${(f.status==='recebido'&&(f.recebidoData||f.pagoData))?`<div class="t-mut tnum" style="font-size:10.5px;margin-top:2px" title="Data do recebimento">em ${fDate(f.recebidoData||f.pagoData)}</div>`:''}${finConciliadoTag(f)}</div>
+        <div style="margin-top:3px">${venc?'<span class="tag neg">Vencido</span>':`<span class="tag ${f.status==='recebido'?'pos':'warn'}">${f.status==='recebido'?'Recebido':'Pendente'}</span>`}${(f.status==='recebido'&&(f.recebidoData||f.pagoData))?`<div class="t-mut tnum" style="font-size:10.5px;margin-top:2px" title="Data do recebimento">em ${fDate(f.recebidoData||f.pagoData)}</div>`:''}${f.status==='recebido'?finBancoTag(f):''}${finConciliadoTag(f)}</div>
         ${finParcialInfo(f).temParcial?`<div style="margin-top:3px">${finParcialTag(f)}</div>`:''}</td>
       <td class="t-right" style="width:196px"><div style="display:flex;flex-wrap:wrap;gap:2px;justify-content:flex-end;align-items:center">
         ${(['aberto','pendente'].includes(f.status)&&finSaldoAberto(f)>0.004)?`<button class="btn btn-amber btn-sm" style="padding:4px 9px" title="Receber — escolhe a forma de pagamento (Dinheiro, PIX, cartão...) e lança no caixa. Aceita pagamento parcial." onclick="fichaReceber('${f.id}')">${ico('money')} Receber</button>
@@ -19054,6 +19181,7 @@ function crForm(id){ const f=id?DB.get('financeiro',id):{}; const cli=DB.all('cl
     <div class="field"><label>Forma de pagamento</label><input id="cr-forma" list="finforma" value="${esc(f.forma||'')}" placeholder="Boleto, PIX..."></div>
     <div class="field"><label>Status</label><select id="cr-status" onchange="finPgDataToggle('cr')"><option value="aberto" ${f.status!=='recebido'?'selected':''}>Pendente</option><option value="recebido" ${f.status==='recebido'?'selected':''}>Recebido</option></select>
       <div id="cr-pgdata-wrap" data-baixado="${(id&&f.status==='recebido')?'1':'0'}" style="margin-top:8px;${(id&&f.status==='recebido')?'':'display:none'}"><label>Data do recebimento</label><input id="cr-pgdata" type="date" max="9999-12-31" value="${f.recebidoData||f.pagoData||''}" title="Altere se o recebimento foi feito em outra data"></div>
+      <div id="cr-banco-wrap" style="margin-top:8px;${(id&&f.status==='recebido')?'':'display:none'}">${finBancoField('cr-banco', f.bancoId||'', true)}</div>
       <p class="t-mut" style="font-size:11.5px;margin-top:5px">As alterações são salvas normalmente. A <b>baixa só acontece ao marcar como Recebido</b> — aí abre a tela de recebimento (valor, juros/desconto).</p></div>
     <datalist id="fincat">${catFinNomes().map(n=>`<option>${esc(n)}</option>`).join('')}</datalist>
     <datalist id="recconta">${recContasLista().map(n=>`<option>${esc(n)}</option>`).join('')}</datalist>
@@ -19075,7 +19203,8 @@ function crSave(id){ const g=x=>document.getElementById(x).value; const desc=g('
   if(id && atual){
     const eraRecebido = atual.status==='recebido';
     data.status = atual.status;                  // editar NUNCA dá baixa direto
-    if(eraRecebido && stEscolhido==='recebido'){ const pd=(document.getElementById('cr-pgdata')||{}).value||''; const ant=atual.recebidoData||atual.pagoData||''; if(/^\d{4}-\d{2}-\d{2}$/.test(pd) && pd!==ant){ data.recebidoData=pd; data.pagoData=pd; try{ logAcao('Data de recebimento alterada', (atual.descricao||'')+' · '+fDate(ant)+' → '+fDate(pd)); }catch(e){window.__es&&__es(e)} } }
+    if(eraRecebido && stEscolhido==='recebido'){ const pd=(document.getElementById('cr-pgdata')||{}).value||''; const ant=atual.recebidoData||atual.pagoData||''; if(/^\d{4}-\d{2}-\d{2}$/.test(pd) && pd!==ant){ data.recebidoData=pd; data.pagoData=pd; try{ logAcao('Data de recebimento alterada', (atual.descricao||'')+' · '+fDate(ant)+' → '+fDate(pd)); }catch(e){window.__es&&__es(e)} }
+      if(document.getElementById('cr-banco')){ const _b=finBancoLer('cr-banco'); if((_b.bancoId||null)!==(atual.bancoId||null)){ data.bancoId=_b.bancoId; data.bancoNome=_b.bancoNome; try{ logAcao('Banco do recebimento alterado', (atual.descricao||'')+' · '+(finBancoNome(atual)||'—')+' → '+(_b.bancoNome||'—')); }catch(e){window.__es&&__es(e)} } } }
     DB.update('financeiro',id,data);
     if(stEscolhido==='recebido' && !eraRecebido){ // marcou como recebido -> segue a sequência normal de baixa
       toast('Alterações salvas — confirme o recebimento','ok');
@@ -19283,7 +19412,7 @@ function cpRender(){
       <td class="t-right tnum t-strong" style="color:var(--neg)">${BRL(f.valor)}</td>
       <td class="t-right">${finAjusteCell(f)}</td>
       <td class="tnum ${venc?'':'t-mut'}" style="${venc?'color:var(--neg);font-weight:600':''}">${fDate(f.vencimento)}${venc?' ⚠':''}${finOrigemHTML(f,OX,'Compra')}</td>
-      <td class="t-center">${venc?'<span class="tag neg">Vencido</span>':`<span class="tag ${f.status==='pago'?'pos':'warn'}">${f.status==='pago'?'Pago':'Pendente'}</span>`}${(f.status==='pago'&&f.pagoData)?`<div class="t-mut tnum" style="font-size:10.5px;margin-top:3px" title="Data do pagamento">pago em ${fDate(f.pagoData)}</div>`:''}${finConciliadoTag(f)?`<div>${finConciliadoTag(f)}</div>`:''}</td>
+      <td class="t-center">${venc?'<span class="tag neg">Vencido</span>':`<span class="tag ${f.status==='pago'?'pos':'warn'}">${f.status==='pago'?'Pago':'Pendente'}</span>`}${(f.status==='pago'&&f.pagoData)?`<div class="t-mut tnum" style="font-size:10.5px;margin-top:3px" title="Data do pagamento">pago em ${fDate(f.pagoData)}</div>`:''}${f.status==='pago'?finBancoTag(f):''}${finConciliadoTag(f)?`<div>${finConciliadoTag(f)}</div>`:''}</td>
       <td class="t-right cp-acoes" style="white-space:nowrap">
         ${f.status!=='pago'?`<button class="btn-icon btn-ghost" title="Marcar como pago" onclick="finQuitar('${f.id}','cpRender')">${ico('check')}</button>`:''}
         <button class="btn-icon btn-ghost" title="Editar" onclick="pagForm('${f.id}')">${ico('edit')}</button>
@@ -19317,6 +19446,7 @@ function pagForm(id){ const f=id?DB.get('financeiro',id):{}; const forn=DB.all('
       <div class="field"><label>Parcela (opcional)</label><input id="cp-parc" value="${esc(f.parcela||'')}" placeholder="11/11"></div></div>
     <div class="field-row"><div class="field"><label>Status</label><select id="cp-status" onchange="finPgDataToggle('cp')"><option value="aberto" ${f.status!=='pago'?'selected':''}>Pendente</option><option value="pago" ${f.status==='pago'?'selected':''}>Pago</option></select></div>
       <div class="field" id="cp-pgdata-wrap" data-baixado="${(id&&f.status==='pago')?'1':'0'}" style="${(id&&f.status==='pago')?'':'display:none'}"><label>Data do pagamento</label><input id="cp-pgdata" type="date" max="9999-12-31" value="${f.pagoData||''}" title="Altere se o pagamento foi feito em outra data"></div></div>
+    <div id="cp-banco-wrap" style="${(id&&f.status==='pago')?'':'display:none'}">${finBancoField('cp-banco', f.bancoId||'', false)}</div>
   </div>
   <div class="modal-foot">${id?`<button class="btn btn-ghost" style="margin-right:auto" onclick="finExcluir('${id}','cpAfter')">${ico('trash')} Excluir</button>`:''}<button class="btn btn-ghost" onclick="closeModal()">Cancelar</button><button class="btn btn-amber" onclick="pagSave('${id||''}')">Salvar</button></div>`);
 }
@@ -19347,7 +19477,8 @@ function pagSave(id){ const g=x=>document.getElementById(x).value; const desc=g(
   if(id && atual){
     const eraPago = atual.status==='pago';
     data.status = atual.status;                  // editar NUNCA dá baixa direto
-    if(eraPago && stEscolhido==='pago'){ const pd=(document.getElementById('cp-pgdata')||{}).value||''; if(/^\d{4}-\d{2}-\d{2}$/.test(pd) && pd!==(atual.pagoData||'')){ data.pagoData=pd; try{ logAcao('Data de pagamento alterada', (atual.descricao||'')+' · '+fDate(atual.pagoData)+' → '+fDate(pd)); }catch(e){window.__es&&__es(e)} } }
+    if(eraPago && stEscolhido==='pago'){ const pd=(document.getElementById('cp-pgdata')||{}).value||''; if(/^\d{4}-\d{2}-\d{2}$/.test(pd) && pd!==(atual.pagoData||'')){ data.pagoData=pd; try{ logAcao('Data de pagamento alterada', (atual.descricao||'')+' · '+fDate(atual.pagoData)+' → '+fDate(pd)); }catch(e){window.__es&&__es(e)} }
+      if(document.getElementById('cp-banco')){ const _b=finBancoLer('cp-banco'); if((_b.bancoId||null)!==(atual.bancoId||null)){ data.bancoId=_b.bancoId; data.bancoNome=_b.bancoNome; try{ logAcao('Banco do pagamento alterado', (atual.descricao||'')+' · '+(finBancoNome(atual)||'—')+' → '+(_b.bancoNome||'—')); }catch(e){window.__es&&__es(e)} } } }
     DB.update('financeiro',id,data);
     if(stEscolhido==='pago' && !eraPago){ toast('Alterações salvas — confirme o pagamento','ok'); closeModal(); finQuitar(id,'cpRender'); return; }
     if(stEscolhido!=='pago' && eraPago){ finEstornarBaixa(id); toast('Baixa estornada — título voltou para pendente','ok'); }
@@ -19363,7 +19494,8 @@ function pagSave(id){ const g=x=>document.getElementById(x).value; const desc=g(
 function cpAfter(){ closeModal(); buildNav(); viewContasPagar(); }
 /* Campo "Data do pagamento/recebimento" só aparece quando o título JÁ está baixado (editar a data da baixa). */
 function finPgDataToggle(pref){ const st=(document.getElementById(pref+'-status')||{}).value; const w=document.getElementById(pref+'-pgdata-wrap'); if(!w) return;
-  const baixado=(st==='pago'||st==='recebido') && w.getAttribute('data-baixado')==='1'; w.style.display=baixado?'':'none'; }
+  const baixado=(st==='pago'||st==='recebido') && w.getAttribute('data-baixado')==='1'; w.style.display=baixado?'':'none';
+  const bw=document.getElementById(pref+'-banco-wrap'); if(bw) bw.style.display=baixado?'':'none'; }
 
 /* =================== LIXEIRA (30 dias) =================== */
 const LIXEIRA_COLS=['gruposVariacao','listasEscolares','clientes','fornecedores','produtos','vendas','financeiro','compras','orcamentos','servicos','funcionarios','vendedores','transportadoras','veiculos','maquinas','contratosAluguel','cheques','notasFiscais'];
@@ -25727,6 +25859,8 @@ function caixaSessaoAberta(){
   const semDono=abertasHoje.filter(s=>!s.operadorId);   // sessões antigas (antes dos múltiplos caixas): valem para quem está logado
   if(semDono.length) return semDono.slice().sort((a,b)=>String(b.abertura||'').localeCompare(String(a.abertura||'')))[0];
   return undefined; }
+/* ISO gravado em UTC (…Z) -> HH:MM no relógio local. Sem 'Z' (já local) só recorta a hora. */
+function horaLocalISO(iso){ iso=(''+(iso||'')); if(!iso) return ''; try{ if(/Z$|[+-]\d\d:?\d\d$/.test(iso)){ const d=new Date(iso); if(!isNaN(d)) return String(d.getHours()).padStart(2,'0')+':'+String(d.getMinutes()).padStart(2,'0'); } }catch(e){} return iso.slice(11,16); }
 function caixaDiaSessao(s){ return s?(s.data||(s.abertura||'').slice(0,10)):''; }
 function caixaSessaoDiaAnterior(){ const hoje=today();   // sessões abertas de dias anteriores (órfãs) — do operador (admin: de qualquer um)
   const antigas=DB.all('caixaSessoes').filter(s=>s && s.status==='aberto' && caixaDiaSessao(s)<hoje && (caixaEhAdmin() || caixaSessaoDoUsuario(s)));
@@ -25862,6 +25996,7 @@ function viewCaixa(){
      <button class="btn btn-ghost btn-sm" onclick="caixaMovModal('suprimento')">${ico('plus')} Suprimento</button>
      <button class="btn btn-ghost btn-sm" onclick="FIN.recTab='ficha';go('contasrec')">${ico('money')} Receber conta</button>
      <button class="btn btn-amber btn-sm" onclick="caixaFecharModal()">${ico('alert')} Fechar Caixa</button></div>
+   ${caixaLojaAviso(s,_sv)}
    <div class="g4" style="margin-bottom:16px">
      ${kpiCard('Total Vendas',BRL(totalVendas),'cart','#15803d',NUM(vendasOk.length)+' vendas'+(creditoTroca>0?(' \u00b7 sem '+BRL(creditoTroca)+' de cr\u00e9dito de troca'):'')+(comissaoIndic>0?(' \u00b7 sem '+BRL(comissaoIndic)+' de comiss\u00e3o de indicador'):''))}
      ${kpiCard('Recebimentos',BRL(recebimentos),'money','#2563eb','Recebimento de contas')}
@@ -25885,11 +26020,11 @@ function caixaTodosHTML(atualSid, completo){
   const tot=linhas.reduce((a,l)=>({n:a.n+l.n, total:a.total+l.total, din:a.din+l.din, esp:a.esp+l.esp}),{n:0,total:0,din:0,esp:0});
   const abertos=linhas.filter(l=>l.x.status==='aberto').length;
   const tabela=`<div class="tbl-wrap"><table><thead><tr><th>Caixa</th><th>Operador</th><th>Situação</th><th class="t-right">Vendas</th><th class="t-right">Total vendido</th><th class="t-right">Em dinheiro</th><th class="t-right">Saldo em espécie</th><th></th></tr></thead><tbody>
-      ${linhas.map(l=>`<tr style="${l.x.id===atualSid?'background:var(--amber-soft,#fff7e6)':''}"><td><b>${esc(l.x.caixaNome||'Caixa')}</b><div class="t-mut" style="font-size:11px">aberto ${esc((l.x.abertura||'').slice(11,16)||l.x.aberturaHora||'')}${l.x.status==='fechado'?(' · fechado '+esc((l.x.fechamento||'').slice(11,16)||l.x.fechamentoHora||'')):''}</div></td><td>${esc(l.x.operador||'')}</td><td>${l.x.status==='aberto'?'<span class="tag pos">Aberto</span>':'<span class="tag">Fechado</span>'}</td><td class="t-right tnum">${NUM(l.n)}</td><td class="t-right tnum t-strong">${BRL(l.total)}</td><td class="t-right tnum">${BRL(l.din)}</td><td class="t-right tnum">${BRL(l.esp)}</td>
+      ${linhas.map(l=>`<tr style="${l.x.id===atualSid?'background:var(--amber-soft,#fff7e6)':''}"><td><b>${esc(l.x.caixaNome||'Caixa')}</b><div class="t-mut" style="font-size:11px">aberto ${esc(l.x.aberturaHora||horaLocalISO(l.x.abertura))}${l.x.status==='fechado'?(' · fechado '+esc(l.x.fechamentoHora||horaLocalISO(l.x.fechamento))):''}</div></td><td>${esc(l.x.operador||'')}</td><td>${l.x.status==='aberto'?'<span class="tag pos">Aberto</span>':'<span class="tag">Fechado</span>'}</td><td class="t-right tnum">${NUM(l.n)}</td><td class="t-right tnum t-strong">${BRL(l.total)}</td><td class="t-right tnum">${BRL(l.din)}</td><td class="t-right tnum">${BRL(l.esp)}</td>
         <td class="t-right" style="white-space:nowrap">${l.x.status==='aberto'?`<button class="btn btn-ghost btn-sm" onclick="CAIXA.verSid='${l.x.id}';CAIXA.tab='resumo';viewCaixa()">${ico('eye')} Ver</button> <button class="btn btn-ghost btn-sm" onclick="caixaFecharModal('${l.x.id}')">${ico('alert')} Fechar</button>`:`<button class="btn btn-ghost btn-sm" onclick="caixaRelatorioModal('${l.x.id}')">${ico('doc')} Relatório</button>`}</td></tr>`).join('')}
       <tr style="font-weight:700;background:var(--surface-2)"><td colspan="3">Todos os caixas de hoje (${NUM(sess.length)}${abertos?(' · '+NUM(abertos)+' aberto(s)'):''})</td><td class="t-right tnum">${NUM(tot.n)}</td><td class="t-right tnum">${BRL(tot.total)}</td><td class="t-right tnum">${BRL(tot.din)}</td><td class="t-right tnum">${BRL(tot.esp)}</td><td></td></tr>
     </tbody></table></div>`;
-  if(!completo) return `<div class="card" style="margin-bottom:14px"><div class="card-head"><h3>${ico('bank')} Caixas de hoje — visão do administrador</h3><span class="t-mut" style="font-size:12px">Cada operador vê só o seu caixa; aqui aparecem todos, com o total unificado.</span></div><div class="card-pad" style="padding-top:0">${tabela}</div></div>`;
+  if(!completo) return `<div class="card" style="margin-bottom:14px"><div class="card-head"><h3>${ico('bank')} Caixas de hoje — visão do administrador</h3><span class="t-mut" style="font-size:12px">Cada operador vê só o seu caixa; aqui aparecem todos, com o total unificado. <a href="#" onclick="metaRelAbrir('hoje');return false" style="color:var(--brand)">Conferir com o faturamento do painel</a></span></div><div class="card-pad" style="padding-top:0">${tabela}</div></div>`;
   // aba completa: além da tabela, TODAS as vendas do dia com a coluna do caixa
   const todasVendas=[]; linhas.forEach(l=>{ caixaVendasSessao(l.x.id).filter(v=>(v.status||'')!=='cancelada').forEach(v=>todasVendas.push({v, cx:l.x})); });
   todasVendas.sort((a,b)=>String((b.v.hora||'')+(b.v.id||'')).localeCompare(String((a.v.hora||'')+(a.v.id||''))));
