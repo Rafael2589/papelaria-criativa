@@ -48,7 +48,7 @@ const CONFIG_EMPRESA = {
      Aparece no topo do menu e no rodapé das Configurações. Troque a cada publicação.
      MANTENHA O FORMATO 'vDD/MM-X' — é ele que o sistema usa para comparar as máquinas
      da loja e avisar quando alguma ficou para trás.                                  */
-  versao: 'v13/11-C',
+  versao: 'v18/11-A',
 
   /* 4) NUVEM (Supabase)  ------------------------------------------------------------
      Cole aqui a Project URL e a chave PUBLISHABLE do projeto Supabase DESTA empresa
@@ -973,7 +973,7 @@ tr.linha-editada>td:first-child{box-shadow:inset 3px 0 0 var(--amber-d)}
   .thermal-ticket .tk-sep{ border-top:1px dashed #94a3b8; margin:7px 0; }
   .thermal-ticket .tk-row{ display:flex; justify-content:space-between; gap:10px; padding:1px 0; }
   .thermal-ticket .tk-total{ font-size:17px; font-weight:700; }
-  body.printing-thermal .print-target.thermal-ticket{ width:72mm !important; max-width:72mm !important; box-sizing:border-box !important; margin:0 auto !important; padding:0 2mm !important; font-size:12.5px; font-family:Arial,Helvetica,sans-serif; font-weight:700; color:#000; overflow:hidden; word-break:break-word; overflow-wrap:anywhere; }
+  body.printing-thermal .print-target.thermal-ticket{ width:72mm !important; max-width:72mm !important; box-sizing:border-box !important; margin:0 auto !important; padding:0 2mm 0 5mm !important; font-size:12.5px; font-family:Arial,Helvetica,sans-serif; font-weight:700; color:#000; overflow:hidden; word-break:break-word; overflow-wrap:anywhere; }
   body.printing-thermal .print-target.thermal-ticket *{ color:#000 !important; font-weight:700; }
   body.printing-thermal .print-target.thermal-ticket *{ box-sizing:border-box !important; max-width:100% !important; overflow-wrap:anywhere; word-break:break-word; }
   body.printing-thermal .print-target .tk-row{ gap:6px; }
@@ -15990,7 +15990,7 @@ const ETIQ_MODELOS=[
   {id:'100x30',nome:'100 × 30 mm — larga (1 coluna)',w:100,h:30,cols:1},
   {id:'100x50',nome:'100 × 50 mm — caixa/volume (1 coluna)',w:100,h:50,cols:1},
 ];
-let ETIQ={modelo:'50x30', sel:{}, q:'', folha:false, gapX:0, gapY:0, offX:0, offY:0, fs:{}, codBarras:true};
+let ETIQ={modelo:'50x30', sel:{}, q:'', folha:false, gapX:0, gapY:0, offX:0, offY:0, fs:{}, codBarras:true, atacado:false};
 // Fonte da verdade da config de etiquetas: d.etiqCfg (vai no blob __config e SINCRONIZA entre computadores).
 // localStorage é só um cache local para carregar rápido antes da nuvem responder.
 function etiqStoreLoad(){ let s=null;
@@ -16001,10 +16001,11 @@ function etiqHydrate(){ const s=etiqStoreLoad();
   if(s.modelo && ETIQ_MODELOS.some(x=>x.id===s.modelo)) ETIQ.modelo=s.modelo;   // restaura o MODELO escolhido (senão volta ao padrão a cada atualização)
   ['folha','gapX','gapY','offX','offY'].forEach(k=>{ if(s[k]!=null) ETIQ[k]=s[k]; });
   ETIQ.codBarras = (s.codBarras!=null) ? (s.codBarras!==false) : true;   // padrão: mostra o código de barras
+  ETIQ.atacado = (s.atacado===true);   // padrão: só o preço de venda; ligado, mostra também o preço de atacado
   ETIQ.fs=(s.fs&&typeof s.fs==='object')?s.fs:(ETIQ.fs||{}); }
 (function(){ try{ etiqHydrate(); }catch(e){window.__es&&__es(e)} })();
 function etiqModeloSet(v){ if(v) ETIQ.modelo=v; etiqPersist(); viewEtiquetas(); }
-function etiqPersist(){ const payload={modelo:ETIQ.modelo, folha:!!ETIQ.folha,gapX:+ETIQ.gapX||0,gapY:+ETIQ.gapY||0,offX:+ETIQ.offX||0,offY:+ETIQ.offY||0,codBarras:ETIQ.codBarras!==false,fs:ETIQ.fs||{}};
+function etiqPersist(){ const payload={modelo:ETIQ.modelo, folha:!!ETIQ.folha,gapX:+ETIQ.gapX||0,gapY:+ETIQ.gapY||0,offX:+ETIQ.offX||0,offY:+ETIQ.offY||0,codBarras:ETIQ.codBarras!==false,atacado:ETIQ.atacado===true,fs:ETIQ.fs||{}};
   try{ localStorage.setItem(LSK('etiq_cfg'), JSON.stringify(payload)); }catch(e){window.__es&&__es(e)}
   try{ const d=DB._load(); d.etiqCfg=payload; try{ nuvemConfMarcar(d.etiqCfg); }catch(e){window.__es&&__es(e)} DB._persist(); }catch(e){window.__es&&__es(e)} }
 function etiqCfg(){ return { folha:!!ETIQ.folha, gapX:+ETIQ.gapX||0, gapY:+ETIQ.gapY||0, offX:+ETIQ.offX||0, offY:+ETIQ.offY||0 }; }
@@ -16014,7 +16015,9 @@ function etiqModelo(){ return ETIQ_MODELOS.find(x=>x.id===ETIQ.modelo)||ETIQ_MOD
 function etiqFontDefault(m){ const compact=m.h<=25, big=m.h>=45; return { nome: compact?6.2:(big?11:7.6), preco: compact?10.5:(big?19:12.5), cod: compact?6.6:(big?7:6) }; }
 function etiqFont(m){ const d=etiqFontDefault(m); const o=(ETIQ.fs&&ETIQ.fs[m.id])||{}; const cl=(v,def)=>{ v=+v; return (v>0&&isFinite(v))?Math.min(60,Math.max(3,v)):def; }; const align=(o.align==='left'||o.align==='right')?o.align:'center'; return { nome:cl(o.nome,d.nome), preco:cl(o.preco,d.preco), cod:cl(o.cod,d.cod), align }; }
 // Produto de amostra para a pré-visualização ao vivo (usa o 1º selecionado, senão o 1º cadastrado, senão um exemplo)
-function etiqAmostra(){ const sel=Object.keys(ETIQ.sel||{}); let p=sel.length?DB.get('produtos',sel[0]):null; if(!p) p=DB.all('produtos')[0]; if(!p) p={nome:'PRODUTO DE EXEMPLO 5/16 x 100mm', sku:'EX-001', codigoBarras:'7890000000000', preco:19.9}; return p; }
+function etiqAmostra(){ const sel=Object.keys(ETIQ.sel||{}); let p=sel.length?DB.get('produtos',sel[0]):null; if(!p) p=DB.all('produtos')[0]; if(!p) p={nome:'PRODUTO DE EXEMPLO 5/16 x 100mm', sku:'EX-001', codigoBarras:'7890000000000', preco:19.9};
+  if(ETIQ.atacado && !(+p.precoAtacado>0)) p=Object.assign({},p,{precoAtacado:Math.round((+p.preco||19.9)*0.9*100)/100, atacadoQtdMin:+p.atacadoQtdMin||10});   // exemplo na pré-visualização quando o produto não tem atacado
+  return p; }
 function etiqFonteFZ(){ const m=etiqModelo(); const d=etiqFontDefault(m); const g=id=>(document.getElementById(id)||{}).value;
   const norm=(v,def)=>{ v=+v; return (v>0&&isFinite(v))?Math.min(60,Math.max(3,v)):def; };
   const al=(document.getElementById('et-fs-align')||{}).value; const align=(al==='left'||al==='right')?al:'center';
@@ -16044,6 +16047,11 @@ function etiqFonteBodyHTML(){ const m=etiqModelo(); const f=etiqFont(m); const d
             <div style="flex:1;min-width:150px"><div style="font-size:12.5px;font-weight:700;display:flex;align-items:center;gap:6px">${ico('scan')} Código de barras</div>
               <div class="t-mut" style="font-size:11.5px;margin-top:2px">Inclui ou não o código de barras (Code128) na etiqueta.</div></div>
             <button id="et-barras-btn" class="btn ${ETIQ.codBarras!==false?'btn-amber':'btn-ghost'} btn-sm" onclick="etiqBarrasToggle()">${ETIQ.codBarras!==false?ico('check')+' Incluído':'Incluir código de barras'}</button>
+          </div>
+          <div style="border:1px solid var(--line);border-radius:10px;padding:10px 12px;margin-top:10px;display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+            <div style="flex:1;min-width:150px"><div style="font-size:12.5px;font-weight:700;display:flex;align-items:center;gap:6px">${ico('box')} Preço de atacado</div>
+              <div class="t-mut" style="font-size:11.5px;margin-top:2px">Mostra, abaixo do preço de venda, o preço de atacado com a quantidade mínima do cadastro ("a partir de N un"). Só nos produtos que têm preço de atacado.</div></div>
+            <button id="et-atac-btn" class="btn ${ETIQ.atacado===true?'btn-amber':'btn-ghost'} btn-sm" onclick="etiqAtacadoToggle()">${ETIQ.atacado===true?ico('check')+' Incluído':'Incluir preço de atacado'}</button>
           </div>
         </div>
         <div style="flex:0 0 auto;margin:0 auto">
@@ -16459,15 +16467,28 @@ function etiqLabelsHTML(m){ const cfg=etiqCfg(); const promoMode=!!ETIQ.promo; c
   return rows; }
 /* Unidade do produto, para sair ao lado do preço na etiqueta (UN, CX, M, KG...). */
 function etiqUnid(p){ const u=((p&&p.unidade)||'').toString().trim().toUpperCase(); return u?u:''; }
-function etiqLabel(p,m,emp,fzOverride){ const code=p.codigoBarras||p.sku||p.id; const compact=m.h<=25; const big=m.h>=45; const fz=fzOverride||etiqFont(m);
+/* Preço de ATACADO na etiqueta (opção ligada em Configuração de etiqueta). Só aparece nos produtos que têm preço de atacado
+   cadastrado; a legenda traz a quantidade mínima do cadastro ("ATACADO A PARTIR DE 10 UN"). */
+function etiqAtacInfo(p){ if(!ETIQ.atacado||!p) return null; const v=+p.precoAtacado||0; if(!(v>0)) return null; const q=+p.atacadoQtdMin||0; const un=etiqUnid(p);
+  return { valor:v, un, cap:q>0?('ATACADO A PARTIR DE '+NUM(q)+(un?(' '+un):'')):'ATACADO' }; }
+function etiqAtacFontes(fz){ return { cap:Math.max(4.2,Math.min(6,Math.round(fz.preco*0.4*10)/10)), val:Math.max(6,Math.round(fz.preco*0.66*10)/10) }; }
+function etiqAtacadoToggle(){ ETIQ.atacado = !(ETIQ.atacado===true); etiqPersist();
+  const b=document.getElementById('et-atac-btn');
+  if(b){ const on=ETIQ.atacado===true; b.className='btn '+(on?'btn-amber':'btn-ghost')+' btn-sm'; b.innerHTML=on?(ico('check')+' Incluído'):'Incluir preço de atacado'; }
+  try{ etiqFontePreview(); }catch(e){window.__es&&__es(e)}
+  try{ if(document.getElementById('etiq-preview')) viewEtiquetas(); }catch(e){window.__es&&__es(e)} }
+function etiqLabel(p,m,emp,fzOverride){ const code=p.codigoBarras||p.sku||p.id; const compact=m.h<=25; const big=m.h>=45; const fz=fzOverride||etiqFont(m); const at=etiqAtacInfo(p); const fa=etiqAtacFontes(fz);
   const align=fz.align||'center'; const jc=align==='left'?'flex-start':(align==='right'?'flex-end':'center');
   return `<div class="etiq-label" style="width:${m.w}mm;height:${m.h}mm;display:flex;flex-direction:column;align-items:${jc};justify-content:space-between;text-align:${align};padding:${compact?'1.6mm 2.6mm':(big?'1.8mm 2.4mm':'1.2mm 1.8mm')}">
     ${compact?'':`<div class="el-store" style="font-size:5pt;color:#444;line-height:1;width:100%;text-align:${align}">${esc(emp.nome||'')}</div>`}
-    <div class="el-name" style="font-weight:700;font-size:${fz.nome}pt;line-height:1.08;width:100%;text-align:${align};display:-webkit-box;-webkit-line-clamp:${(ETIQ.codBarras===false)?(big?10:6):(big?3:2)};-webkit-box-orient:vertical;overflow:hidden">${esc(p.nome)}</div>
+    <div class="el-name" style="font-weight:700;font-size:${fz.nome}pt;line-height:1.08;width:100%;text-align:${align};display:-webkit-box;-webkit-line-clamp:${(ETIQ.codBarras===false)?(big?10:6):(big?3:2)-((at&&compact)?1:0)};-webkit-box-orient:vertical;overflow:hidden">${esc(p.nome)}</div>
     ${ETIQ.codBarras===false?'':`<div class="el-bar" style="width:100%;display:flex;justify-content:${jc}">${barcodeSVG(code, compact?18:26)}</div>`}
     <div style="width:100%;text-align:${align};font-size:${fz.cod}pt;font-weight:800;letter-spacing:.3px;line-height:1;color:#000">COD ${esc(String(p.sku||code).substring(0,18))}</div>
+    <div style="width:100%">
     <div class="el-foot" style="width:100%;display:flex;justify-content:${jc};align-items:baseline;gap:.6mm">
       <span class="el-price" style="font-weight:800;font-size:${fz.preco}pt">${BRL(p.preco)}</span>${etiqUnid(p)?`<span class="el-un" style="font-weight:700;font-size:${Math.max(4,Math.round(fz.preco*0.5*10)/10)}pt;color:#000;white-space:nowrap">/ ${esc(etiqUnid(p))}</span>`:''}</div>
+    ${at?`<div class="el-atac" style="width:100%;text-align:${align};line-height:1.05;color:#000;margin-top:.4mm"><div style="font-size:${fa.cap}pt;font-weight:700;white-space:nowrap;overflow:hidden">${esc(at.cap)}</div><div style="font-size:${fa.val}pt;font-weight:800;white-space:nowrap">${BRL(at.valor)}${at.un?`<span style="font-size:${Math.max(4,Math.round(fa.val*0.55*10)/10)}pt;font-weight:700"> / ${esc(at.un)}</span>`:''}</div></div>`:''}
+    </div>
   </div>`; }
 function etiqLabelList(){ const labels=[]; Object.entries(ETIQ.sel).forEach(([id,n])=>{ const p=DB.get('produtos',id); if(p) for(let i=0;i<n;i++) labels.push(p); }); return labels; }
 function etiqDrawLabel(doc,p,ox,oy,m,emp){ const compact=m.h<=25; const big=m.h>=45; oy=+oy||0; const fz=etiqFont(m);
@@ -16481,7 +16502,11 @@ function etiqDrawLabel(doc,p,ox,oy,m,emp){ const compact=m.h<=25; const big=m.h>
   // ===== Rodapé ancorado embaixo (preço) e código logo acima — calculados de baixo p/ cima =====
   const priceAsc=priceFS*P*0.74, priceDesc=priceFS*P*0.24;
   const codeAsc=codeFS*P*0.74, codeDesc=codeFS*P*0.24;
-  const priceBaseline=oy+m.h-padBot-priceDesc;         // preço no rodapé, sem cortar embaixo
+  // Preço de ATACADO (opcional): legenda pequena + valor, na base da etiqueta; o preço de venda sobe acima dele
+  const at=etiqAtacInfo(p); const fa=etiqAtacFontes(fz); let atacH=0, atCapBase=0, atValBase=0;
+  if(at){ const valAsc=fa.val*P*0.74, valDesc=fa.val*P*0.24, capAsc=fa.cap*P*0.74, capDesc=fa.cap*P*0.24;
+    atValBase=oy+m.h-padBot-valDesc; atCapBase=atValBase-valAsc-0.25-capDesc; atacH=valAsc+valDesc+0.25+capAsc+capDesc+0.5; }
+  const priceBaseline=oy+m.h-padBot-atacH-priceDesc;         // preço no rodapé, sem cortar embaixo
   const gapCodePrice=Math.max(0.6, priceFS*P*0.14);    // folga entre o código e o preço
   const codeBaseline=priceBaseline-priceAsc-gapCodePrice-codeDesc; // COD acima do preço, sem tocar
   const codeTop=codeBaseline-codeAsc;
@@ -16494,7 +16519,7 @@ function etiqDrawLabel(doc,p,ox,oy,m,emp){ const compact=m.h<=25; const big=m.h>
   // Limita o nome às linhas que cabem acima do código, para NUNCA sobrepor os textos (fontes muito grandes)
   const topAvail=(codeTop-0.9)-y; const fitLines=Math.max(1, Math.floor((topAvail-nameAsc)/nameLineH)+1);
   // SEM código de barras: o nome pode ocupar o espaço que sobra (nome completo do produto).
-  const _maxLin=(ETIQ.codBarras===false)?Math.max(1,fitLines):Math.min(big?3:2, fitLines);
+  const _maxLin=(ETIQ.codBarras===false)?Math.max(1,fitLines):Math.min(Math.max(1,(big?3:2)-((at&&compact)?1:0)), fitLines);
   const nameLines=doc.splitTextToSize(String(p.nome||''), w).slice(0, _maxLin);
   const nb=y+nameAsc; nameLines.forEach((ln,i)=>doc.text(ln, tx, nb+i*nameLineH, {align:anchor}));
   const nameBottom=nb+(nameLines.length>0?(nameLines.length-1)*nameLineH:0)+nameFS*P*0.24;
@@ -16512,6 +16537,8 @@ function etiqDrawLabel(doc,p,ox,oy,m,emp){ const compact=m.h<=25; const big=m.h>
   const fy=priceBaseline;
   doc.setTextColor(0,0,0);
   etiqPdfPrecoUnid(doc, BRL(p.preco), etiqUnid(p), priceFS, tx, fy, align);
+  if(at){ doc.setFont('helvetica','bold'); doc.setFontSize(fa.cap); doc.text(at.cap, tx, atCapBase, {align:anchor});
+    etiqPdfPrecoUnid(doc, BRL(at.valor), at.un, fa.val, tx, atValBase, align); }
 }
 /* Escreve "R$ 19,90 / UN" no PDF: o preço no tamanho cheio e a unidade menor logo ao lado,
    respeitando o alinhamento escolhido (esquerda, centro ou direita). */
@@ -20466,7 +20493,7 @@ function cpTodosRender(){
   const L=[];
   cpFiltered().forEach(f=>{ const fo=DB.get('fornecedores',f.fornecedorId);
     const venc=['aberto','pendente'].includes(f.status)&&f.vencimento&&f.vencimento<today();
-    L.push({ tipo:'conta', id:f.id, venc:f.vencimento||'', quem:fo?fo.nome:(f.fornecedorNome||'Sem fornecedor'), desc:f.descricao||'', num:f.nf?('NF '+f.nf):'', valor:+f.valor||0,
+    L.push({ tipo:'conta', id:f.id, venc:f.vencimento||'', quem:fo?fo.nome:(f.fornecedorNome||'Sem fornecedor'), desc:f.descricao||'', rec:!!f.recorrente, num:f.nf?('NF '+f.nf):'', valor:+f.valor||0,
       sit:venc?'<span class="tag neg">Vencido</span>':`<span class="tag ${f.status==='pago'?'pos':'warn'}">${f.status==='pago'?'Pago':'Pendente'}</span>`, atras:venc,
       acoes:`${f.status!=='pago'?`<button class="btn-icon btn-ghost" title="Marcar como pago" onclick="finQuitar('${f.id}','cpRender')">${ico('check')}</button>`:''}<button class="btn-icon btn-ghost" title="Editar" onclick="pagForm('${f.id}')">${ico('edit')}</button>` }); });
   cpChequesFiltrados().forEach(c=>{ const venc=c.status==='pendente'&&c.vencimento&&c.vencimento<today();
@@ -20481,7 +20508,7 @@ function cpTodosRender(){
   el.innerHTML=`<div class="t-mut" style="font-size:12.5px;padding:0 20px 8px">${NUM(nC)} conta(s) e ${NUM(nQ)} cheque(s) · a pagar (contas + cheques emitidos) <b>${BRL(saida)}</b>${receb?(' · cheques recebidos '+BRL(receb)):''}</div>
   <table><thead><tr><th>Tipo</th><th>Fornecedor / favorecido</th><th>Descrição</th><th>Nº</th><th class="t-right">Valor</th><th>Vencimento</th><th class="t-center">Status</th><th></th></tr></thead><tbody>
   ${L.map(x=>`<tr><td><span class="tag ${x.tipo==='conta'?'gray':''}">${x.tipo==='conta'?'Conta':(x.tipo==='cheque recebido'?'Cheque recebido':'Cheque emitido')}</span></td>
-    <td class="t-strong">${esc(x.quem)}</td><td>${esc(x.desc)}</td><td class="tnum t-mut">${esc(x.num||'—')}</td>
+    <td class="t-strong">${esc(x.quem)}</td><td>${esc(x.desc)}${x.rec?`<span class="tag gray" style="margin-left:6px" title="Conta recorrente — repete todo mês">↻ mensal</span>`:''}</td><td class="tnum t-mut">${esc(x.num||'—')}</td>
     <td class="t-right tnum t-strong" style="color:${x.tipo==='cheque recebido'?'var(--pos)':'var(--neg)'}">${BRL(x.valor)}</td>
     <td class="tnum ${x.atras?'':'t-mut'}" style="${x.atras?'color:var(--neg);font-weight:600':''}">${fDate(x.venc)}${x.atras?' ⚠':''}</td>
     <td class="t-center">${x.sit}</td><td class="t-right" style="white-space:nowrap">${x.acoes}</td></tr>`).join('')}
@@ -20571,7 +20598,7 @@ function cpRender(){
     <th class="t-center">Status</th><th></th></tr></thead><tbody>
   ${rows.map(f=>{ const fo=DB.get('fornecedores',f.fornecedorId); const nome=fo?fo.nome:(f.fornecedorNome||'Sem fornecedor');
     const venc=['aberto','pendente'].includes(f.status)&&f.vencimento&&f.vencimento<today();
-    const badges=`${f.parcela?`<span class="tag gray" style="margin-left:6px">parc. ${esc(f.parcela)}</span>`:''}${f.nf?`<span class="tag" style="margin-left:6px">${ico('doc')} NF ${esc(f.nf)}</span>`:''}`;
+    const badges=`${f.recorrente?`<span class="tag gray" style="margin-left:6px" title="Conta recorrente — repete todo mês${f.recorrenciaSeq?(' ('+f.recorrenciaSeq+'/'+(f.recorrenciaTotal||'?')+')'):''}">↻ mensal</span>`:''}${f.parcela?`<span class="tag gray" style="margin-left:6px">parc. ${esc(f.parcela)}</span>`:''}${f.nf?`<span class="tag" style="margin-left:6px">${ico('doc')} NF ${esc(f.nf)}</span>`:''}`;
     return `<tr>
       <td><input type="checkbox" ${FIN.pagSel.has(f.id)?'checked':''} onchange="cpToggle('${f.id}',this.checked)"></td>
       <td class="t-strong cp-forn">${esc(nome)}</td>
@@ -20659,7 +20686,12 @@ function pagForm(id){ const f=id?DB.get('financeiro',id):{}; const forn=DB.all('
     <div class="field"><label>Fornecedor</label>${acHTML({id:'cp-forn',col:'fornecedores',value:f.fornecedorId||f.fornecedorNome||'',free:true,ph:'Digite o nome do fornecedor (cadastrado ou não)...'})}</div>
     <div class="field"><label>Descrição</label><input id="cp-desc" value="${esc(f.descricao||'')}" placeholder="Ex.: NF 0000 - Compra de mercadoria"></div>
     <div class="field-row"><div class="field"><label>Valor (R$)</label><input id="cp-valor-i" type="number" step="0.01" value="${f.valor||''}"></div>
-      <div class="field"><label>Vencimento</label><input id="cp-venc" type="date" max="9999-12-31" value="${f.vencimento||today()}"></div></div>
+      <div class="field"><label>Vencimento</label><input id="cp-venc" type="date" max="9999-12-31" value="${f.vencimento||today()}" oninput="cpRecPrev()"></div></div>
+    ${id?(f.recorrente?`<div class="t-mut" style="font-size:12px;margin:-4px 0 10px">↻ Conta recorrente — lançamento ${f.recorrenciaSeq||'?'} de ${f.recorrenciaTotal||'?'}. Alterações valem só para este mês.</div>`:''):`<div class="field" style="border:1px solid var(--line);border-radius:10px;padding:10px 12px;background:var(--surface-2,#f8fafc)">
+      <label style="display:flex;align-items:center;gap:8px;cursor:pointer;margin:0;font-weight:700"><input type="checkbox" id="cp-rec" onchange="cpRecToggle()" style="width:18px;height:18px"> Conta recorrente (repete todo mês)</label>
+      <div id="cp-rec-opts" style="display:none;margin-top:8px">
+        <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap"><span style="font-size:13px">Lançar por</span><select id="cp-rec-n" onchange="cpRecPrev()" style="max-width:130px">${[3,6,12,18,24,36,48,60].map(n=>`<option value="${n}" ${n===12?'selected':''}>${n} meses</option>`).join('')}</select><span style="font-size:13px">sempre no mesmo dia do vencimento</span></div>
+        <div id="cp-rec-prev" class="t-mut" style="font-size:12px;margin-top:6px;line-height:1.5"></div></div></div>`}
     <div class="field-row"><div class="field"><label>Subgrupo</label><div style="display:flex;gap:6px">${pagSubgrupoCombo('cp-subgrupo', f.centroCusto, 'pagSubChange()')}<button class="btn btn-ghost btn-icon" onclick="pagAddSubgrupo()" title="Cadastrar novo subgrupo">${ico('plus')}</button></div></div>
       <div class="field"><label>Grupo</label><input id="cp-grupo" value="${esc(fGrupoNome)}" readonly placeholder="Preenchido pelo subgrupo" title="Preenchido automaticamente pelo subgrupo escolhido" style="background:var(--surface-2,#f1f5f9);color:var(--ink-2);cursor:not-allowed"></div></div>
     <div class="field-row"><div class="field"><label>Nº da NF (opcional)</label><input id="cp-nf" value="${esc(f.nf||'')}" placeholder="1661668"></div>
@@ -20681,6 +20713,21 @@ function addCentroCusto(){ const el=document.getElementById('cp-cc'); const v=pr
 function dataAnoOk(s){ s=(''+(s||'')).trim(); if(!s) return true; return /^\d{4}-\d{2}-\d{2}$/.test(s); }
 function financVencOk(idInput){ const el=document.getElementById(idInput); const val=el?el.value:''; if(dataAnoOk(val)) return true;
   toast('Data de vencimento inválida — o ano deve ter 4 dígitos','err'); if(el){ try{el.focus();}catch(e){window.__es&&__es(e)} el.style.borderColor='var(--neg)'; } return false; }
+/* ===== CONTA RECORRENTE =====
+   Lança a mesma conta em todos os meses, no mesmo dia do vencimento. O vencimento só cai em DIA ÚTIL:
+   se o dia cair em sábado, domingo ou feriado (nacional/da loja), vai para o próximo dia útil.
+   O dia-base é sempre o do 1º vencimento (não "escorrega" depois de um ajuste); em mês curto usa o último dia. */
+function cpRecVencimentos(primeiroISO, n){ const m0=/^(\d{4})-(\d{2})-(\d{2})$/.exec(primeiroISO||''); if(!m0) return [];
+  const y=+m0[1], mes=+m0[2]-1, dia=+m0[3]; const out=[];
+  for(let i=0;i<n;i++){ const ini=new Date(y,mes+i,1); const ult=new Date(ini.getFullYear(),ini.getMonth()+1,0).getDate();
+    const iso=ymd(new Date(ini.getFullYear(),ini.getMonth(),Math.min(dia,ult))); out.push(ehDiaUtilBancario(iso)?iso:diaUtilSeguinte(iso)); }
+  return out; }
+function cpRecToggle(){ const on=!!(document.getElementById('cp-rec')||{}).checked; const o=document.getElementById('cp-rec-opts'); if(o) o.style.display=on?'':'none'; cpRecPrev(); }
+function cpRecPrev(){ const box=document.getElementById('cp-rec-prev'); if(!box||!(document.getElementById('cp-rec')||{}).checked) return;
+  const v=(document.getElementById('cp-venc')||{}).value; const n=+((document.getElementById('cp-rec-n')||{}).value)||12; const L=cpRecVencimentos(v,n);
+  if(!L.length){ box.textContent='Informe o vencimento.'; return; }
+  const dow=['dom','seg','ter','qua','qui','sex','sáb']; const f=iso=>fDate(iso)+' ('+dow[pDate(iso).getDay()]+')';
+  box.innerHTML='Vencimentos: <b>'+L.slice(0,4).map(f).join(' · ')+'</b>'+(L.length>4?' · … · <b>'+f(L[L.length-1])+'</b>':'')+'<br>Se o dia cair em sábado, domingo ou feriado, o vencimento vai para o próximo dia útil.'; }
 function pagSave(id){ const g=x=>document.getElementById(x).value; const desc=g('cp-desc').trim(); const valor=+g('cp-valor-i');
   if(!financVencOk('cp-venc')) return;
   if(!desc||!valor){ toast('Preencha descrição e valor','err'); return; }
@@ -20705,6 +20752,17 @@ function pagSave(id){ const g=x=>document.getElementById(x).value; const desc=g(
     else toast('Conta atualizada','ok');
   } else {
     data.emissao=today(); data.status='aberto';
+    const _rec=!!(document.getElementById('cp-rec')||{}).checked;
+    if(_rec){
+      const n=Math.min(60,Math.max(2,+((document.getElementById('cp-rec-n')||{}).value)||12)); const datas=cpRecVencimentos(data.vencimento,n);
+      if(!datas.length){ toast('Informe o vencimento','err'); return; }
+      const rid=uid(); let primeiro=null;
+      datas.forEach((dv,i)=>{ const r=DB.insert('financeiro',Object.assign({},data,{vencimento:dv,recorrente:true,recorrenciaId:rid,recorrenciaSeq:i+1,recorrenciaTotal:n})); if(i===0) primeiro=r; });
+      try{ logAcao('Conta recorrente criada', desc+' · '+n+' meses a partir de '+fDate(datas[0])); }catch(e){window.__es&&__es(e)}
+      const aj=(datas[0]!==data.vencimento)?(' — 1º vencimento ajustado para '+fDate(datas[0])+' (dia útil)'):'';
+      if(stEscolhido==='pago' && primeiro){ toast(n+' lançamentos criados'+aj+' — confirme o pagamento do 1º','ok'); closeModal(); finQuitar(primeiro.id,'cpRender'); return; }
+      toast(n+' lançamentos mensais criados'+aj,'ok'); cpAfter(); return;
+    }
     const novo=DB.insert('financeiro',data);
     if(stEscolhido==='pago'){ toast('Conta criada — confirme o pagamento','ok'); closeModal(); finQuitar(novo.id,'cpRender'); return; }
     toast('Conta criada','ok');
@@ -28612,12 +28670,16 @@ function orcTicketRender(id){ const o=DB.get('orcamentos',id); const el=document
    Agora a folha e o cupom têm a largura ÚTIL (padrão 72 mm, ajustável em Vendas › Configurações). */
 function cupomLarguraMm(){ try{ const v=+((DB._load().empresa||{}).cupomLarguraMm)||0; return [48,66,70,72,76].indexOf(v)>=0?v:72; }catch(e){ return 72; } }
 function cupomLarguraSet(v){ const d=DB._load(); d.empresa=d.empresa||{}; d.empresa.cupomLarguraMm=+v||72; try{ nuvemConfMarcar(d.empresa); }catch(e){window.__es&&__es(e)} DB._persist(); toast('Largura do cupom: '+(+v||72)+' mm','ok'); }
-function ticketCss(){ const W=cupomLarguraMm(); const pad=W<=50?1:1.5; const fs=W<=50?11:12; return TICKET_CSS.replace(/__W__/g,W+'mm').replace(/__PAD__/g,pad+'mm').replace(/__FS__/g,fs+'px'); }
+/* Margem ESQUERDA extra do cupom: muitas térmicas não imprimem os primeiros milímetros da bobina
+   (corta a 1ª letra de cada linha). Ajustável em Vendas › Configurações; padrão 3 mm. */
+function cupomMargemEsqMm(){ try{ const e=(DB._load().empresa||{}); if(e.cupomMargemEsqMm==null||e.cupomMargemEsqMm==='') return 3; const v=+e.cupomMargemEsqMm; return (v>=0&&v<=8)?v:3; }catch(x){ return 3; } }
+function cupomMargemEsqSet(v){ const d=DB._load(); d.empresa=d.empresa||{}; const n=+v; d.empresa.cupomMargemEsqMm=(n>=0&&n<=8)?n:3; try{ nuvemConfMarcar(d.empresa); }catch(e){window.__es&&__es(e)} DB._persist(); toast('Margem esquerda do cupom: '+d.empresa.cupomMargemEsqMm+' mm','ok'); }
+function ticketCss(){ const W=cupomLarguraMm(); const pad=W<=50?1:1.5; const fs=W<=50?11:12; const padL=pad+cupomMargemEsqMm(); return TICKET_CSS.replace(/__W__/g,W+'mm').replace(/__PADL__/g,padL+'mm').replace(/__PAD__/g,pad+'mm').replace(/__FS__/g,fs+'px'); }
 const TICKET_CSS=`@page{size:__W__ auto;margin:0}
 *{box-sizing:border-box;-webkit-print-color-adjust:exact;print-color-adjust:exact}
 html,body{margin:0;padding:0;background:#fff;color:#000}
 body{width:__W__;overflow:hidden}
-.thermal-ticket{width:__W__!important;max-width:__W__!important;margin:0;padding:2mm __PAD__;font-family:Arial,Helvetica,'Liberation Sans',sans-serif;font-size:__FS__;line-height:1.35;color:#000;font-weight:700;-webkit-text-stroke:0.25px #000;word-break:break-word;overflow-wrap:anywhere}
+.thermal-ticket{width:__W__!important;max-width:__W__!important;margin:0;padding:2mm __PAD__ 2mm __PADL__;font-family:Arial,Helvetica,'Liberation Sans',sans-serif;font-size:__FS__;line-height:1.35;color:#000;font-weight:700;-webkit-text-stroke:0.25px #000;word-break:break-word;overflow-wrap:anywhere}
 .thermal-ticket *{max-width:100%;color:#000!important;opacity:1!important;font-weight:700!important}
 .tk-c{text-align:center}.tk-b{font-weight:900!important}.tk-s{font-size:11.5px}
 .tk-sep{border-top:2px dashed #000;margin:6px 0}
@@ -32691,6 +32753,9 @@ function cfgPrefVendaCardHTML(){ return `
           <div class="field" style="margin:0"><label>${ico('print')} Largura de impressão do cupom (impressora térmica)</label>
             <select onchange="cupomLarguraSet(this.value)" style="max-width:340px">${[[72,'72 mm — bobina 80 mm (padrão)'],[70,'70 mm — bobina 80 mm, se ainda cortar'],[66,'66 mm — bobina 80 mm, margem maior'],[76,'76 mm — impressora com área maior'],[48,'48 mm — bobina 58 mm']].map(([v,l])=>`<option value="${v}" ${cupomLarguraMm()===v?'selected':''}>${l}</option>`).join('')}</select>
             <div class="t-mut" style="font-size:12px;margin-top:4px">A impressora térmica de bobina 80 mm imprime só ~72 mm. Se o cupom sair cortado nas laterais, diminua aqui.</div></div>
+          <div class="field" style="margin:12px 0 0"><label>${ico('print')} Margem esquerda do cupom</label>
+            <select onchange="cupomMargemEsqSet(this.value)" style="max-width:340px">${[[0,'0 mm — sem margem extra'],[2,'2 mm'],[3,'3 mm — padrão'],[4,'4 mm'],[5,'5 mm'],[6,'6 mm — se ainda cortar a 1ª letra']].map(([v,l])=>`<option value="${v}" ${cupomMargemEsqMm()===v?'selected':''}>${l}</option>`).join('')}</select>
+            <div class="t-mut" style="font-size:12px;margin-top:4px">Se a primeira letra de cada linha sair cortada no lado esquerdo, aumente aqui (a lateral direita não muda).</div></div>
         </div>
       </div>
 
