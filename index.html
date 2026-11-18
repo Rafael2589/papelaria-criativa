@@ -48,7 +48,7 @@ const CONFIG_EMPRESA = {
      Aparece no topo do menu e no rodapé das Configurações. Troque a cada publicação.
      MANTENHA O FORMATO 'vDD/MM-X' — é ele que o sistema usa para comparar as máquinas
      da loja e avisar quando alguma ficou para trás.                                  */
-  versao: 'v18/11-C',
+  versao: 'v18/11-D',
 
   /* 4) NUVEM (Supabase)  ------------------------------------------------------------
      Cole aqui a Project URL e a chave PUBLISHABLE do projeto Supabase DESTA empresa
@@ -9558,17 +9558,19 @@ const PROD_ORD_VAL={
   preco:     p=>+p.preco||0,
   margem:    p=>{ const v=+p.preco||0; return v?((v-(+p.custo||0))/v*100):-1; },
   embalagem: p=>(p.embalagemVenda&&+p.qtdPorEmbalagem>0)?(+p.qtdPorEmbalagem):-1,
+  promo:     p=>(+p.precoPromo>0)?(+p.precoPromo):-1,
+  atacado:   p=>(+p.precoAtacado>0)?(+p.precoAtacado):-1,
   estemb:    p=>(p.embalagemVenda&&+p.qtdPorEmbalagem>0&&!p.servico)?((+p.estoque||0)/(+p.qtdPorEmbalagem)):-1,
   estoque:   p=>+p.estoque||0 };
 /* Números (custo, venda, margem, estoque, embalagem) começam do MAIOR para o menor; texto, de A a Z.
    1º clique ordena, 2º inverte, 3º volta à ordem normal da lista. */
-const PROD_ORD_NUM=['custo','preco','margem','embalagem','estoque','estemb'];
+const PROD_ORD_NUM=['custo','preco','promo','atacado','margem','embalagem','estoque','estemb'];
 function prodOrdenar(col){ const ini=PROD_ORD_NUM.includes(col)?-1:1;
   if(PROD_ORD.col===col){ PROD_ORD = (PROD_ORD.dir===ini) ? {col:col,dir:-ini} : {col:'',dir:1}; } else { PROD_ORD={col:col,dir:ini}; }
   try{ renderProdTable(); }catch(e){window.__es&&__es(e)} }
 function prodOrdSeta(col){ if(PROD_ORD.col!==col) return '<span class="ord-seta" style="opacity:.28">↕</span>';
   return '<span class="ord-seta" style="color:var(--brand,#2563eb)">'+(PROD_ORD.dir>0?'▲':'▼')+'</span>'; }
-function prodOrdTh(col,label,dir){ return `<th class="${dir||''}" style="cursor:pointer;user-select:none;white-space:nowrap" title="Ordenar por ${esc(label)}" onclick="prodOrdenar('${col}')">${esc(label)} ${prodOrdSeta(col)}</th>`; }
+function prodOrdTh(col,label,dir,extra){ return `<th class="${dir||''}" style="${extra||''};cursor:pointer;user-select:none;white-space:nowrap" title="Ordenar por ${esc(label)}" onclick="prodOrdenar('${col}')">${esc(label)} ${prodOrdSeta(col)}</th>`; }
 function prodOrdAplicar(arr){ const f=PROD_ORD_VAL[PROD_ORD.col]; if(!f) return arr;
   const d=PROD_ORD.dir; return arr.slice().sort((a,b)=>{ const x=f(a), y=f(b);
     if(typeof x==='string'||typeof y==='string') return d*String(x).localeCompare(String(y),'pt-BR');
@@ -9578,24 +9580,25 @@ function prodEstEmbCell(p){ if(p.servico || !(p.embalagemVenda && +p.qtdPorEmbal
   const q=+p.qtdPorEmbalagem, est=+p.estoque||0; const emb=Math.floor((Math.round(est*1000)/1000)/q+1e-9); const resto=Math.round((est-emb*q)*1000)/1000;
   const tipo=esc(((p.embalagemTipo||'emb.')+'').toUpperCase()); const un=esc(p.unidade||'UN');
   const neg=est<0;
-  return `<b style="color:${neg?'var(--neg)':'var(--ink)'}">${fmtQ(emb)}</b> <span class="t-mut" style="font-size:11px">${tipo}</span>${resto>0?`<div class="t-mut" style="font-size:10.5px">+ ${fmtQ(resto)} ${un} avulso(s)</div>`:''}<div class="t-mut" style="font-size:10px">${fmtQ(q)} ${un}/${tipo}</div>`; }
+  return `<b style="color:${neg?'var(--neg)':'var(--ink)'}">${fmtQ(emb)}</b> <span class="t-mut" style="font-size:11px">${tipo}</span>${resto>0?`<div class="t-mut" style="font-size:10.5px">+ ${fmtQ(resto)} ${un} avulso(s)</div>`:''}`; }
 function prodTable(prods){ prods=prodOrdAplicar((prods||[]).slice());
   if(!prods.length) return `<div class="empty">${ico('box')}<h4>Nenhum produto</h4></div>`;
   const LIM=listLim('prod'); const totalN=prods.length; let nota=''; if(totalN>LIM){ prods=prods.slice(0,LIM); nota=listNota('prod', LIM, totalN, 'produtos'); }
   const _vis=prods.map(p=>p.id); const _todosVis=_vis.length>0 && _vis.every(id=>PROD_SEL.has(id));
-  return prodSelBarra()+nota+prodPromoResumoHTML(prods)+prodAtacResumoHTML(prods)+`<table><thead><tr><th style="width:28px"><input type="checkbox" ${_todosVis?'checked':''} onchange="prodSelVisiveis(this.checked)" title="Marcar/desmarcar os produtos desta lista"></th>${prodOrdTh('nome','Produto')}${prodOrdTh('sku','SKU')}${prodOrdTh('barras','Cód. barras')}${prodOrdTh('categoria','Categoria')}${prodOrdTh('custo','Custo','t-right')}${prodOrdTh('preco','Venda','t-right')}${prodOrdTh('margem','Margem','t-right')}${prodOrdTh('embalagem','Embalagem','t-right')}${prodOrdTh('estoque','Estoque','t-right')}${prodOrdTh('estemb','Estoque em embalagens','t-right')}<th></th></tr></thead><tbody>
+  return prodSelBarra()+nota+prodPromoResumoHTML(prods)+prodAtacResumoHTML(prods)+`<table><thead><tr><th style="width:28px"><input type="checkbox" ${_todosVis?'checked':''} onchange="prodSelVisiveis(this.checked)" title="Marcar/desmarcar os produtos desta lista"></th>${prodOrdTh('nome','Produto','','min-width:190px')}${prodOrdTh('sku','Código')}${prodOrdTh('categoria','Categoria')}${prodOrdTh('custo','Custo','t-right')}${prodOrdTh('preco','Venda','t-right')}${prodOrdTh('promo','Promo','t-right')}${prodOrdTh('atacado','Atacado','t-right')}${prodOrdTh('margem','Margem','t-right')}${prodOrdTh('embalagem','Emb.','t-right')}${prodOrdTh('estoque','Estoque','t-right')}${prodOrdTh('estemb','Em emb.','t-right')}<th></th></tr></thead><tbody>
   ${prods.map(p=>{ const _pi=prodPromoInfo(p); const _pv=_pi.ativa?(+p.precoPromo):(+p.preco); const margem=(_pv-p.custo)/_pv*100; const crit=!p.servico && p.estoque<=p.estoqueMinimo;
     return `<tr class="${_pi.ativa?'prod-promo-row':''}"${PROD_SEL.has(p.id)?' style="background:var(--amber-soft,#fff7e6)"':''}>
     <td><input type="checkbox" class="prod-sel-chk" ${PROD_SEL.has(p.id)?'checked':''} onchange="prodSelToggle('${p.id}',this.checked)"></td>
     <td><div class="prod-cell"><div class="prod-thumb" style="background:${p.cor}">${esc(p.nome[0])}</div>
       <div><div class="t-strong">${esc(p.nome)}${prodPromoTag(p)}${p.usoConsumo?' <span class="tag" style="font-size:9.5px;background:var(--surface-2);color:var(--muted)">USO/CONSUMO</span>':''}</div><div class="t-mut" style="font-size:12px">${esc(p.marca||'')}</div></div></div></td>
-    <td class="tnum t-mut" style="white-space:nowrap">${esc(p.sku||'—')}</td>
-    <td class="tnum t-mut" style="white-space:nowrap;font-size:12px">${esc(p.codigoBarras||'—')}</td>
+    <td class="tnum t-mut" style="white-space:nowrap"><div>${esc(p.sku||'—')}</div>${p.codigoBarras?`<div style="font-size:10.5px" title="Código de barras">${esc(p.codigoBarras)}</div>`:''}</td>
     <td class="t-mut">${esc(p.categoria)}${p.grupo&&p.grupo!==p.categoria?`<div style="font-size:11px">${esc(p.grupo)}${p.subgrupo?' › '+esc(p.subgrupo):''}</div>`:''}</td>
     <td class="t-right tnum t-mut">${BRL(p.custo)}</td>
-    ${prodPromoVendaCell(p).replace(/<\/td>$/, prodAtacLinha(p)+'</td>')}
+    <td class="t-right tnum t-strong">${BRL(p.preco)}</td>
+    ${prodPromoCol(p)}
+    ${prodAtacCol(p)}
     <td class="t-right"><span class="tag ${margem>=35?'pos':margem>=20?'warn':'neg'}">${PCT(margem)}</span></td>
-    <td class="t-right tnum t-mut">${(p.embalagemVenda&&+p.qtdPorEmbalagem>0)?(fmtQ(p.qtdPorEmbalagem)+' '+esc(p.unidade||'UN')+(p.embalagemTipo?' /'+esc(p.embalagemTipo):'')):'—'}</td>
+    <td class="t-right tnum t-mut" style="white-space:nowrap">${(p.embalagemVenda&&+p.qtdPorEmbalagem>0)?(fmtQ(p.qtdPorEmbalagem)+(p.embalagemTipo?' /'+esc(p.embalagemTipo):'')):'—'}</td>
     <td class="t-right">${p.servico?'<span class="tag" style="background:var(--blue-soft);color:var(--blue)">SERVIÇO</span>':`<b class="tnum" style="color:${crit?(p.estoque===0?'var(--neg)':'var(--amber-d)'):'var(--ink)'}">${fmtQ(p.estoque)}</b>`} <span class="t-mut" style="font-size:11px">${p.unidade}</span>${crit?`<div style="font-size:10.5px;color:var(--amber-d)">mín ${fmtQ(p.estoqueMinimo)}</div>`:''}</td>
     <td class="t-right tnum">${prodEstEmbCell(p)}</td>
     <td class="t-right" style="white-space:nowrap"><button class="btn-icon btn-ghost" onclick="estoqueForm('${p.id}')" title="Movimentar estoque">${ico('box')}</button>
@@ -9959,6 +9962,15 @@ function prodAtacResumoHTML(prods){ if(!PROD_ATAC) return ''; let semQtd=0, inva
     ${parte(semQtd,'sem quantidade mínima','#b45309')}${parte(inval,'com atacado maior ou igual ao preço de venda','#b45309')}
     <span class="t-mut" style="font-size:12px">O PDV só aplica o atacado quando a quantidade vendida chega à quantidade mínima do cadastro.</span>
     <div style="flex:1"></div><button class="btn btn-ghost btn-sm" onclick="prodAtacToggle()">${ico('x')} Mostrar todos</button></div>`; }
+/* Coluna PROMO: o preço promocional cadastrado e a situação (vigente, agendada, encerrada, inválida). */
+function prodPromoCol(p){ const i=prodPromoInfo(p); if(!i.tem) return '<td class="t-right t-mut">—</td>';
+  if(i.ativa) return `<td class="t-right tnum"><div class="t-strong" style="color:#e11d2a">${BRL(p.precoPromo)}</div><div style="font-size:10.5px;color:#e11d2a;font-weight:700">−${i.pct}%${i.fim?(' · até '+fDate(i.fim)):''}</div></td>`;
+  const msg=i.estado==='agendada'?('agendada'+(i.ini?(' '+fDate(i.ini)):'')):(i.estado==='encerrada'?('encerrada'+(i.fim?(' '+fDate(i.fim)):'')):'inválida (≥ venda)');
+  return `<td class="t-right tnum"><div class="t-mut">${BRL(p.precoPromo)}</div><div class="t-mut" style="font-size:10.5px">${esc(msg)}</div></td>`; }
+/* Coluna ATACADO: o preço de atacado e a quantidade mínima do cadastro. */
+function prodAtacCol(p){ if(!prodTemAtac(p)) return '<td class="t-right t-mut">—</td>';
+  const q=+p.atacadoQtdMin||0;
+  return `<td class="t-right tnum"><div class="t-strong" style="color:#2563eb">${BRL(p.precoAtacado)}</div><div style="font-size:10.5px;${q>0?'color:var(--mut)':'color:var(--amber-d)'}">${q>0?('≥ '+fmtQ(q)+' '+esc(p.unidade||'UN')):'sem qtd mín.'}</div></td>`; }
 function prodAtacLinha(p){ if(!PROD_ATAC||!prodTemAtac(p)) return ''; return `<div style="font-size:11px;color:#2563eb;font-weight:700;margin-top:2px">Atacado ${BRL(p.precoAtacado)}${+p.atacadoQtdMin>0?(' · a partir de '+fmtQ(p.atacadoQtdMin)+' '+esc(p.unidade||'UN')):' · sem qtd mínima'}</div>`; }
 function prodPromoBtnHTML(){ let n=0, v=0; DB.all('produtos').forEach(p=>{ if(prodTemPromo(p)){ n++; if(prodPromoInfo(p).ativa) v++; } });
   return `<button class="btn btn-sm ${PROD_PROMO?'btn-amber':'btn-ghost'}" id="prod-promo-btn" onclick="prodPromoToggle()" style="${PROD_PROMO?'':'border:1px solid #e11d2a;color:#e11d2a'}" title="${PROD_PROMO?'Clique para voltar a mostrar todos os produtos':'Mostra só os produtos que têm preço promocional cadastrado'}">${ico('fire')} Em promoção <b>(${NUM(n)})</b>${v&&v!==n?` <span style="font-size:11px;font-weight:500">· ${NUM(v)} vigente(s)</span>`:''}</button>`+prodAtacBtnHTML(); }
@@ -16398,36 +16410,40 @@ ${P} .bz-foot{background:${C.navy};color:${C.branco};padding:${s(4)} ${s(8)};tex
 ${P} .bz-foot b{color:${C.amarelo};font-size:${s(6)};display:block;margin-bottom:${s(0.8)};letter-spacing:${s(0.3)}}
 ${P} .bz-faixa{height:${s(3.2)};background:repeating-linear-gradient(135deg,${C.azul} 0 ${s(6)},${C.navy} ${s(6)} ${s(12)},${C.magenta} ${s(12)} ${s(18)},${C.amarelo} ${s(18)} ${s(24)})}
 ${banCartazCSSBF(P,s)}`; }
-/* TEMA BLACK FRIDAY: fundo preto, amarelo neon e vermelho — o cartaz inteiro muda de visual (não é só a cor). */
+/* TEMA BLACK FRIDAY: o cartaz continua CLARO (a logo aparece bem); só os elementos da Black Friday mudam —
+   faixa preta com BLACK FRIDAY, listras amarelas e pretas, preço em amarelo com sombra vermelha e rodapé preto. */
 function banCartazCSSBF(P,s){ const Y='#FFD400', R='#E10600', K='#0b0b0b';
-  return `${P}.bf{background:${K};color:#fff;border-color:${Y}}
-${P}.bf .bz-top{background:linear-gradient(120deg,#000 0%,#1c1c1c 100%);color:${Y};min-height:${s(26)};padding:${s(3)} ${s(9)};border-bottom:${s(1)} solid ${Y}}
-${P}.bf .bz-logo .bz-logotxt{color:${Y}} ${P}.bf .bz-logo .bz-logosub{color:#fff}
-${P}.bf .bz-etq{background:${R};color:#fff;border-color:#fff;box-shadow:${s(1.5)} ${s(1.5)} 0 ${Y}}
+  return `${P}.bf{background:#fff;color:${K};border-color:${K}}
+${P}.bf .bz-top{background:#fff;min-height:${s(40)};padding:${s(4)} ${s(9)};border-bottom:${s(1.2)} solid ${K}}
+${P}.bf .bz-top.solo{justify-content:center}
+${P}.bf .bz-logo img{max-height:${s(34)};max-width:${s(120)}}
+${P}.bf .bz-logo .bz-logotxt{color:${K}} ${P}.bf .bz-logo .bz-logosub{color:#444}
+${P}.bf .bz-etq{background:${R};color:#fff;border-color:${K};box-shadow:${s(1.5)} ${s(1.5)} 0 ${Y}}
 ${P}.bf .bz-faixa{background:repeating-linear-gradient(135deg,${Y} 0 ${s(6)},${K} ${s(6)} ${s(12)})}
-${P}.bf .bz-bfbig{display:flex;flex-direction:row;align-items:center;justify-content:center;gap:${s(4)};margin-top:0}
-${P}.bf .bz-bfbig .bf1{font-weight:900;font-size:${s(22)};letter-spacing:${s(1.5)};color:#fff;line-height:1}
-${P}.bf .bz-bfbig .bf2{font-weight:900;font-size:${s(22)};letter-spacing:${s(1.5)};color:${K};background:${Y};padding:${s(1)} ${s(8)};transform:skew(-8deg);box-shadow:${s(1.8)} ${s(1.8)} 0 ${R};line-height:1}
-${P}.bf .bz-nome{color:#fff;text-shadow:${s(1)} ${s(1)} 0 ${R}} ${P}.bf .bz-body{gap:${s(2)};padding:${s(4)} ${s(9)}} ${P}.bf .bz-top .bz-vazio{flex:1}
-${P}.bf .bz-nomebar{background:${Y}}
-${P}.bf .bz-desc{color:${Y}}
-${P}.bf .bz-de{color:#d4d4d4} ${P}.bf .bz-de .bz-delbl{color:#d4d4d4} ${P}.bf .bz-de .bz-deval{color:#fff;text-decoration:line-through;text-decoration-color:${R};text-decoration-thickness:${s(1.2)}}
-${P}.bf .bz-star{background:${Y};border-color:#fff;box-shadow:${s(2)} ${s(2)} 0 ${R}}
+${P}.bf .bz-body{gap:${s(2.5)};padding:${s(3)} ${s(9)} ${s(4)}}
+${P}.bf .bz-bfbig{margin:0;background:${K};padding:${s(3.2)} ${s(9)};display:flex;flex-direction:row;align-items:center;justify-content:center;gap:${s(4)};border-top:${s(1)} solid ${Y};border-bottom:${s(1)} solid ${Y}}
+${P}.bf .bz-bfbig .bf1{font-weight:900;font-size:${s(21)};letter-spacing:${s(1.5)};color:#fff;line-height:1}
+${P}.bf .bz-bfbig .bf2{font-weight:900;font-size:${s(21)};letter-spacing:${s(1.5)};color:${K};background:${Y};padding:${s(1)} ${s(7)};transform:skew(-8deg);box-shadow:${s(1.6)} ${s(1.6)} 0 ${R};line-height:1}
+${P}.bf .bz-nome{color:${K};text-shadow:${s(1)} ${s(1)} 0 ${Y}}
+${P}.bf .bz-nomebar{background:${R}}
+${P}.bf .bz-desc{color:#333}
+${P}.bf .bz-de{color:#555} ${P}.bf .bz-de .bz-delbl{color:#555} ${P}.bf .bz-de .bz-deval{color:#555;text-decoration:line-through;text-decoration-color:${R};text-decoration-thickness:${s(1.2)}}
+${P}.bf .bz-star{background:${Y};border-color:${K};box-shadow:${s(2)} ${s(2)} 0 ${R}}
 ${P}.bf .bz-preco{color:${K}} ${P}.bf .bz-preco .unid{color:${K}}
-${P}.bf .bz-off{background:${R};color:#fff;border-color:#fff;box-shadow:${s(1)} ${s(1)} 0 ${K}} ${P}.bf .bz-off small{color:#fff}
-${P}.bf .bz-cond{background:${R};color:#fff;box-shadow:${s(1)} ${s(1)} 0 ${Y}}
-${P}.bf .bz-val{color:#bdbdbd}
-${P}.bf .bz-foot{background:${Y};color:${K}} ${P}.bf .bz-foot b{color:${K}}`; }
+${P}.bf .bz-off{background:${R};color:#fff;border-color:${K};box-shadow:${s(1)} ${s(1)} 0 ${K}} ${P}.bf .bz-off small{color:#fff}
+${P}.bf .bz-cond{background:${K};color:${Y};box-shadow:${s(1)} ${s(1)} 0 ${R}}
+${P}.bf .bz-val{color:#555}
+${P}.bf .bz-foot{background:${K};color:#fff} ${P}.bf .bz-foot b{color:${Y}}`; }
 function banCartazHTML(d){ d=d||BAN; const emp=DB._load().empresa||{}; const nome=(d.nome||'').trim()||'NOME DO PRODUTO';
   const cls=nome.length>34?'sm':(nome.length>20?'md':''); const ref=banDeRef(d); const de=ref.valor, por=banPreco(d.por); const pp=banPrecoPartes(por); const off=banDescontoPct(d);
   const logo=emp.logo?`<img src="${emp.logo}" alt="">`:`<div class="bz-logotxt">${esc((emp.nome||'SUA LOJA').toUpperCase())}</div>${emp.razaoSocial&&emp.razaoSocial!==emp.nome?`<div class="bz-logosub">${esc(emp.razaoSocial)}</div>`:''}`;
   const rod=(d.rodape||'').trim()||banRodapePadrao();
   const bf=(d.tema==='blackfriday');
   return `<div class="ban-cz${bf?' bf':''}">
-    <div class="bz-top"><div class="bz-logo">${logo}</div>${(bf&&banEtiquetaTxt(d)==='BLACK FRIDAY')?'':`<div class="bz-etq">${esc(banEtiquetaTxt(d))}</div>`}</div>
+    <div class="bz-top${(bf&&banEtiquetaTxt(d)==='BLACK FRIDAY')?' solo':''}"><div class="bz-logo">${logo}</div>${(bf&&banEtiquetaTxt(d)==='BLACK FRIDAY')?'':`<div class="bz-etq">${esc(banEtiquetaTxt(d))}</div>`}</div>
     <div class="bz-faixa"></div>
+    ${bf?'<div class="bz-bfbig"><span class="bf1">BLACK</span><span class="bf2">FRIDAY</span></div>':''}
     <div class="bz-body">
-      ${bf?'<div class="bz-bfbig"><span class="bf1">BLACK</span><span class="bf2">FRIDAY</span></div>':''}
       <div class="bz-nome ${cls}">${esc(nome)}</div><div class="bz-nomebar"></div>
       ${(d.desc||'').trim()?`<div class="bz-desc">${esc(d.desc.trim())}</div>`:''}
       ${de>por&&por>0?`<div class="bz-de"><span class="bz-delbl">${esc(ref.rotulo)}</span><span class="bz-deval">${BRL(de)}</span></div>`:''}
