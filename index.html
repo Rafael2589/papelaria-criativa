@@ -48,7 +48,7 @@ const CONFIG_EMPRESA = {
      Aparece no topo do menu e no rodapé das Configurações. Troque a cada publicação.
      MANTENHA O FORMATO 'vDD/MM-X' — é ele que o sistema usa para comparar as máquinas
      da loja e avisar quando alguma ficou para trás.                                  */
-  versao: 'v18/11-A',
+  versao: 'v18/11-B',
 
   /* 4) NUVEM (Supabase)  ------------------------------------------------------------
      Cole aqui a Project URL e a chave PUBLISHABLE do projeto Supabase DESTA empresa
@@ -16016,7 +16016,7 @@ function etiqFontDefault(m){ const compact=m.h<=25, big=m.h>=45; return { nome: 
 function etiqFont(m){ const d=etiqFontDefault(m); const o=(ETIQ.fs&&ETIQ.fs[m.id])||{}; const cl=(v,def)=>{ v=+v; return (v>0&&isFinite(v))?Math.min(60,Math.max(3,v)):def; }; const align=(o.align==='left'||o.align==='right')?o.align:'center'; return { nome:cl(o.nome,d.nome), preco:cl(o.preco,d.preco), cod:cl(o.cod,d.cod), align }; }
 // Produto de amostra para a pré-visualização ao vivo (usa o 1º selecionado, senão o 1º cadastrado, senão um exemplo)
 function etiqAmostra(){ const sel=Object.keys(ETIQ.sel||{}); let p=sel.length?DB.get('produtos',sel[0]):null; if(!p) p=DB.all('produtos')[0]; if(!p) p={nome:'PRODUTO DE EXEMPLO 5/16 x 100mm', sku:'EX-001', codigoBarras:'7890000000000', preco:19.9};
-  if(ETIQ.atacado && !(+p.precoAtacado>0)) p=Object.assign({},p,{precoAtacado:Math.round((+p.preco||19.9)*0.9*100)/100, atacadoQtdMin:+p.atacadoQtdMin||10});   // exemplo na pré-visualização quando o produto não tem atacado
+  if(ETIQ.atacado && !(+p.precoAtacado>0)) p=Object.assign({},p,{_atacExemplo:true,precoAtacado:Math.round((+p.preco||19.9)*0.9*100)/100, atacadoQtdMin:+p.atacadoQtdMin||10});   // exemplo na pré-visualização quando o produto não tem atacado
   return p; }
 function etiqFonteFZ(){ const m=etiqModelo(); const d=etiqFontDefault(m); const g=id=>(document.getElementById(id)||{}).value;
   const norm=(v,def)=>{ v=+v; return (v>0&&isFinite(v))?Math.min(60,Math.max(3,v)):def; };
@@ -16028,7 +16028,7 @@ function etiqFonteBox(m,fz){ const emp=DB._load().empresa||{}; const pxPerMm=96/
   return `<div style="width:${Math.round(wPx*sc)}px;height:${Math.round(hPx*sc)}px;overflow:hidden;margin:0 auto">
     <div style="width:${wPx}px;transform:scale(${sc.toFixed(3)});transform-origin:top left">${etiqLabel(etiqAmostra(), m, emp, fz)}</div></div>`; }
 function etiqFontePreview(){ const m=etiqModelo(); const prev=document.getElementById('et-fs-preview'); if(!prev) return;
-  try{ prev.innerHTML=etiqFonteBox(m, etiqFonteFZ()); }catch(e){window.__es&&__es(e)} }
+  try{ prev.innerHTML=etiqFonteBox(m, etiqFonteFZ()); etiqFitAll(prev); }catch(e){window.__es&&__es(e)} }
 function etiqFonteBodyHTML(){ const m=etiqModelo(); const f=etiqFont(m); const d=etiqFontDefault(m);
   return `<p class="t-mut" style="font-size:12.5px;margin-bottom:12px;line-height:1.5">Ajuste o tamanho (em pt) do <b>nome do produto</b>, do <b>preço</b> e do <b>código</b>, e escolha a <b>posição</b> das informações. A pré-visualização ao lado muda <b>na hora</b>. Os valores são salvos <b>por modelo</b> e valem para a impressão pelo navegador e para o PDF. Deixe em branco/0 para usar o padrão.</p>
       <div style="display:flex;flex-wrap:wrap;gap:16px;align-items:start">
@@ -16058,6 +16058,7 @@ function etiqFonteBodyHTML(){ const m=etiqModelo(); const f=etiqFont(m); const d
           <label class="t-mut" style="font-size:12px;font-weight:700">Pré-visualização ao vivo</label>
           <div style="border:1px dashed var(--line);border-radius:10px;padding:14px;background:#fff;margin-top:6px">
             <div id="et-fs-preview">${etiqFonteBox(m, f)}</div>
+            ${(ETIQ.atacado&&etiqAmostra()._atacExemplo)?`<div class="t-mut" style="font-size:11px;margin-top:6px;max-width:330px">Os valores de atacado acima são só um <b>exemplo</b>: o produto de amostra não tem preço de atacado cadastrado.</div>`:''}
           </div>
         </div>
       </div>`;
@@ -16071,7 +16072,7 @@ function etiqBarrasToggle(){ ETIQ.codBarras = (ETIQ.codBarras===false); etiqPers
 function etiqFonteModal(){ const m=etiqModelo();
   openModal(`<div class="modal-head"><h3>Tamanho e posição das informações — ${m.w}×${m.h} mm</h3><button class="btn-icon btn-ghost" onclick="closeModal()">${ico('x')}</button></div>
     <div class="modal-body">${etiqFonteBodyHTML()}</div>
-    <div class="modal-foot">${etiqFonteFootHTML()}</div>`); etiqCfgAutoLigar();
+    <div class="modal-foot">${etiqFonteFootHTML()}</div>`); etiqCfgAutoLigar(); setTimeout(()=>etiqFitAll(document.getElementById('et-fs-preview')),0);
 }
 function etiqFonteSalvar(){ etiqFonteAplicar(); closeModal(); toast('Etiqueta salva','ok'); viewEtiquetas(); }
 function etiqFonteAplicar(){ const m=etiqModelo(); const g=id=>(document.getElementById(id)||{}).value; if(!document.getElementById('et-fs-preco')) return;
@@ -16180,7 +16181,7 @@ function etiqConfigModal(tab){ try{ if(document.getElementById('et-gapX')||docum
     <div style="padding:0 20px;border-bottom:1px solid var(--line);display:flex;flex-wrap:wrap">${tabBtn('espaco','Configurar espaçamento')}${tabBtn('fonte','Tamanho das informações'+(isPromo?' (promoção)':''))}</div>
     <div class="modal-body">${body}<div id="etiq-salvo" class="t-mut" style="font-size:11.5px;margin-top:8px;opacity:.8">As alterações são salvas automaticamente.</div></div>
     <div class="modal-foot">${foot}</div>`, true);
-  etiqCfgAutoLigar();
+  etiqCfgAutoLigar(); setTimeout(()=>etiqFitAll(document.getElementById('et-fs-preview')),0);
 }
 function etiqEspacoSalvar(){ etiqEspacoAplicar(); closeModal(); toast('Espaçamento salvo','ok'); viewEtiquetas(); }
 function etiqEspacoAplicar(){ const g=id=>(document.getElementById(id)||{}).value; if(!document.getElementById('et-gapX')) return;
@@ -16436,10 +16437,12 @@ function viewEtiquetas(){ try{ etiqHydrate(); }catch(e){window.__es&&__es(e)} co
      <div class="card card-pad">
        <h3 style="margin-bottom:4px">Pré-visualização</h3>
        <p class="t-mut" style="font-size:12px;margin-bottom:14px">Modelo ${m.w}×${m.h} mm · ${m.cols} coluna(s). O que aparece aqui é exatamente o que será impresso.</p>
+       ${etiqAtacAviso()}
        <div id="etiq-preview">${etiqLabelsHTML(m)}</div>
      </div>
    </div>`;
   setTimeout(()=>{const q=document.getElementById('etiq-q'); if(q && ETIQ.q){q.focus();q.setSelectionRange(q.value.length,q.value.length);}},40);
+  etiqFitAll(document.getElementById('etiq-preview'));
 }
 function etiqFiltered(){ const q=ETIQ.q.trim().toLowerCase();
   return prodSearchSort(DB.all('produtos').filter(p=>!q||prodMatchTokens(p,(p.nome||'')+' '+(p.sku||'')+' '+(p.marca||'')+' '+(p.categoria||'')+' '+(p.grupo||'')+' '+(p.subgrupo||'')+' '+(p.codigoBarras||''), q)), q); }
@@ -16472,6 +16475,13 @@ function etiqUnid(p){ const u=((p&&p.unidade)||'').toString().trim().toUpperCase
 function etiqAtacInfo(p){ if(!ETIQ.atacado||!p) return null; const v=+p.precoAtacado||0; if(!(v>0)) return null; const q=+p.atacadoQtdMin||0; const un=etiqUnid(p);
   return { valor:v, un, cap:q>0?('ATACADO A PARTIR DE '+NUM(q)+(un?(' '+un):'')):'ATACADO' }; }
 function etiqAtacFontes(fz){ return { cap:Math.max(4.2,Math.min(6,Math.round(fz.preco*0.4*10)/10)), val:Math.max(6,Math.round(fz.preco*0.66*10)/10) }; }
+/* Ajuste automático: quando a etiqueta com preço de atacado não cabe na altura do modelo (fontes grandes),
+   reduz proporcionalmente as letras dela até caber — assim o atacado nunca fica cortado. Só mexe nas etiquetas que têm o atacado. */
+function etiqFitAll(root){ try{ (root||document).querySelectorAll('.etiq-label').forEach(el=>{ if(!el.querySelector('.el-atac')) return;
+    el.style.removeProperty('--es'); let sc=1, n=0; while(el.scrollHeight>el.clientHeight+1 && sc>0.4 && n<20){ sc=Math.round((sc-0.05)*100)/100; el.style.setProperty('--es',sc); n++; }
+    if(n>0 && sc>0.4){ sc=Math.round((sc-0.05)*100)/100; el.style.setProperty('--es',sc); } }); }catch(e){window.__es&&__es(e)} }
+function etiqAtacAviso(){ if(!ETIQ.atacado||ETIQ.promo) return ''; const sem=[]; Object.keys(ETIQ.sel||{}).forEach(id=>{ const p=DB.get('produtos',id); if(p && !(+p.precoAtacado>0)) sem.push(p.nome||''); });
+  if(!sem.length) return ''; return `<div style="border:1px solid #f59e0b;background:#fffbeb;border-radius:10px;padding:8px 12px;margin-bottom:12px;font-size:12.5px;line-height:1.5;color:#92400e"><b>${sem.length} produto(s) sem preço de atacado cadastrado</b> — saem só com o preço de venda. Para sair o atacado, preencha "Preço de atacado" e "Qtd mínima p/ atacado" no cadastro do produto.<div style="font-size:11.5px;margin-top:3px;opacity:.9">${sem.slice(0,4).map(esc).join(' · ')}${sem.length>4?' · …':''}</div></div>`; }
 function etiqAtacadoToggle(){ ETIQ.atacado = !(ETIQ.atacado===true); etiqPersist();
   const b=document.getElementById('et-atac-btn');
   if(b){ const on=ETIQ.atacado===true; b.className='btn '+(on?'btn-amber':'btn-ghost')+' btn-sm'; b.innerHTML=on?(ico('check')+' Incluído'):'Incluir preço de atacado'; }
@@ -16481,17 +16491,26 @@ function etiqLabel(p,m,emp,fzOverride){ const code=p.codigoBarras||p.sku||p.id; 
   const align=fz.align||'center'; const jc=align==='left'?'flex-start':(align==='right'?'flex-end':'center');
   return `<div class="etiq-label" style="width:${m.w}mm;height:${m.h}mm;display:flex;flex-direction:column;align-items:${jc};justify-content:space-between;text-align:${align};padding:${compact?'1.6mm 2.6mm':(big?'1.8mm 2.4mm':'1.2mm 1.8mm')}">
     ${compact?'':`<div class="el-store" style="font-size:5pt;color:#444;line-height:1;width:100%;text-align:${align}">${esc(emp.nome||'')}</div>`}
-    <div class="el-name" style="font-weight:700;font-size:${fz.nome}pt;line-height:1.08;width:100%;text-align:${align};display:-webkit-box;-webkit-line-clamp:${(ETIQ.codBarras===false)?(big?10:6):(big?3:2)-((at&&compact)?1:0)};-webkit-box-orient:vertical;overflow:hidden">${esc(p.nome)}</div>
+    <div class="el-name" style="${at?'flex:0 0 auto;':''}font-weight:700;font-size:calc(${fz.nome}pt*var(--es,1));line-height:1.08;width:100%;text-align:${align};display:-webkit-box;-webkit-line-clamp:${(ETIQ.codBarras===false)?(big?10:6):(big?3:2)-((at&&compact)?1:0)};-webkit-box-orient:vertical;overflow:hidden">${esc(p.nome)}</div>
     ${ETIQ.codBarras===false?'':`<div class="el-bar" style="width:100%;display:flex;justify-content:${jc}">${barcodeSVG(code, compact?18:26)}</div>`}
-    <div style="width:100%;text-align:${align};font-size:${fz.cod}pt;font-weight:800;letter-spacing:.3px;line-height:1;color:#000">COD ${esc(String(p.sku||code).substring(0,18))}</div>
+    <div style="width:100%;text-align:${align};font-size:calc(${fz.cod}pt*var(--es,1));font-weight:800;letter-spacing:.3px;line-height:1;color:#000">COD ${esc(String(p.sku||code).substring(0,18))}</div>
     <div style="width:100%">
     <div class="el-foot" style="width:100%;display:flex;justify-content:${jc};align-items:baseline;gap:.6mm">
-      <span class="el-price" style="font-weight:800;font-size:${fz.preco}pt">${BRL(p.preco)}</span>${etiqUnid(p)?`<span class="el-un" style="font-weight:700;font-size:${Math.max(4,Math.round(fz.preco*0.5*10)/10)}pt;color:#000;white-space:nowrap">/ ${esc(etiqUnid(p))}</span>`:''}</div>
-    ${at?`<div class="el-atac" style="width:100%;text-align:${align};line-height:1.05;color:#000;margin-top:.4mm"><div style="font-size:${fa.cap}pt;font-weight:700;white-space:nowrap;overflow:hidden">${esc(at.cap)}</div><div style="font-size:${fa.val}pt;font-weight:800;white-space:nowrap">${BRL(at.valor)}${at.un?`<span style="font-size:${Math.max(4,Math.round(fa.val*0.55*10)/10)}pt;font-weight:700"> / ${esc(at.un)}</span>`:''}</div></div>`:''}
+      <span class="el-price" style="font-weight:800;font-size:calc(${fz.preco}pt*var(--es,1))">${BRL(p.preco)}</span>${etiqUnid(p)?`<span class="el-un" style="font-weight:700;font-size:calc(${Math.max(4,Math.round(fz.preco*0.5*10)/10)}pt*var(--es,1));color:#000;white-space:nowrap">/ ${esc(etiqUnid(p))}</span>`:''}</div>
+    ${at?`<div class="el-atac" style="width:100%;text-align:${align};line-height:1.05;color:#000;margin-top:.4mm"><div style="font-size:calc(${fa.cap}pt*var(--es,1));font-weight:700;white-space:nowrap;overflow:hidden">${esc(at.cap)}</div><div style="font-size:calc(${fa.val}pt*var(--es,1));font-weight:800;white-space:nowrap">${BRL(at.valor)}${at.un?`<span style="font-size:calc(${Math.max(4,Math.round(fa.val*0.55*10)/10)}pt*var(--es,1));font-weight:700"> / ${esc(at.un)}</span>`:''}</div></div>`:''}
     </div>
   </div>`; }
 function etiqLabelList(){ const labels=[]; Object.entries(ETIQ.sel).forEach(([id,n])=>{ const p=DB.get('produtos',id); if(p) for(let i=0;i<n;i++) labels.push(p); }); return labels; }
-function etiqDrawLabel(doc,p,ox,oy,m,emp){ const compact=m.h<=25; const big=m.h>=45; oy=+oy||0; const fz=etiqFont(m);
+/* Altura mínima (mm) que o conteúdo da etiqueta com atacado precisa — usada para reduzir as letras quando não cabe. */
+function etiqPdfNecessaria(doc,p,m,f,at,compact,big,w){ const P=0.35278; const fa=etiqAtacFontes(f);
+  doc.setFont('helvetica','bold'); doc.setFontSize(f.nome); const cap=(ETIQ.codBarras===false)?4:Math.max(1,(big?3:2)-((at&&compact)?1:0));
+  const nl=Math.max(1,Math.min(cap,doc.splitTextToSize(String(p.nome||''),w).length));
+  const topo=(compact?1.2:1.1)+(compact?0:(5.2*P*0.98+0.4))+f.nome*P*0.74+(nl-1)*f.nome*P*1.08+f.nome*P*0.24+0.9;
+  const base=(compact?1.0:0.9)+(fa.val*P*0.98+0.25+fa.cap*P*0.98+0.5)+f.preco*P*0.98+Math.max(0.6,f.preco*P*0.14)+f.cod*P*0.98+0.9+((ETIQ.codBarras===false)?0:4.4);
+  return topo+base; }
+function etiqDrawLabel(doc,p,ox,oy,m,emp){ const compact=m.h<=25; const big=m.h>=45; oy=+oy||0; let fz=etiqFont(m);
+  if(etiqAtacInfo(p)){ const _w=m.w-2*(compact?2.6:1.8); let sc=1; for(let k=0;k<20;k++){ const f2={nome:fz.nome*sc,preco:fz.preco*sc,cod:fz.cod*sc,align:fz.align}; if(etiqPdfNecessaria(doc,p,m,f2,true,compact,big,_w)<=m.h || sc<=0.4) break; sc=Math.round((sc-0.05)*100)/100; }
+    if(sc<1) fz={nome:fz.nome*sc,preco:fz.preco*sc,cod:fz.cod*sc,align:fz.align}; }
   const P=0.35278; // mm por pt (para calcular a altura real de cada texto e evitar sobreposição)
   const padX=compact?2.6:1.8, padTop=compact?1.2:1.1, padBot=compact?1.0:0.9; const x=ox+padX, w=m.w-2*padX, cx=ox+m.w/2;
   const align=fz.align||'center'; const anchor=align==='left'?'left':(align==='right'?'right':'center');
