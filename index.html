@@ -48,7 +48,7 @@ const CONFIG_EMPRESA = {
      Aparece no topo do menu e no rodapé das Configurações. Troque a cada publicação.
      MANTENHA O FORMATO 'vDD/MM-X' — é ele que o sistema usa para comparar as máquinas
      da loja e avisar quando alguma ficou para trás.                                  */
-  versao: 'v18/11-B',
+  versao: 'v18/11-C',
 
   /* 4) NUVEM (Supabase)  ------------------------------------------------------------
      Cole aqui a Project URL e a chave PUBLISHABLE do projeto Supabase DESTA empresa
@@ -9558,10 +9558,11 @@ const PROD_ORD_VAL={
   preco:     p=>+p.preco||0,
   margem:    p=>{ const v=+p.preco||0; return v?((v-(+p.custo||0))/v*100):-1; },
   embalagem: p=>(p.embalagemVenda&&+p.qtdPorEmbalagem>0)?(+p.qtdPorEmbalagem):-1,
+  estemb:    p=>(p.embalagemVenda&&+p.qtdPorEmbalagem>0&&!p.servico)?((+p.estoque||0)/(+p.qtdPorEmbalagem)):-1,
   estoque:   p=>+p.estoque||0 };
 /* Números (custo, venda, margem, estoque, embalagem) começam do MAIOR para o menor; texto, de A a Z.
    1º clique ordena, 2º inverte, 3º volta à ordem normal da lista. */
-const PROD_ORD_NUM=['custo','preco','margem','embalagem','estoque'];
+const PROD_ORD_NUM=['custo','preco','margem','embalagem','estoque','estemb'];
 function prodOrdenar(col){ const ini=PROD_ORD_NUM.includes(col)?-1:1;
   if(PROD_ORD.col===col){ PROD_ORD = (PROD_ORD.dir===ini) ? {col:col,dir:-ini} : {col:'',dir:1}; } else { PROD_ORD={col:col,dir:ini}; }
   try{ renderProdTable(); }catch(e){window.__es&&__es(e)} }
@@ -9572,11 +9573,17 @@ function prodOrdAplicar(arr){ const f=PROD_ORD_VAL[PROD_ORD.col]; if(!f) return 
   const d=PROD_ORD.dir; return arr.slice().sort((a,b)=>{ const x=f(a), y=f(b);
     if(typeof x==='string'||typeof y==='string') return d*String(x).localeCompare(String(y),'pt-BR');
     return d*((x||0)-(y||0)); }); }
+/* Estoque convertido em EMBALAGENS (só para produto com "embalagem" marcada): 125 un com 12 por caixa = 10 CX + 5 UN. */
+function prodEstEmbCell(p){ if(p.servico || !(p.embalagemVenda && +p.qtdPorEmbalagem>0)) return '<span class="t-mut">—</span>';
+  const q=+p.qtdPorEmbalagem, est=+p.estoque||0; const emb=Math.floor((Math.round(est*1000)/1000)/q+1e-9); const resto=Math.round((est-emb*q)*1000)/1000;
+  const tipo=esc(((p.embalagemTipo||'emb.')+'').toUpperCase()); const un=esc(p.unidade||'UN');
+  const neg=est<0;
+  return `<b style="color:${neg?'var(--neg)':'var(--ink)'}">${fmtQ(emb)}</b> <span class="t-mut" style="font-size:11px">${tipo}</span>${resto>0?`<div class="t-mut" style="font-size:10.5px">+ ${fmtQ(resto)} ${un} avulso(s)</div>`:''}<div class="t-mut" style="font-size:10px">${fmtQ(q)} ${un}/${tipo}</div>`; }
 function prodTable(prods){ prods=prodOrdAplicar((prods||[]).slice());
   if(!prods.length) return `<div class="empty">${ico('box')}<h4>Nenhum produto</h4></div>`;
   const LIM=listLim('prod'); const totalN=prods.length; let nota=''; if(totalN>LIM){ prods=prods.slice(0,LIM); nota=listNota('prod', LIM, totalN, 'produtos'); }
   const _vis=prods.map(p=>p.id); const _todosVis=_vis.length>0 && _vis.every(id=>PROD_SEL.has(id));
-  return prodSelBarra()+nota+prodPromoResumoHTML(prods)+`<table><thead><tr><th style="width:28px"><input type="checkbox" ${_todosVis?'checked':''} onchange="prodSelVisiveis(this.checked)" title="Marcar/desmarcar os produtos desta lista"></th>${prodOrdTh('nome','Produto')}${prodOrdTh('sku','SKU')}${prodOrdTh('barras','Cód. barras')}${prodOrdTh('categoria','Categoria')}${prodOrdTh('custo','Custo','t-right')}${prodOrdTh('preco','Venda','t-right')}${prodOrdTh('margem','Margem','t-right')}${prodOrdTh('embalagem','Embalagem','t-right')}${prodOrdTh('estoque','Estoque','t-right')}<th></th></tr></thead><tbody>
+  return prodSelBarra()+nota+prodPromoResumoHTML(prods)+prodAtacResumoHTML(prods)+`<table><thead><tr><th style="width:28px"><input type="checkbox" ${_todosVis?'checked':''} onchange="prodSelVisiveis(this.checked)" title="Marcar/desmarcar os produtos desta lista"></th>${prodOrdTh('nome','Produto')}${prodOrdTh('sku','SKU')}${prodOrdTh('barras','Cód. barras')}${prodOrdTh('categoria','Categoria')}${prodOrdTh('custo','Custo','t-right')}${prodOrdTh('preco','Venda','t-right')}${prodOrdTh('margem','Margem','t-right')}${prodOrdTh('embalagem','Embalagem','t-right')}${prodOrdTh('estoque','Estoque','t-right')}${prodOrdTh('estemb','Estoque em embalagens','t-right')}<th></th></tr></thead><tbody>
   ${prods.map(p=>{ const _pi=prodPromoInfo(p); const _pv=_pi.ativa?(+p.precoPromo):(+p.preco); const margem=(_pv-p.custo)/_pv*100; const crit=!p.servico && p.estoque<=p.estoqueMinimo;
     return `<tr class="${_pi.ativa?'prod-promo-row':''}"${PROD_SEL.has(p.id)?' style="background:var(--amber-soft,#fff7e6)"':''}>
     <td><input type="checkbox" class="prod-sel-chk" ${PROD_SEL.has(p.id)?'checked':''} onchange="prodSelToggle('${p.id}',this.checked)"></td>
@@ -9586,10 +9593,11 @@ function prodTable(prods){ prods=prodOrdAplicar((prods||[]).slice());
     <td class="tnum t-mut" style="white-space:nowrap;font-size:12px">${esc(p.codigoBarras||'—')}</td>
     <td class="t-mut">${esc(p.categoria)}${p.grupo&&p.grupo!==p.categoria?`<div style="font-size:11px">${esc(p.grupo)}${p.subgrupo?' › '+esc(p.subgrupo):''}</div>`:''}</td>
     <td class="t-right tnum t-mut">${BRL(p.custo)}</td>
-    ${prodPromoVendaCell(p)}
+    ${prodPromoVendaCell(p).replace(/<\/td>$/, prodAtacLinha(p)+'</td>')}
     <td class="t-right"><span class="tag ${margem>=35?'pos':margem>=20?'warn':'neg'}">${PCT(margem)}</span></td>
     <td class="t-right tnum t-mut">${(p.embalagemVenda&&+p.qtdPorEmbalagem>0)?(fmtQ(p.qtdPorEmbalagem)+' '+esc(p.unidade||'UN')+(p.embalagemTipo?' /'+esc(p.embalagemTipo):'')):'—'}</td>
     <td class="t-right">${p.servico?'<span class="tag" style="background:var(--blue-soft);color:var(--blue)">SERVIÇO</span>':`<b class="tnum" style="color:${crit?(p.estoque===0?'var(--neg)':'var(--amber-d)'):'var(--ink)'}">${fmtQ(p.estoque)}</b>`} <span class="t-mut" style="font-size:11px">${p.unidade}</span>${crit?`<div style="font-size:10.5px;color:var(--amber-d)">mín ${fmtQ(p.estoqueMinimo)}</div>`:''}</td>
+    <td class="t-right tnum">${prodEstEmbCell(p)}</td>
     <td class="t-right" style="white-space:nowrap"><button class="btn-icon btn-ghost" onclick="estoqueForm('${p.id}')" title="Movimentar estoque">${ico('box')}</button>
       <button class="btn-icon btn-ghost" onclick="prodForm('${p.id}')" title="Editar">${ico('edit')}</button>
       ${p.estoque<=0 && !p.servico && (p.situacao||'ativo')!=='inativo' ? `<button class="btn btn-ghost btn-sm" onclick="prodInativarRapido('${p.id}')" title="Inativar produto (sem precisar editar)" style="color:var(--amber-d);padding:2px 8px">Inativar</button>` : ''}
@@ -9614,6 +9622,7 @@ function prodSelBarra(){ const n=PROD_SEL.size; const tot=prodFiltrados(PROD_Q,(
   return `<div id="prod-sel-bar" style="display:${n?'flex':'none'};gap:8px;align-items:center;flex-wrap:wrap;padding:8px 12px;margin-bottom:8px;border:1px solid var(--amber);background:var(--amber-soft,#fff7e6);border-radius:10px">
     <b><span id="prod-sel-n">${NUM(n)}</span> produto(s) selecionado(s)</b>
     <button class="btn btn-amber btn-sm" onclick="prodLoteModal()">${ico('edit')} Ajustar em lote</button>
+    <button class="btn btn-primary btn-sm" onclick="prodBanEtqModal()" title="Cria banner de promoção ou etiquetas com os produtos marcados">${ico('gift')} Criar banner ou etiqueta</button>
     <button class="btn btn-ghost btn-sm" onclick="prodSelSaidaModal('imprimir')">${ico('print')} Imprimir selecionados</button>
     <button class="btn btn-ghost btn-sm" onclick="prodSelSaidaModal('planilha')">${ico('dl')} Exportar planilha (Excel)</button>
     <button class="btn btn-ghost btn-sm" onclick="prodSelTodosFiltrados()" title="Seleciona todos os produtos que a busca/filtro atual mostra, inclusive os que ainda não aparecem na lista">Selecionar todos os filtrados (${NUM(tot)})</button>
@@ -9625,6 +9634,39 @@ function prodSaidaLinhas(ids, cols){ const ps=ids.map(id=>DB.get('produtos',id))
     const cat=[p.categoria||'', p.grupo||'', p.subgrupo||''].filter(Boolean).filter((v,i,a)=>a.indexOf(v)===i).join(' / ');
     const val={ nome:p.nome||'', sku:p.sku||'', barras:p.codigoBarras||'', categoria:cat, custo, venda, margem:Math.round(mg*10)/10, estoque:p.servico?'':(+p.estoque||0), minimo:p.servico?'':(+p.estoqueMinimo||0), marca:p.marca||'' };
     return cols.map(c=>val[c]); }); }
+/* CRIAR BANNER OU ETIQUETA a partir dos produtos marcados no cadastro. */
+function prodBanEtqModal(){ const ids=[...PROD_SEL].filter(id=>DB.get('produtos',id)); if(!ids.length){ toast('Marque pelo menos um produto na lista','err'); return; }
+  try{ banCfgRestaurar(); }catch(e){window.__es&&__es(e)}
+  const nPromo=ids.filter(id=>+DB.get('produtos',id).precoPromo>0).length, nAtac=ids.filter(id=>+DB.get('produtos',id).precoAtacado>0).length;
+  openModal(`<div class="modal-head"><h3>${ico('gift')} Criar banner ou etiqueta — ${NUM(ids.length)} produto(s)</h3><button class="btn-icon btn-ghost" onclick="closeModal()">${ico('x')}</button></div>
+   <div class="modal-body">
+     <label style="font-size:12px;font-weight:700;color:var(--muted)">O que criar</label>
+     <div style="display:flex;gap:8px;margin:6px 0 12px"><label class="card card-pad" style="flex:1;cursor:pointer;display:flex;gap:8px;align-items:center;margin:0"><input type="radio" name="pbe-tipo" value="banner" checked onchange="prodBanEtqTipo()"> ${ico('gift')} <b>Banner de promoção</b></label>
+       <label class="card card-pad" style="flex:1;cursor:pointer;display:flex;gap:8px;align-items:center;margin:0"><input type="radio" name="pbe-tipo" value="etiqueta" onchange="prodBanEtqTipo()"> ${ico('scan')} <b>Etiquetas</b></label></div>
+     <div id="pbe-banner">
+       <div class="field-row"><div class="field"><label>Tema</label><select id="pbe-tema"><option value="padrao" ${BAN.tema!=='blackfriday'?'selected':''}>Padrão (cores da marca)</option><option value="blackfriday" ${BAN.tema==='blackfriday'?'selected':''}>Black Friday</option></select></div>
+         <div class="field"><label>Preço que vai no cartaz</label><select id="pbe-preco"><option value="auto">Promocional (se houver) ou preço de venda</option><option value="venda">Sempre o preço de venda</option><option value="atacado">Preço de atacado (se houver)</option></select></div></div>
+       <div class="t-mut" style="font-size:12px">Os cartazes entram na folha do Banner, onde você ainda pode ajustar quantidade, etiqueta, condição e validade antes de imprimir. ${NUM(nPromo)} com promocional · ${NUM(nAtac)} com atacado.</div></div>
+     <div id="pbe-etiqueta" style="display:none"><div class="t-mut" style="font-size:12.5px">Os produtos marcados vão para a tela de Etiquetas (1 etiqueta de cada). Lá você escolhe o modelo, a quantidade, e pode incluir o preço de atacado na etiqueta.</div></div>
+   </div>
+   <div class="modal-foot"><button class="btn btn-ghost" onclick="closeModal()">Cancelar</button><div style="flex:1"></div><button class="btn btn-amber" onclick="prodBanEtqCriar()">${ico('check')} Criar</button></div>`); }
+function prodBanEtqTipo(){ const t=(document.querySelector('input[name="pbe-tipo"]:checked')||{}).value; const b=document.getElementById('pbe-banner'), e=document.getElementById('pbe-etiqueta'); if(b) b.style.display=t==='banner'?'':'none'; if(e) e.style.display=t==='etiqueta'?'':'none'; }
+function prodBanEtqCriar(){ const ids=[...PROD_SEL].filter(id=>DB.get('produtos',id)); if(!ids.length){ toast('Nenhum produto marcado','err'); return; }
+  const tipo=(document.querySelector('input[name="pbe-tipo"]:checked')||{}).value||'banner';
+  if(tipo==='etiqueta'){ try{ etiqHydrate(); }catch(e){window.__es&&__es(e)} ETIQ.sel={}; ids.forEach(id=>{ ETIQ.sel[id]=1; }); closeModal(); go('etiq'); toast(NUM(ids.length)+' produto(s) na lista de etiquetas','ok'); return; }
+  const tema=(document.getElementById('pbe-tema')||{}).value||'padrao'; const modo=(document.getElementById('pbe-preco')||{}).value||'auto';
+  if(ids.length>60 && !confirm(NUM(ids.length)+' cartazes vão para a folha. Continuar?')) return;
+  try{ banCfgRestaurar(); }catch(e){window.__es&&__es(e)}
+  if(tema==='blackfriday'){ BAN.tema='blackfriday'; if(!BAN.etiqueta||BAN.etiqueta==='OFERTA') BAN.etiqueta='BLACK FRIDAY'; } else { BAN.tema='padrao'; if(BAN.etiqueta==='BLACK FRIDAY') BAN.etiqueta='OFERTA'; }
+  const fmt=v=>String((+v||0).toFixed(2)).replace('.',','); let n=0, sem=0;
+  ids.forEach(id=>{ const p=DB.get('produtos',id); if(!p) return; const venda=+p.preco||0; let por=venda, de='', desc='';
+    if(modo==='atacado'){ if(+p.precoAtacado>0){ por=+p.precoAtacado; de=venda; desc=(+p.atacadoQtdMin>0)?('Atacado: a partir de '+fmtQ(p.atacadoQtdMin)+' '+(p.unidade||'un').toLowerCase()):'Preço de atacado'; } else { sem++; return; } }
+    else if(modo==='auto' && +p.precoPromo>0 && +p.precoPromo<venda){ por=+p.precoPromo; de=venda; }
+    if(!(por>0)){ sem++; return; }
+    const cz=banDados(BAN); Object.assign(cz,{ produtoId:p.id, nome:p.nome||'', desc, de:de?fmt(de):'', deManual:'', por:fmt(por), unidade:(p.unidade||'un').toLowerCase(), tema:BAN.tema });
+    BAN_LISTA.push({cz, qtd:1}); n++; });
+  banCfgSalvar(); closeModal(); go('banner');
+  toast(NUM(n)+' cartaz(es) adicionado(s) à folha do banner'+(sem?(' · '+NUM(sem)+' produto(s) pulado(s) por não ter o preço escolhido'):''), sem?'err':'ok'); }
 function prodSelSaidaModal(modo){ const ids=[...PROD_SEL].filter(id=>DB.get('produtos',id)); if(!ids.length){ toast('Marque pelo menos um produto na lista','err'); return; }
   openModal(`<div class="modal-head"><h3>${ico(modo==='imprimir'?'print':'dl')} ${modo==='imprimir'?'Imprimir':'Exportar planilha de'} ${NUM(ids.length)} produto(s)</h3><button class="btn-icon btn-ghost" onclick="closeModal()">${ico('x')}</button></div>
    <div class="modal-body"><label style="font-size:12px;font-weight:600;color:var(--muted)">Colunas</label>
@@ -9669,7 +9711,9 @@ function prodLoteModal(){ const ids=[...PROD_SEL].filter(id=>DB.get('produtos',i
    <div class="modal-body">
      <p class="t-mut" style="font-size:12.5px;margin:0 0 10px">Marque o que deseja alterar. Só os campos marcados mudam; os demais ficam como estão.</p>
      ${lin('marca','Marca',`<input id="lote-marca" list="lote-marcas-dl" placeholder="Nome da marca"><datalist id="lote-marcas-dl">${opt(marcas)}</datalist>`)}
-     ${lin('preco','Preço de venda',`<div class="field-row"><div class="field"><label>Como</label><select id="lote-preco-modo"><option value="fixo">Definir valor (R$)</option><option value="maispct">Aumentar %</option><option value="menospct">Diminuir %</option><option value="maisrs">Aumentar R$</option><option value="menosrs">Diminuir R$</option><option value="margem">Margem % sobre o custo</option></select></div><div class="field"><label>Valor</label><input id="lote-preco-val" type="text" inputmode="decimal" placeholder="Ex.: 19,90 ou 10"></div></div><div class="t-mut" style="font-size:11.5px">O preço promocional cadastrado não é alterado. Resultado arredondado para centavos.</div>`)}
+     ${lin('preco','Preço de venda',`<div class="field-row"><div class="field"><label>Como</label><select id="lote-preco-modo"><option value="fixo">Definir valor (R$)</option><option value="maispct">Aumentar %</option><option value="menospct">Diminuir %</option><option value="maisrs">Aumentar R$</option><option value="menosrs">Diminuir R$</option><option value="margem">Margem % sobre o custo</option></select></div><div class="field"><label>Valor</label><input id="lote-preco-val" type="text" inputmode="decimal" placeholder="Ex.: 19,90 ou 10"></div></div><div class="t-mut" style="font-size:11.5px">O preço promocional e o de atacado não mudam por aqui — use os campos abaixo. Resultado arredondado para centavos.</div>`)}
+     ${lin('promo','Preço promocional',`<div class="field-row"><div class="field"><label>Como</label><select id="lote-promo-modo"><option value="fixo">Definir valor (R$)</option><option value="descvenda">Desconto % sobre o preço de venda</option><option value="margem">Margem % sobre o custo</option><option value="menospct">Diminuir % do promocional atual</option><option value="maispct">Aumentar % do promocional atual</option><option value="menosrs">Diminuir R$ do promocional atual</option><option value="maisrs">Aumentar R$ do promocional atual</option><option value="remover">Remover a promoção</option></select></div><div class="field"><label>Valor</label><input id="lote-promo-val" type="text" inputmode="decimal" placeholder="Ex.: 17,90 ou 10"></div></div><div class="field-row"><div class="field"><label>Início (opcional)</label><input id="lote-promo-ini" type="date"></div><div class="field"><label>Fim (opcional)</label><input id="lote-promo-fim" type="date"></div></div><div class="t-mut" style="font-size:11.5px">O promocional precisa ficar menor que o preço de venda — os que não ficarem são pulados. Datas em branco não alteram as já cadastradas. Os modos "do promocional atual" só valem para produtos que já têm promoção.</div>`)}
+     ${lin('atac','Preço de atacado',`<div class="field-row"><div class="field"><label>Como</label><select id="lote-atac-modo"><option value="fixo">Definir valor (R$)</option><option value="descvenda">Desconto % sobre o preço de venda</option><option value="margem">Margem % sobre o custo</option><option value="menospct">Diminuir % do atacado atual</option><option value="maispct">Aumentar % do atacado atual</option><option value="menosrs">Diminuir R$ do atacado atual</option><option value="maisrs">Aumentar R$ do atacado atual</option><option value="remover">Remover o preço de atacado</option></select></div><div class="field"><label>Valor</label><input id="lote-atac-val" type="text" inputmode="decimal" placeholder="Ex.: 16,50 ou 8"></div><div class="field"><label>Qtd mínima (opcional)</label><input id="lote-atac-qtd" type="text" inputmode="decimal" placeholder="Ex.: 10"></div></div><div class="t-mut" style="font-size:11.5px">O atacado precisa ficar menor que o preço de venda — os que não ficarem são pulados. Sem quantidade mínima cadastrada o PDV não aplica o atacado; deixe em branco para manter a quantidade de cada produto.</div>`)}
      ${lin('cat','Categoria / grupo / subgrupo',`<div class="field-row"><div class="field"><label>Categoria</label><input id="lote-cat" list="lote-cat-dl" placeholder="(manter)"><datalist id="lote-cat-dl">${opt(cats)}</datalist></div><div class="field"><label>Grupo</label><input id="lote-grupo" list="lote-grupo-dl" placeholder="(manter)"><datalist id="lote-grupo-dl">${opt(grupos)}</datalist></div><div class="field"><label>Subgrupo</label><input id="lote-sub" list="lote-sub-dl" placeholder="(manter)"><datalist id="lote-sub-dl">${opt(subs)}</datalist></div></div><div class="t-mut" style="font-size:11.5px">Campo vazio = não altera aquele nível.</div>`)}
      ${lin('estoque','Estoque',`<div class="field-row"><div class="field"><label>Como</label><select id="lote-est-modo"><option value="definir">Definir quantidade</option><option value="somar">Somar (entrada)</option><option value="subtrair">Subtrair (saída)</option></select></div><div class="field"><label>Quantidade</label><input id="lote-est-qtd" type="text" inputmode="decimal" placeholder="Ex.: 10"></div><div class="field"><label>Motivo</label><input id="lote-est-motivo" placeholder="Ex.: inventário, ajuste em lote"></div></div><div class="t-mut" style="font-size:11.5px">Serviços não têm estoque e são ignorados. Cada produto recebe uma movimentação de estoque com o motivo.</div>`)}
      ${lin('sit','Situação',`<select id="lote-sit"><option value="ativo">Ativo</option><option value="inativo">Inativo</option></select>`)}
@@ -9677,22 +9721,32 @@ function prodLoteModal(){ const ids=[...PROD_SEL].filter(id=>DB.get('produtos',i
    <div class="modal-foot"><button class="btn btn-ghost" onclick="closeModal()">Cancelar</button><button class="btn btn-amber" onclick="prodLoteAplicar()">${ico('check')} Aplicar a ${NUM(ids.length)} produto(s)</button></div>`, true); }
 function prodLoteAplicar(){ const ids=[...PROD_SEL].filter(id=>DB.get('produtos',id)); if(!ids.length){ toast('Nenhum produto selecionado','err'); return; }
   const on=id=>!!(document.getElementById('lote-'+id+'-on')||{}).checked; const v=id=>((document.getElementById(id)||{}).value||'').trim();
-  const mudar={ marca:on('marca'), preco:on('preco'), cat:on('cat'), estoque:on('estoque'), sit:on('sit') };
+  const mudar={ marca:on('marca'), preco:on('preco'), promo:on('promo'), atac:on('atac'), cat:on('cat'), estoque:on('estoque'), sit:on('sit') };
   if(!Object.values(mudar).some(Boolean)){ toast('Marque pelo menos um campo para alterar','err'); return; }
   let marca=''; if(mudar.marca){ marca=v('lote-marca'); if(!marca){ toast('Informe a marca','err'); return; } const reg=marcaRegistrar(marca); if(reg&&reg.nome) marca=reg.nome; }
   let pModo='', pVal=0; if(mudar.preco){ pModo=v('lote-preco-modo'); pVal=numBR(v('lote-preco-val'))||0; if(!(pVal>0) && pModo!=='fixo'){ toast('Informe o valor do ajuste de preço','err'); return; } if(pModo==='fixo' && !(pVal>=0)){ toast('Informe o preço','err'); return; } }
+  let prModo='', prVal=0, prIni='', prFim=''; if(mudar.promo){ prModo=v('lote-promo-modo'); prVal=numBR(v('lote-promo-val'))||0; prIni=v('lote-promo-ini'); prFim=v('lote-promo-fim'); if(prModo!=='remover' && !(prVal>0)){ toast('Informe o valor do preço promocional','err'); return; } if(prIni&&prFim&&prFim<prIni){ toast('O fim da promoção é anterior ao início','err'); return; } }
+  let atModo='', atVal=0, atQtd=0; if(mudar.atac){ atModo=v('lote-atac-modo'); atVal=numBR(v('lote-atac-val'))||0; atQtd=Math.max(0,numBR(v('lote-atac-qtd'))||0); if(atModo!=='remover' && !(atVal>0)){ toast('Informe o valor do preço de atacado','err'); return; } }
   const cat=mudar.cat?v('lote-cat'):'', grupo=mudar.cat?v('lote-grupo'):'', sub=mudar.cat?v('lote-sub'):'';
   if(mudar.cat && !cat && !grupo && !sub){ toast('Informe categoria, grupo ou subgrupo','err'); return; }
   let eModo='', eQtd=0, eMotivo=''; if(mudar.estoque){ eModo=v('lote-est-modo'); eQtd=Math.round(Math.max(0,numBR(v('lote-est-qtd')))*1000)/1000; eMotivo=v('lote-est-motivo')||'Ajuste em lote'; if(eModo!=='definir' && !(eQtd>0)){ toast('Informe a quantidade','err'); return; } }
   const sit=mudar.sit?v('lote-sit'):'';
-  const resumo=[ mudar.marca?('• Marca → '+marca):'', mudar.preco?('• Preço: '+({fixo:'definir '+BRL(pVal),maispct:'+'+pVal+'%',menospct:'−'+pVal+'%',maisrs:'+'+BRL(pVal),menosrs:'−'+BRL(pVal),margem:'margem '+pVal+'% sobre o custo'})[pModo]):'', mudar.cat?('• Categoria/grupo/subgrupo → '+[cat||'(manter)',grupo||'(manter)',sub||'(manter)'].join(' › ')):'', mudar.estoque?('• Estoque: '+({definir:'definir ',somar:'somar ',subtrair:'subtrair '})[eModo]+fmtQ(eQtd)):'', mudar.sit?('• Situação → '+sit):'' ].filter(Boolean).join('\n');
+  const resumo=[ mudar.marca?('• Marca → '+marca):'', mudar.preco?('• Preço: '+({fixo:'definir '+BRL(pVal),maispct:'+'+pVal+'%',menospct:'−'+pVal+'%',maisrs:'+'+BRL(pVal),menosrs:'−'+BRL(pVal),margem:'margem '+pVal+'% sobre o custo'})[pModo]):'', mudar.promo?('• Preço promocional: '+({fixo:'definir '+BRL(prVal),descvenda:'desconto de '+prVal+'% sobre a venda',margem:'margem '+prVal+'% sobre o custo',menospct:'−'+prVal+'% do atual',maispct:'+'+prVal+'% do atual',menosrs:'−'+BRL(prVal)+' do atual',maisrs:'+'+BRL(prVal)+' do atual',remover:'remover a promoção'})[prModo]+(prIni||prFim?(' · '+(prIni?fDate(prIni):'…')+' a '+(prFim?fDate(prFim):'…')):'')):'', mudar.atac?('• Preço de atacado: '+({fixo:'definir '+BRL(atVal),descvenda:'desconto de '+atVal+'% sobre a venda',margem:'margem '+atVal+'% sobre o custo',menospct:'−'+atVal+'% do atual',maispct:'+'+atVal+'% do atual',menosrs:'−'+BRL(atVal)+' do atual',maisrs:'+'+BRL(atVal)+' do atual',remover:'remover o atacado'})[atModo]+(atQtd>0?(' · qtd mínima '+fmtQ(atQtd)):'')):'', mudar.cat?('• Categoria/grupo/subgrupo → '+[cat||'(manter)',grupo||'(manter)',sub||'(manter)'].join(' › ')):'', mudar.estoque?('• Estoque: '+({definir:'definir ',somar:'somar ',subtrair:'subtrair '})[eModo]+fmtQ(eQtd)):'', mudar.sit?('• Situação → '+sit):'' ].filter(Boolean).join('\n');
   if(!confirm('Aplicar a '+NUM(ids.length)+' produto(s):\n\n'+resumo+'\n\nContinuar?')) return;
-  let n=0, nEst=0; const hoje=today();
+  let n=0, nEst=0, nPromoPulo=0, nAtacPulo=0, nAtacSemQtd=0; const hoje=today();
   DB.bulk(()=>{ ids.forEach(id=>{ const p=DB.get('produtos',id); if(!p) return; const upd={};
       if(mudar.marca) upd.marca=marca;
       if(mudar.preco){ const custo=+p.custo||0, atual=+p.preco||0; let novo=atual;
         if(pModo==='fixo') novo=pVal; else if(pModo==='maispct') novo=atual*(1+pVal/100); else if(pModo==='menospct') novo=atual*(1-pVal/100); else if(pModo==='maisrs') novo=atual+pVal; else if(pModo==='menosrs') novo=atual-pVal; else if(pModo==='margem') novo=custo*(1+pVal/100);
         upd.preco=Math.max(0, Math.round(novo*100)/100); }
+      if(mudar.promo||mudar.atac){ const vendaNova=(upd.preco!=null?upd.preco:(+p.preco||0)), custoP=+p.custo||0;
+        const calc=(modo,val,atual)=>{ let nv=null; if(modo==='fixo') nv=val; else if(modo==='descvenda') nv=vendaNova*(1-val/100); else if(modo==='margem') nv=custoP*(1+val/100);
+          else if(atual>0){ if(modo==='maispct') nv=atual*(1+val/100); else if(modo==='menospct') nv=atual*(1-val/100); else if(modo==='maisrs') nv=atual+val; else if(modo==='menosrs') nv=atual-val; }
+          return nv==null?null:Math.round(Math.max(0,nv)*100)/100; };
+        if(mudar.promo){ if(prModo==='remover'){ if(+p.precoPromo>0){ upd.precoPromo=0; upd.promoInicio=''; upd.promoFim=''; } }
+          else { const nv=calc(prModo,prVal,+p.precoPromo||0); if(nv==null||!(nv>0)||!(nv<vendaNova)) nPromoPulo++; else { upd.precoPromo=nv; if(prIni) upd.promoInicio=prIni; if(prFim) upd.promoFim=prFim; } } }
+        if(mudar.atac){ if(atModo==='remover'){ if(+p.precoAtacado>0){ upd.precoAtacado=0; } }
+          else { const nv=calc(atModo,atVal,+p.precoAtacado||0); if(nv==null||!(nv>0)||!(nv<vendaNova)) nAtacPulo++; else { upd.precoAtacado=nv; if(atQtd>0) upd.atacadoQtdMin=atQtd; if(!(atQtd>0) && !(+p.atacadoQtdMin>0)) nAtacSemQtd++; } } } }
       if(mudar.cat){ if(cat){ upd.categoria=cat; try{ const r=catRegistrar(cat,'produto'); if(r&&r.nome) upd.categoria=r.nome; }catch(e){} } if(grupo){ upd.grupo=grupo; } if(sub){ upd.subgrupo=sub; } }
       if(mudar.estoque && !p.servico){ const atual=+p.estoque||0; let novo=atual; if(eModo==='definir') novo=eQtd; else if(eModo==='somar') novo=atual+eQtd; else novo=Math.max(0,atual-eQtd); novo=Math.round(novo*1000)/1000;
         if(novo!==atual){ upd.estoque=novo; DB.insert('movEstoque',{produtoId:id, tipo:(eModo==='definir'?'ajuste':(eModo==='somar'?'entrada':'saida')), qtd:(eModo==='definir'?novo:eQtd), data:hoje, motivo:eMotivo+' (lote)'}); nEst++; } }
@@ -9702,7 +9756,7 @@ function prodLoteAplicar(){ const ids=[...PROD_SEL].filter(id=>DB.get('produtos'
   try{ if(mudar.cat) gruposSincronizarDosProdutos && gruposSincronizarDosProdutos(); }catch(e){}
   try{ logAcao('Ajuste em lote de produtos', NUM(n)+' produto(s): '+resumo.replace(/\n/g,' ')); }catch(e){}
   try{ nuvemPushJa(); }catch(e){}
-  closeModal(); PROD_SEL.clear(); toast(NUM(n)+' produto(s) alterado(s)'+(nEst?(' · '+NUM(nEst)+' movimentação(ões) de estoque'):''),'ok'); try{ go('prod'); }catch(e){ renderProdTable(); } }
+  closeModal(); PROD_SEL.clear(); toast(NUM(n)+' produto(s) alterado(s)'+(nEst?(' · '+NUM(nEst)+' movimentação(ões) de estoque'):'')+(nPromoPulo?(' · '+NUM(nPromoPulo)+' sem promocional (valor inválido ou sem promoção)'):'')+(nAtacPulo?(' · '+NUM(nAtacPulo)+' sem atacado (valor inválido)'):'')+(nAtacSemQtd?(' · '+NUM(nAtacSemQtd)+' com atacado SEM quantidade mínima — o PDV só aplica com ela'):''),(nPromoPulo||nAtacPulo||nAtacSemQtd)?'err':'ok'); try{ go('prod'); }catch(e){ renderProdTable(); } }
 const IMP_PROD_MAP={ SKU:'sku', CODIGO:'sku', COD:'sku', PRODUTO:'nome', NOME:'nome', DESCRICAO:'nome', CATEGORIA:'categoria', GRUPO:'categoria', UNIDADE:'unidade', UN:'unidade', UNID:'unidade', ESTOQUE:'estoque', SALDO:'estoque', QTD:'estoque', MIN:'estoqueMinimo', MINIMO:'estoqueMinimo', ESTOQUE_MINIMO:'estoqueMinimo', CUSTO:'custo', PRECO_CUSTO:'custo', PRECO_DE_CUSTO:'custo', VENDA:'preco', PRECO:'preco', PRECO_VENDA:'preco', PRECO_DE_VENDA:'preco', NCM:'ncm', CEST:'cest', STATUS:'situacao', SITUACAO:'situacao', CFOP_VENDA_ES:'cfop', CFOP:'cfop', CFOP_VENDA:'cfop', CFOP_VENDA_OUTRO_ESTADO:'cfopInter', CFOP_INTERESTADUAL:'cfopInter', CFOP_OUTRO_ESTADO:'cfopInter', CSOSN_PADRAO:'cst', CSOSN:'cst', CST:'cst', CST_CSOSN:'cst', COD_BARRAS:'codigoBarras', CODIGO_BARRAS:'codigoBarras', CODIGO_DE_BARRAS:'codigoBarras', EAN:'codigoBarras', GTIN:'codigoBarras', MARCA:'marca', FABRICANTE:'marca' };
 function impNormHdr(h){ return String(h||'').toUpperCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/[^A-Z0-9]+/g,'_').replace(/^_+|_+$/g,''); }
 function impMoney(v){ if(typeof v==='number') return Math.round(v*100)/100; let s=String(v||'').replace(/r\$/i,'').replace(/[\s\u00a0]/g,'').trim(); if(!s) return 0; return Math.round((numBR(s)||0)*100)/100; }
@@ -9886,6 +9940,7 @@ function prodFiltroMarca(v){ PROD_F.marca=v; renderProdTable(); }
    vigente (vale hoje), agendada (ainda não começou), encerrada (já passou) ou inválida (preço
    promocional maior ou igual ao normal — o PDV ignora). */
 let PROD_PROMO=false;
+let PROD_ATAC=false;   // filtro "Com atacado": só produtos com preço de atacado cadastrado
 function prodPromoInfo(p){ if(!p||!(+p.precoPromo>0)) return {tem:false};
   const h=today(); const pr=+p.preco||0, pm=+p.precoPromo||0;
   let estado='vigente';
@@ -9893,8 +9948,20 @@ function prodPromoInfo(p){ if(!p||!(+p.precoPromo>0)) return {tem:false};
   return {tem:true, estado, ativa:estado==='vigente', pct:(pr>0&&pm<pr)?Math.round((1-pm/pr)*100):0, ini:p.promoInicio||'', fim:p.promoFim||''}; }
 function prodTemPromo(p){ return !!(p && +p.precoPromo>0); }
 function prodPromoToggle(){ PROD_PROMO=!PROD_PROMO; viewProd(); }
+function prodTemAtac(p){ return !!(p && +p.precoAtacado>0); }
+function prodAtacToggle(){ PROD_ATAC=!PROD_ATAC; viewProd(); }
+function prodAtacBtnHTML(){ let n=0; DB.all('produtos').forEach(p=>{ if(prodTemAtac(p)) n++; });
+  return `<button class="btn btn-sm ${PROD_ATAC?'btn-amber':'btn-ghost'}" id="prod-atac-btn" onclick="prodAtacToggle()" style="${PROD_ATAC?'':'border:1px solid #2563eb;color:#2563eb'}" title="${PROD_ATAC?'Clique para voltar a mostrar todos os produtos':'Mostra só os produtos que têm preço de atacado cadastrado'}">${ico('box')} Com atacado <b>(${NUM(n)})</b></button>`; }
+function prodAtacResumoHTML(prods){ if(!PROD_ATAC) return ''; let semQtd=0, inval=0; prods.forEach(p=>{ if(!prodTemAtac(p)) return; if(!(+p.atacadoQtdMin>0)) semQtd++; if(!(+p.precoAtacado<+p.preco)) inval++; });
+  const parte=(n,t,cor)=>n?`<span class="tag" style="background:${cor}1a;color:${cor};font-weight:600">${NUM(n)} ${t}</span>`:'';
+  return `<div class="no-print" style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;padding:8px 14px;border-bottom:1px solid var(--line);background:rgba(37,99,235,.05)">
+    <b style="font-size:13px;color:#2563eb">${ico('box')} Produtos com preço de atacado</b>
+    ${parte(semQtd,'sem quantidade mínima','#b45309')}${parte(inval,'com atacado maior ou igual ao preço de venda','#b45309')}
+    <span class="t-mut" style="font-size:12px">O PDV só aplica o atacado quando a quantidade vendida chega à quantidade mínima do cadastro.</span>
+    <div style="flex:1"></div><button class="btn btn-ghost btn-sm" onclick="prodAtacToggle()">${ico('x')} Mostrar todos</button></div>`; }
+function prodAtacLinha(p){ if(!PROD_ATAC||!prodTemAtac(p)) return ''; return `<div style="font-size:11px;color:#2563eb;font-weight:700;margin-top:2px">Atacado ${BRL(p.precoAtacado)}${+p.atacadoQtdMin>0?(' · a partir de '+fmtQ(p.atacadoQtdMin)+' '+esc(p.unidade||'UN')):' · sem qtd mínima'}</div>`; }
 function prodPromoBtnHTML(){ let n=0, v=0; DB.all('produtos').forEach(p=>{ if(prodTemPromo(p)){ n++; if(prodPromoInfo(p).ativa) v++; } });
-  return `<button class="btn btn-sm ${PROD_PROMO?'btn-amber':'btn-ghost'}" id="prod-promo-btn" onclick="prodPromoToggle()" style="${PROD_PROMO?'':'border:1px solid #e11d2a;color:#e11d2a'}" title="${PROD_PROMO?'Clique para voltar a mostrar todos os produtos':'Mostra só os produtos que têm preço promocional cadastrado'}">${ico('fire')} Em promoção <b>(${NUM(n)})</b>${v&&v!==n?` <span style="font-size:11px;font-weight:500">· ${NUM(v)} vigente(s)</span>`:''}</button>`; }
+  return `<button class="btn btn-sm ${PROD_PROMO?'btn-amber':'btn-ghost'}" id="prod-promo-btn" onclick="prodPromoToggle()" style="${PROD_PROMO?'':'border:1px solid #e11d2a;color:#e11d2a'}" title="${PROD_PROMO?'Clique para voltar a mostrar todos os produtos':'Mostra só os produtos que têm preço promocional cadastrado'}">${ico('fire')} Em promoção <b>(${NUM(n)})</b>${v&&v!==n?` <span style="font-size:11px;font-weight:500">· ${NUM(v)} vigente(s)</span>`:''}</button>`+prodAtacBtnHTML(); }
 function prodPromoResumoHTML(prods){ if(!PROD_PROMO) return '';
   const c={vigente:0,agendada:0,encerrada:0,invalida:0}; prods.forEach(p=>{ const i=prodPromoInfo(p); if(i.tem) c[i.estado]++; });
   const parte=(n,t,cor)=>n?`<span class="tag" style="background:${cor}1a;color:${cor};font-weight:600">${NUM(n)} ${t}</span>`:'';
@@ -9921,6 +9988,7 @@ function prodFiltrados(q,flt){ q=(q||'').toLowerCase(); const toks=tokensDe(q);
     && (!PROD_F.marca || p.marca===PROD_F.marca)
     && (flt!=='low' || p.estoque<=p.estoqueMinimo)
     && (!PROD_PROMO || prodTemPromo(p))
+    && (!PROD_ATAC || prodTemAtac(p))
     && (!toks.length || toks.every(t=>buscaKey(p,prodBlob).includes(t))));
   return prodSearchSort(prods, q); }
 function renderProdTable(){
@@ -10521,16 +10589,29 @@ function _cliAssinatura(){ const l=DB.all('clientes'); let mx=''; for(let i=0;i<
 let _cliDupCache={sig:null, res:null};
 /* Agrupa clientes cujo nome normalizado coincide. Memoizado: a tela chama isso
    a cada render e a varredura com normalização é cara em bases grandes. */
+/* Dígitos do CPF/CNPJ do cliente (campo 'doc'; aceita também os nomes antigos cpf_cnpj / cnpj / cpf / documento). */
+function cliDocDig(c){ return ((c&&(c.doc||c.cpf_cnpj||c.cnpj||c.cpf||c.documento))||'').toString().replace(/\D/g,''); }
+function cliDocValidoTam(d){ return d.length===11||d.length===14; }
 function clientesDuplicados(){
   const sig=_cliAssinatura();
   if(_cliDupCache.sig===sig && _cliDupCache.res) return _cliDupCache.res;
-  const grupos=new Map();
-  DB.all('clientes').forEach(c=>{ const k=cliChaveNome(c.nome); if(!k) return;
-    let a=grupos.get(k); if(!a){ a=[]; grupos.set(k,a); } a.push(c); });
+  /* Duplicado = MESMO NOME ou MESMO CPF/CNPJ. Os dois critérios se juntam (união de grupos): se A e B têm o mesmo nome
+     e B e C têm o mesmo CPF, os três aparecem no mesmo grupo para o operador decidir. */
+  const lista=DB.all('clientes'); const pai=new Map(); lista.forEach(c=>pai.set(c.id,c.id));
+  const find=x=>{ while(pai.get(x)!==x){ pai.set(x,pai.get(pai.get(x))); x=pai.get(x); } return x; };
+  const uniao=(a,b)=>{ a=find(a); b=find(b); if(a!==b) pai.set(b,a); };
+  const porNome=new Map(), porDoc=new Map();
+  lista.forEach(c=>{ const k=cliChaveNome(c.nome); if(k){ if(porNome.has(k)) uniao(porNome.get(k),c.id); else porNome.set(k,c.id); }
+    const d=cliDocDig(c); if(cliDocValidoTam(d)){ if(porDoc.has(d)) uniao(porDoc.get(d),c.id); else porDoc.set(d,c.id); } });
+  const comp=new Map(); lista.forEach(c=>{ const r=find(c.id); let a=comp.get(r); if(!a){ a=[]; comp.set(r,a); } a.push(c); });
   const res=[];
-  grupos.forEach((lista,k)=>{ if(lista.length<2) return;
-    const docs=[...new Set(lista.map(c=>soDig(c.doc||'')).filter(Boolean))];
-    res.push({ chave:k, nome:lista[0].nome, clientes:lista, docsDiferentes:docs.length>1, docs }); });
+  comp.forEach(arr=>{ if(arr.length<2) return;
+    const nomes=arr.map(c=>cliChaveNome(c.nome)).filter(Boolean); const nomesU=[...new Set(nomes)];
+    const docsTodos=arr.map(cliDocDig).filter(Boolean); const docs=[...new Set(docsTodos)];
+    const nomeRep=nomes.length>nomesU.length, docRep=docsTodos.filter(cliDocValidoTam).length>docs.filter(cliDocValidoTam).length;
+    const chave=nomesU.length===1?nomesU[0]:(docs.length===1?('d:'+docs[0]):('g:'+arr[0].id));
+    res.push({ chave, nome:arr[0].nome, clientes:arr, docsDiferentes:docs.length>1, docs, nomesDiferentes:nomesU.length>1,
+      motivo:(nomeRep&&docRep)?'mesmo nome e mesmo CPF/CNPJ':(docRep?'mesmo CPF/CNPJ':'mesmo nome') }); });
   res.sort((a,b)=>b.clientes.length-a.clientes.length || a.nome.localeCompare(b.nome));
   _cliDupCache={sig, res}; return res;
 }
@@ -10598,12 +10679,12 @@ function cliMesclar(idPrincipal, idsOutros){
 let CDUP={sel:{}};
 function cliDupModal(){
   const grupos=clientesDuplicados();
-  if(!grupos.length){ toast('Nenhum cliente com nome duplicado','ok'); return; }
+  if(!grupos.length){ toast('Nenhum cliente duplicado (nome ou CPF/CNPJ)','ok'); return; }
   CDUP.sel={}; grupos.forEach(g=>{ const p=cliPrincipalSugerido(g.clientes); CDUP.sel[g.chave]=p?p.id:g.clientes[0].id; });
   const seguros=grupos.filter(g=>!g.docsDiferentes).length;
   openModal(`<div class="modal-head"><h3>Clientes duplicados</h3><button class="btn-icon btn-ghost" onclick="closeModal()">${ico('x')}</button></div>
    <div class="modal-body">
-     <p class="t-mut" style="font-size:12.5px;margin:0 0 12px">${grupos.length} nome(s) repetido(s). Ao unir, o histórico dos duplicados (vendas, orçamentos, contas, notas, créditos) passa para o cadastro escolhido, e os campos em branco dele são completados com os dados dos outros. Os cadastros removidos ficam 30 dias na Lixeira.</p>
+     <p class="t-mut" style="font-size:12.5px;margin:0 0 12px">${grupos.length} grupo(s) de cadastros repetidos (mesmo nome <b>ou</b> mesmo CPF/CNPJ). Ao unir, o histórico dos duplicados (vendas, orçamentos, contas, notas, créditos) passa para o cadastro escolhido, e os campos em branco dele são completados com os dados dos outros. Os cadastros removidos ficam 30 dias na Lixeira.</p>
      <div id="cdup-body">${cliDupBody(grupos)}</div>
    </div>
    <div class="modal-foot">
@@ -10612,14 +10693,15 @@ function cliDupModal(){
 }
 function cliDupBody(grupos){
   grupos=grupos||clientesDuplicados();
-  if(!grupos.length) return `<div class="empty" style="padding:30px 10px"><h4>Nenhum duplicado restante</h4><p class="t-mut">Todos os nomes estão únicos.</p></div>`;
+  if(!grupos.length) return `<div class="empty" style="padding:30px 10px"><h4>Nenhum duplicado restante</h4><p class="t-mut">Nomes e CPF/CNPJ estão únicos.</p></div>`;
   return grupos.map(g=>{
     const escolhido=CDUP.sel[g.chave];
     return `<div class="card card-pad" style="margin-bottom:12px${g.docsDiferentes?';border-left:4px solid var(--neg)':''}">
       <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap">
         <b>${esc(g.nome)}</b>
-        <span class="t-mut" style="font-size:11.5px">${g.clientes.length} cadastros</span>
+        <span class="t-mut" style="font-size:11.5px"><span class="tag ${g.motivo.indexOf('CPF')>=0?'warn':'gray'}" style="font-size:10px">${esc(g.motivo)}</span> ${g.clientes.length} cadastros</span>
       </div>
+      ${g.nomesDiferentes&&!g.docsDiferentes?`<div style="background:var(--amber-soft);color:var(--amber-d);border-radius:8px;padding:8px;font-size:11.5px;margin:8px 0"><b>${ico('alert')} Nomes diferentes, mesmo CPF/CNPJ:</b> o documento é a mesma pessoa/empresa — pode unir.</div>`:''}
       ${g.docsDiferentes?`<div style="background:var(--neg-soft);color:var(--neg);border-radius:8px;padding:8px;font-size:11.5px;margin:8px 0"><b>${ico('alert')} CPF/CNPJ diferentes:</b> ${g.docs.map(d=>esc(d)).join(' · ')}. Podem ser pessoas distintas com o mesmo nome — confira antes de unir.</div>`:''}
       <table class="tbl" style="margin-top:8px"><thead><tr><th style="width:34px"></th><th>Cadastro</th><th>CPF/CNPJ</th><th>Contato</th><th>Cidade</th><th class="t-right">Histórico</th></tr></thead><tbody>
       ${g.clientes.map(c=>`<tr${c.id===escolhido?' style="background:var(--pos-soft)"':''}>
@@ -11172,13 +11254,15 @@ function saveCli(id){ const g=x=>(document.getElementById(x).value||'').trim();
   const doc=g('c-doc'); if(!validaDoc(doc,tipoDoc)){toast(tipoDoc+' inválido — verifique os dígitos','err');return;}
   const nomeNorm=nome.toLowerCase().replace(/\s+/g,' ').trim(); const docNorm=soDig(doc);
   // EDIÇÃO é sempre direta: abre, altera e salva o MESMO cadastro (DB.update mescla os campos; nada é substituído).
-  // A checagem de duplicidade vale apenas para cadastro NOVO.
+  // A checagem de duplicidade completa (nome + CPF/CNPJ) vale para cadastro NOVO; na edição só barra TROCAR o CPF/CNPJ por um que já é de outro cliente.
+  if(id && docNorm){ const antC=DB.get('clientes',id)||{}; if(cliDocDig(antC)!==docNorm){ const outro=DB.all('clientes').find(c=>c.id!==id && cliDocDig(c)===docNorm);
+    if(outro){ toast('Este CPF/CNPJ já pertence a outro cliente: '+(outro.nome||'')+' — não é possível cadastrar o mesmo documento duas vezes (use "Verificar duplicados" para unir)','err'); return; } } }
   if(!id){ const mesmoNome=c=>(c.nome||'').toLowerCase().replace(/\s+/g,' ').trim()===nomeNorm;
     // versão UD: mesmo CPF/CNPJ bloqueia sempre; mesmo NOME só bloqueia quando não dá para distinguir pelo documento
     // (empresas/pessoas homônimas com CNPJ/CPF diferentes são cadastros legítimos e distintos)
-    const dupDoc=docNorm?DB.all('clientes').find(c=>soDig(c.doc)===docNorm):null;
+    const dupDoc=docNorm?DB.all('clientes').find(c=>cliDocDig(c)===docNorm):null;
     if(dupDoc){ toast('Cliente já cadastrado (mesmo CPF/CNPJ): '+(dupDoc.nome||'')+' — edite o cadastro existente','err'); return; }
-    const dupNome=DB.all('clientes').find(c=>mesmoNome(c) && (!docNorm || !soDig(c.doc) || soDig(c.doc)===docNorm));
+    const dupNome=DB.all('clientes').find(c=>mesmoNome(c) && (!docNorm || !cliDocDig(c) || cliDocDig(c)===docNorm));
     if(dupNome){ toast('Cliente já cadastrado (mesmo nome'+(docNorm?' e sem CPF/CNPJ para diferenciar':'')+'): '+(dupNome.nome||'')+' — edite o cadastro existente ou informe o CPF/CNPJ dos dois','err'); return; } }
   const data={nome,tipoDoc,doc,email:g('c-email'),telefone:g('c-tel'),celular:g('c-cel'),aniversario:g('c-niver'),telEstrangeiro:!!((document.getElementById('c-tel-ext')||{}).checked),celularDDI:(g('c-ddi')||'').replace(/\D/g,''),
     tipo: tipoDoc==='CNPJ'?'PJ':'PF',
@@ -16195,14 +16279,14 @@ let _etiqQT; function etiqListD(){ clearTimeout(_etiqQT); _etiqQT=setTimeout(fun
    Cores da marca: as da logo da Papelaria Criativa — roxo, magenta, amarelo e azul.
 =================================================================== */
 const BAN_COR={ navy:'#9900CC', navy2:'#5E0080', amarelo:'#FED700', amarelo2:'#E6C200', magenta:'#FF00A2', azul:'#0033FF', lilas:'#EFDDFA', rosa:'#FFDDF0', branco:'#ffffff', cinza:'#5b6472', preto:'#111827' };   // navy/navy2 = roxo da logo (nomes mantidos)
-const BAN_ETIQ=['OFERTA','PROMOÇÃO','QUEIMA DE ESTOQUE','SÓ HOJE','PREÇO BAIXO','IMPERDÍVEL'];
+const BAN_ETIQ=['OFERTA','PROMOÇÃO','BLACK FRIDAY','QUEIMA DE ESTOQUE','SÓ HOJE','PREÇO BAIXO','IMPERDÍVEL'];
 const BAN_UNID=['un','m²','m','saco','cx','pç','kg','lata','galão','barra','rolo','par','milheiro'];
 const BAN_FORMATOS={ a4:{nome:'Folha A4 inteira',porFolha:1,esc:1,pagina:'A4 portrait',colunas:1},
                      meia:{nome:'Meia folha (A5)',porFolha:2,esc:0.7071,pagina:'A4 landscape',colunas:2},
                      quarto:{nome:'1/4 de folha (A6)',porFolha:4,esc:0.5,pagina:'A4 portrait',colunas:2} };
-let BAN={ produtoId:'', nome:'', desc:'', de:'', deManual:'', por:'', unidade:'un', etiqueta:'OFERTA', etiquetaCustom:'', condicao:'à vista no PIX ou dinheiro', validade:'', mostrarValidade:true, formato:'a4', rodape:'', qtd:1 };
+let BAN={ tema:'padrao', produtoId:'', nome:'', desc:'', de:'', deManual:'', por:'', unidade:'un', etiqueta:'OFERTA', etiquetaCustom:'', condicao:'à vista no PIX ou dinheiro', validade:'', mostrarValidade:true, formato:'a4', rodape:'', qtd:1 };
 let BAN_LISTA=[];   // cartazes já colocados na folha: [{cz:{...dados do cartaz}, qtd}]
-const BAN_CAMPOS=['produtoId','nome','desc','de','deManual','por','unidade','etiqueta','etiquetaCustom','condicao','validade','mostrarValidade','rodape'];
+const BAN_CAMPOS=['tema','produtoId','nome','desc','de','deManual','por','unidade','etiqueta','etiquetaCustom','condicao','validade','mostrarValidade','rodape'];
 function banDados(src){ src=src||BAN; const o={}; BAN_CAMPOS.forEach(k=>o[k]=src[k]); return o; }
 function banTemCartaz(d){ d=d||BAN; return !!((d.nome||'').trim()) && banPreco(d.por)>0; }
 /* Tudo o que vai para a folha: os cartazes da lista + o que está em edição (se já tiver nome e preço). */
@@ -16250,6 +16334,11 @@ function banPrecoPartes(v){ const n=Math.round(banPreco(v)*100)/100; const int=M
 /* versão VX — preço de referência do cartaz: "De:" (digitado) tem prioridade; senão o preço no cartão de crédito (vem do cadastro). Nunca os dois. */
 function banDeRef(d){ d=d||BAN; const dm=banPreco(d.deManual); if(dm>0) return {valor:dm, rotulo:'DE', tipo:'de'}; const dc=banPreco(d.de); if(dc>0) return {valor:dc, rotulo:'PREÇO CARTÃO DE CRÉDITO', tipo:'cartao'}; return {valor:0, rotulo:'', tipo:''}; }
 function banDescontoPct(d){ d=d||BAN; const de=banDeRef(d).valor, por=banPreco(d.por); if(de>por && por>0) return Math.round((1-por/de)*100); return 0; }
+/* Troca o tema do cartaz em edição E dos já colocados na folha — o banner inteiro "veste" o tema escolhido. */
+function banTemaSet(t){ t=(t==='blackfriday')?'blackfriday':'padrao'; BAN.tema=t;
+  if(t==='blackfriday'){ if(!BAN.etiqueta||BAN.etiqueta==='OFERTA') BAN.etiqueta='BLACK FRIDAY'; } else if(BAN.etiqueta==='BLACK FRIDAY') BAN.etiqueta='OFERTA';
+  BAN_LISTA.forEach(it=>{ if(!it.cz) return; it.cz.tema=t; if(t==='blackfriday'){ if(!it.cz.etiqueta||it.cz.etiqueta==='OFERTA') it.cz.etiqueta='BLACK FRIDAY'; } else if(it.cz.etiqueta==='BLACK FRIDAY') it.cz.etiqueta='OFERTA'; });
+  banCfgSalvar(); viewBanner(); }
 function banSetProduto(id){ BAN.produtoId=id||''; const p=id?DB.get('produtos',id):null;
   if(p){ BAN.nome=p.nome||''; BAN.deManual=''; try{ const dm=document.getElementById('ban-demanual'); if(dm) dm.value=''; }catch(e){window.__es&&__es(e)} if(+p.preco>0) BAN.de=String((+p.preco).toFixed(2)).replace('.',',');
     // o produto já tem preço promocional cadastrado? entra como o "por" do cartaz
@@ -16307,15 +16396,38 @@ ${P} .bz-cond{margin-top:${s(3)};font-size:${s(7)};font-weight:900;color:${C.bra
 ${P} .bz-val{font-size:${s(4.4)};color:${C.navy2};margin-top:${s(3)};font-weight:700}
 ${P} .bz-foot{background:${C.navy};color:${C.branco};padding:${s(4)} ${s(8)};text-align:center;font-size:${s(4.4)};font-weight:600;line-height:1.35}
 ${P} .bz-foot b{color:${C.amarelo};font-size:${s(6)};display:block;margin-bottom:${s(0.8)};letter-spacing:${s(0.3)}}
-${P} .bz-faixa{height:${s(3.2)};background:repeating-linear-gradient(135deg,${C.azul} 0 ${s(6)},${C.navy} ${s(6)} ${s(12)},${C.magenta} ${s(12)} ${s(18)},${C.amarelo} ${s(18)} ${s(24)})}`; }
+${P} .bz-faixa{height:${s(3.2)};background:repeating-linear-gradient(135deg,${C.azul} 0 ${s(6)},${C.navy} ${s(6)} ${s(12)},${C.magenta} ${s(12)} ${s(18)},${C.amarelo} ${s(18)} ${s(24)})}
+${banCartazCSSBF(P,s)}`; }
+/* TEMA BLACK FRIDAY: fundo preto, amarelo neon e vermelho — o cartaz inteiro muda de visual (não é só a cor). */
+function banCartazCSSBF(P,s){ const Y='#FFD400', R='#E10600', K='#0b0b0b';
+  return `${P}.bf{background:${K};color:#fff;border-color:${Y}}
+${P}.bf .bz-top{background:linear-gradient(120deg,#000 0%,#1c1c1c 100%);color:${Y};min-height:${s(26)};padding:${s(3)} ${s(9)};border-bottom:${s(1)} solid ${Y}}
+${P}.bf .bz-logo .bz-logotxt{color:${Y}} ${P}.bf .bz-logo .bz-logosub{color:#fff}
+${P}.bf .bz-etq{background:${R};color:#fff;border-color:#fff;box-shadow:${s(1.5)} ${s(1.5)} 0 ${Y}}
+${P}.bf .bz-faixa{background:repeating-linear-gradient(135deg,${Y} 0 ${s(6)},${K} ${s(6)} ${s(12)})}
+${P}.bf .bz-bfbig{display:flex;flex-direction:row;align-items:center;justify-content:center;gap:${s(4)};margin-top:0}
+${P}.bf .bz-bfbig .bf1{font-weight:900;font-size:${s(22)};letter-spacing:${s(1.5)};color:#fff;line-height:1}
+${P}.bf .bz-bfbig .bf2{font-weight:900;font-size:${s(22)};letter-spacing:${s(1.5)};color:${K};background:${Y};padding:${s(1)} ${s(8)};transform:skew(-8deg);box-shadow:${s(1.8)} ${s(1.8)} 0 ${R};line-height:1}
+${P}.bf .bz-nome{color:#fff;text-shadow:${s(1)} ${s(1)} 0 ${R}} ${P}.bf .bz-body{gap:${s(2)};padding:${s(4)} ${s(9)}} ${P}.bf .bz-top .bz-vazio{flex:1}
+${P}.bf .bz-nomebar{background:${Y}}
+${P}.bf .bz-desc{color:${Y}}
+${P}.bf .bz-de{color:#d4d4d4} ${P}.bf .bz-de .bz-delbl{color:#d4d4d4} ${P}.bf .bz-de .bz-deval{color:#fff;text-decoration:line-through;text-decoration-color:${R};text-decoration-thickness:${s(1.2)}}
+${P}.bf .bz-star{background:${Y};border-color:#fff;box-shadow:${s(2)} ${s(2)} 0 ${R}}
+${P}.bf .bz-preco{color:${K}} ${P}.bf .bz-preco .unid{color:${K}}
+${P}.bf .bz-off{background:${R};color:#fff;border-color:#fff;box-shadow:${s(1)} ${s(1)} 0 ${K}} ${P}.bf .bz-off small{color:#fff}
+${P}.bf .bz-cond{background:${R};color:#fff;box-shadow:${s(1)} ${s(1)} 0 ${Y}}
+${P}.bf .bz-val{color:#bdbdbd}
+${P}.bf .bz-foot{background:${Y};color:${K}} ${P}.bf .bz-foot b{color:${K}}`; }
 function banCartazHTML(d){ d=d||BAN; const emp=DB._load().empresa||{}; const nome=(d.nome||'').trim()||'NOME DO PRODUTO';
   const cls=nome.length>34?'sm':(nome.length>20?'md':''); const ref=banDeRef(d); const de=ref.valor, por=banPreco(d.por); const pp=banPrecoPartes(por); const off=banDescontoPct(d);
   const logo=emp.logo?`<img src="${emp.logo}" alt="">`:`<div class="bz-logotxt">${esc((emp.nome||'SUA LOJA').toUpperCase())}</div>${emp.razaoSocial&&emp.razaoSocial!==emp.nome?`<div class="bz-logosub">${esc(emp.razaoSocial)}</div>`:''}`;
   const rod=(d.rodape||'').trim()||banRodapePadrao();
-  return `<div class="ban-cz">
-    <div class="bz-top"><div class="bz-logo">${logo}</div><div class="bz-etq">${esc(banEtiquetaTxt(d))}</div></div>
+  const bf=(d.tema==='blackfriday');
+  return `<div class="ban-cz${bf?' bf':''}">
+    <div class="bz-top"><div class="bz-logo">${logo}</div>${(bf&&banEtiquetaTxt(d)==='BLACK FRIDAY')?'':`<div class="bz-etq">${esc(banEtiquetaTxt(d))}</div>`}</div>
     <div class="bz-faixa"></div>
     <div class="bz-body">
+      ${bf?'<div class="bz-bfbig"><span class="bf1">BLACK</span><span class="bf2">FRIDAY</span></div>':''}
       <div class="bz-nome ${cls}">${esc(nome)}</div><div class="bz-nomebar"></div>
       ${(d.desc||'').trim()?`<div class="bz-desc">${esc(d.desc.trim())}</div>`:''}
       ${de>por&&por>0?`<div class="bz-de"><span class="bz-delbl">${esc(ref.rotulo)}</span><span class="bz-deval">${BRL(de)}</span></div>`:''}
@@ -16386,6 +16498,9 @@ function viewBanner(){ banCfgRestaurar(); if(!BAN.rodape) BAN.rodape='';
           <div id="ban-por-aviso" class="t-mut" style="font-size:11px;margin-top:4px;${BAN.produtoId?'':'display:none'}">Este valor vai para o campo <b>Preço promocional</b> do produto no cadastro.</div></div>
         <div class="field" style="flex:0 0 110px"><label>Unidade</label><input id="ban-unid" class="no-upper" list="ban-unid-list" value="${esc(BAN.unidade||'')}" placeholder="un" oninput="banSet('unidade',this.value)"><datalist id="ban-unid-list">${BAN_UNID.map(u=>`<option value="${u}">`).join('')}</datalist></div>
       </div>
+      <div class="field"><label>Tema do cartaz</label>
+        <div class="seg" id="ban-tema"><button class="${BAN.tema!=='blackfriday'?'on':''}" onclick="banTemaSet('padrao')">Padrão — cores da marca</button><button class="${BAN.tema==='blackfriday'?'on':''}" onclick="banTemaSet('blackfriday')" style="${BAN.tema==='blackfriday'?'':'font-weight:800'}">⚫🟡 Black Friday</button></div>
+        <div class="t-mut" style="font-size:11px;margin-top:4px">Black Friday troca o cartaz inteiro por um visual novo: fundo preto, amarelo e vermelho, com o título BLACK FRIDAY.</div></div>
       <div class="field-row">
         <div class="field"><label>Etiqueta do cartaz</label><select id="ban-etq" onchange="banSet('etiqueta',this.value);const c=document.getElementById('ban-etq-custom');if(c)c.style.display=this.value==='__custom'?'':'none'">${BAN_ETIQ.map(e=>`<option value="${e}" ${BAN.etiqueta===e?'selected':''}>${e}</option>`).join('')}<option value="__custom" ${BAN.etiqueta==='__custom'?'selected':''}>Outra (digitar)…</option></select></div>
         <div class="field" id="ban-etq-custom" style="${BAN.etiqueta==='__custom'?'':'display:none'}"><label>Texto da etiqueta</label><input class="no-upper" value="${esc(BAN.etiquetaCustom||'')}" placeholder="ex.: SEMANA DO PISO" oninput="banSet('etiquetaCustom',this.value)"></div>
@@ -22948,6 +23063,24 @@ const REPORTS=[
    const tot=rows.reduce((s,v)=>s+(+v.total||0),0);
    return {cols:[{k:'data',label:'Data',f:fD},{k:'numero',label:'Pedido',f:v=>v?('#'+v):'—'},{k:'clienteNome',label:'Cliente'},{k:'formaPagamento',label:'Pagamento'},{k:'total',label:'Total',a:'r',f:fM},{k:'id',label:'Ação',f:(v,r)=>repNotaAvulsaBtn(r.id)}],
      rows, totals:[{label:'Vendas sem NF',val:NUM(rows.length)},{label:'Total sem NF',val:BRL(tot),color:'var(--amber-d)'}]}; }},
+{id:'rep-vendas-nf',pessoa:true,cat:'Fiscais',titulo:'Vendas com e sem nota fiscal',cor:'#0f766e',icon:'nfeout',date:true,secret:true,
+ desc:'Compara as vendas que têm nota fiscal autorizada com as que não têm. Filtros: período, pessoa física/jurídica, forma de pagamento e tipo de nota (NF-e ou NFC-e). Aparece só com o atalho F12.',
+ search:['numero','clienteNome'],searchPh:'Pedido nº ou cliente...',
+ selects:[{k:'situacao',label:'Nota fiscal',opts:[{v:'com',label:'Com nota fiscal'},{v:'sem',label:'Sem nota fiscal'}]},
+          {k:'tipoNota',label:'Tipo de nota',opts:[{v:'55',label:'NF-e (modelo 55)'},{v:'65',label:'NFC-e (modelo 65)'}]},
+          {k:'pagamento',label:'Forma de pagamento',opts:()=>['Dinheiro','PIX','Cartão Crédito','Cartão Débito','Boleto/Prazo'].concat(formasPagExtras().map(x=>x.nome))}],
+ run(f){ const di=f.de||'1970-01-01', da=f.ate||'9999-12-31';
+   const rows=DB.all('vendas').filter(v=>vendaConcluida(v)&&v.data>=di&&v.data<=da&&mq(f,''+(v.numero||''),v.clienteNome)&&(!f.pagamento||v.formaPagamento===f.pagamento))
+     .map(v=>{ const inf=vendaNotaInfo(v); const com=inf.k==='autorizada'; const mod=com&&inf.n?(''+(inf.n.modelo||'55')):''; return {id:v.id, data:v.data, numero:v.numero, clienteNome:v.clienteNome||'Consumidor', pessoa:vendaTipoPessoa(v), formaPagamento:v.formaPagamento||'', total:+v.total||0,
+        com, modelo:mod, tipoNota:com?(mod==='65'?'NFC-e':'NF-e'):'', numNota:com&&inf.n?(inf.n.numero||''):'', sitNota:inf.label}; })
+     .filter(r=>(!f.situacao||(f.situacao==='com')===r.com)&&(!f.tipoNota||r.modelo===f.tipoNota))
+     .sort((a,b)=>((b.data||'')+'').localeCompare((a.data||'')+'')||((+b.numero||0)-(+a.numero||0)));
+   const com=rows.filter(r=>r.com), sem=rows.filter(r=>!r.com); const sum=a=>a.reduce((t,r)=>t+r.total,0); const tot=sum(rows);
+   return {cols:[{k:'data',label:'Data',f:fD},{k:'numero',label:'Pedido',f:v=>v?('#'+v):'—'},{k:'clienteNome',label:'Cliente'},
+       {k:'pessoa',label:'PF/PJ',f:v=>(!v||v==='SC')?'<span class="t-mut">—</span>':`<span class="tag ${v==='PJ'?'info':'gray'}" style="font-size:10px">${v}</span>`},
+       {k:'formaPagamento',label:'Pagamento'},{k:'total',label:'Total',a:'r',f:fM},
+       {k:'sitNota',label:'Nota fiscal',f:(v,r)=>r.com?`<span class="tag pos" style="font-size:10px">${esc(r.tipoNota)}${r.numNota?(' nº '+esc(r.numNota)):''}</span>`:`<span class="tag warn" style="font-size:10px">${esc(v)}</span>`}],
+     rows, totals:[{label:'Vendas',val:NUM(rows.length)+' · '+BRL(tot)},{label:'Com nota fiscal',val:NUM(com.length)+' · '+BRL(sum(com)),color:'var(--pos)'},{label:'Sem nota fiscal',val:NUM(sem.length)+' · '+BRL(sum(sem)),color:'var(--amber-d)'},{label:'% do valor com nota',val:tot>0?PCT(sum(com)/tot*100):'—'}]}; }},
 {id:'rep-produtos-sem-nf',pessoa:true,cat:'Vendas',titulo:'Produtos vendidos sem NF',cor:'#a16207',icon:'box',date:true,secret:true,
  desc:'Itens vendidos em vendas sem NF emitida: quantidade e valor por produto. O total geral considera o valor das vendas.',
  search:['nome'],searchPh:'Produto...',
@@ -23623,7 +23756,8 @@ function openReport(id, keepFilters){
     viewCaixaDiarioRel(); return; }
   const rep=REPORTS.find(r=>r.id===id); if(!rep) return;
   STATE.route='rep'; STATE.report=id; if(!keepFilters){ STATE.repFilters={};
-    if(rep.date){ STATE.repFilters.de=daysAgo(90); STATE.repFilters.ate=today(); } }
+    if(rep.date){ STATE.repFilters.de=daysAgo(90); STATE.repFilters.ate=today();
+      if(id==='rep-vendas'||id==='rep-vendas-nf'){ STATE.repFilters.de=today().slice(0,8)+'01'; } } }   // Relatório de vendas abre no MÊS ATUAL (do dia 1 até hoje)
   buildNav(); killCharts(); if(!keepFilters) window.scrollTo(0,0);
   document.getElementById('page-title').textContent=rep.titulo;
   document.getElementById('page-sub').textContent='Relatório';
@@ -31264,7 +31398,7 @@ function saudeVarrer(){
     let grupos=[]; try{ grupos=clientesDuplicados(); }catch(e){window.__es&&__es(e)}
     R.push(lin({ id:'cli_dup', nivel:grupos.length?'aviso':'ok', n:grupos.length,
       titulo:'Clientes cadastrados em duplicidade',
-      detalhe:grupos.length?(grupos.length+' grupo(s) de cadastros com o mesmo nome. Duplicidade é a causa mais comum de "a venda não acha o cliente".'):'Nenhum cliente duplicado.',
+      detalhe:grupos.length?(grupos.length+' grupo(s) de cadastros com o mesmo nome ou o mesmo CPF/CNPJ. Duplicidade é a causa mais comum de "a venda não acha o cliente".'):'Nenhum cliente duplicado.',
       acoes:grupos.length?[{rotulo:'Revisar e unir', fn:'cliDupModal()'}]:[] }));
     const neg=prods.filter(p=>(+p.estoque||0)<0);
     R.push(lin({ id:'estoque_neg', nivel:neg.length?'aviso':'ok', n:neg.length,
@@ -37618,38 +37752,49 @@ function nfentConferenciaCompra(id){ const c=DB.get('compras',id); if(!c){ toast
    Lista os produtos lançados na nota com custo, margem e preço de venda.
    Margem e preço de venda são editáveis (um recalcula o outro) e salvos no produto. */
 let ALTP={compraId:null, linhas:[]};
+/* Markup = (venda − custo) ÷ custo   ·   Margem de lucro = (venda − custo) ÷ venda. Os dois ficam na tela e andam juntos com o preço. */
+function altpCalc(custo,preco){ custo=+custo||0; preco=+preco||0;
+  return { markup: custo>0?Math.round((preco/custo-1)*1000)/10:0, margem: preco>0?Math.round(((preco-custo)/preco)*1000)/10:0, lucro: Math.round((preco-custo)*100)/100 }; }
 function nfentAlterarPrecos(compraId){ const c=DB.get('compras',compraId); if(!c){ toast('Nota não encontrada','err'); return; }
   const linhas=(c.itens||[]).filter(it=>it.produtoId).map(it=>{ const p=DB.get('produtos',it.produtoId); if(!p) return null;
-    const custo=Math.round((+p.custo||0)*100)/100; const preco=Math.round((+p.preco||0)*100)/100;
-    const margem = custo>0?Math.round((preco/custo-1)*1000)/10:0;
-    return { produtoId:p.id, nome:p.nome||it.nome||'—', sku:p.sku||'', marca:p.marca||'', custo, preco, margem }; }).filter(Boolean);
+    const custo=Math.round((+p.custo||0)*100)/100; const preco=Math.round((+p.preco||0)*100)/100; const k=altpCalc(custo,preco);
+    return { produtoId:p.id, nome:p.nome||it.nome||'—', sku:p.sku||'', marca:p.marca||'', custo, preco, preco0:preco, markup:k.markup, margem:k.margem }; }).filter(Boolean);
   if(!linhas.length){ toast('Esta nota não tem produtos vinculados para alterar preço','err'); return; }
   ALTP={compraId, linhas};
   openModal(`<div class="modal-head"><h3>${ico('money')} Alteração de preços</h3><button class="btn-icon btn-ghost" onclick="closeModal()">${ico('x')}</button></div>
    <div class="modal-body">
-     <div class="t-mut" style="font-size:12px;margin-bottom:10px">${esc(c.fornecedorNome||'')} · NF ${esc(c.numeroNF||'—')}${c.serieNF?('/'+esc(c.serieNF)):''} · ${fDate(c.data)}. Altere a <b>margem</b> ou o <b>preço de venda</b> — um recalcula o outro a partir do custo. Clique em <b>Salvar</b> para aplicar aos produtos.</div>
+     <div class="t-mut" style="font-size:12px;margin-bottom:6px">${esc(c.fornecedorNome||'')} · NF ${esc(c.numeroNF||'—')}${c.serieNF?('/'+esc(c.serieNF)):''} · ${fDate(c.data)}. Altere o <b>markup</b>, a <b>margem de lucro</b> ou o <b>preço de venda</b> — os outros dois se recalculam a partir do custo. Clique em <b>Salvar</b> para aplicar aos produtos.</div>
+     <div class="t-mut" style="font-size:11.5px;margin-bottom:10px;line-height:1.5"><b>Markup</b> = (venda − custo) ÷ custo · <b>Margem de lucro</b> = (venda − custo) ÷ venda · <b>Lucro</b> = venda − custo, por unidade.</div>
      <datalist id="altp-marcas">${(typeof marcaListaTodas==='function'?marcaListaTodas():[]).map(n=>`<option value="${esc(n)}"></option>`).join('')}</datalist>
-     <div class="tbl-wrap"><table><thead><tr><th style="text-align:left">Produto</th><th style="text-align:left">Marca</th><th class="t-right">Custo</th><th class="t-right">Margem (%)</th><th class="t-right">Preço de venda</th></tr></thead><tbody id="altp-body">${altpRows()}</tbody></table></div>
+     <div class="tbl-wrap"><table><thead><tr><th style="text-align:left">Produto</th><th style="text-align:left">Marca</th><th class="t-right">Custo</th><th class="t-right">Preço atual</th><th class="t-right">Markup (%)</th><th class="t-right">Margem de lucro (%)</th><th class="t-right">Lucro (R$)</th><th class="t-right">Novo preço de venda</th></tr></thead><tbody id="altp-body">${altpRows()}</tbody></table></div>
    </div>
-   <div class="modal-foot"><button class="btn btn-ghost" onclick="closeModal()">Cancelar</button><div style="flex:1"></div><button class="btn btn-amber" onclick="altpSalvar()">${ico('check')} Salvar preços</button></div>`, true);
+   <div class="modal-foot"><button class="btn btn-ghost" onclick="closeModal()">Cancelar</button><div style="flex:1"></div><button class="btn btn-amber" onclick="altpSalvar()">${ico('check')} Salvar preços</button></div>`, 'xwide');
 }
-/* Cor da margem: verde acima de 100%, amarelo abaixo de 100% e vermelho quando negativa.
+/* Cor do markup: verde a partir de 100%, amarelo abaixo de 100% e vermelho quando negativo.
    Serve como alerta visual rápido de quais produtos ficaram com margem apertada. */
 function altpMargemCor(m){ m=+m||0;
-  if(m<0)    return {borda:'#dc2626', fundo:'#fef2f2', texto:'#b91c1c', titulo:'Margem NEGATIVA — está vendendo abaixo do custo'};
-  if(m>=100) return {borda:'#15803d', fundo:'#f0fdf4', texto:'#15803d', titulo:'Margem de 100% ou mais'};
-  return {borda:'#d97706', fundo:'#fffbeb', texto:'#b45309', titulo:'Margem abaixo de 100%'}; }
+  if(m<0)    return {borda:'#dc2626', fundo:'#fef2f2', texto:'#b91c1c', titulo:'Markup NEGATIVO — está vendendo abaixo do custo'};
+  if(m>=100) return {borda:'#15803d', fundo:'#f0fdf4', texto:'#15803d', titulo:'Markup de 100% ou mais'};
+  return {borda:'#d97706', fundo:'#fffbeb', texto:'#b45309', titulo:'Markup abaixo de 100%'}; }
 function altpRows(){ return ALTP.linhas.map((l,i)=>`<tr>
      <td class="t-strong">${esc(l.nome)}${l.sku?`<div class="t-mut" style="font-size:11px">SKU: ${esc(l.sku)}</div>`:''}</td>
      <td><input class="mini-input" style="width:150px;text-align:left;text-transform:uppercase" list="altp-marcas" value="${esc(l.marca||'')}" placeholder="Marca (opc.)" oninput="this.value=this.value.toUpperCase();ALTP.linhas[${i}].marca=this.value;marcaDatalistFill('altp-marcas',this.value)" onchange="ALTP.linhas[${i}].marca=this.value.trim().toUpperCase()"></td>
      <td class="t-right tnum">${BRL(l.custo)}</td>
-     <td class="t-right">${(function(){ const c=altpMargemCor(l.margem);
-       return `<input type="number" step="0.1" class="mini-input altp-marg" title="${esc(c.titulo)}" style="width:92px;border:2px solid ${c.borda};background:${c.fundo};color:${c.texto};font-weight:700;text-align:right" value="${l.margem}" onchange="altpMargem(${i},this.value)">`; })()}</td>
+     <td class="t-right tnum t-mut">${BRL(l.preco0)}${Math.abs((+l.preco||0)-(+l.preco0||0))>0.004?`<div style="font-size:10.5px;color:${l.preco>l.preco0?'var(--pos)':'var(--neg)'}">${l.preco>l.preco0?'▲':'▼'} ${PCT(l.preco0>0?Math.abs(l.preco/l.preco0-1)*100:0)}</div>`:''}</td>
+     <td class="t-right">${(function(){ const c=altpMargemCor(l.markup);
+       return `<input type="number" step="0.1" class="mini-input altp-marg" title="${esc(c.titulo)}" style="width:92px;border:2px solid ${c.borda};background:${c.fundo};color:${c.texto};font-weight:700;text-align:right" value="${l.markup}" onchange="altpMarkup(${i},this.value)">`; })()}</td>
+     <td class="t-right"><input type="number" step="0.1" class="mini-input altp-mlucro" title="Margem de lucro sobre o preço de venda (precisa ficar abaixo de 100%)" style="width:92px;border:2px solid ${l.margem<0?'#dc2626':'var(--line)'};background:${l.margem<0?'#fef2f2':'#fff'};color:${l.margem<0?'#b91c1c':'inherit'};font-weight:700;text-align:right" value="${l.margem}" onchange="altpMargemLucro(${i},this.value)"></td>
+     <td class="t-right tnum" style="color:${l.preco-l.custo<0?'var(--neg)':'inherit'};font-weight:600">${BRL(l.preco-l.custo)}</td>
      <td class="t-right"><div class="pay-val" style="margin:0"><span>R$</span><input type="number" step="0.01" value="${l.preco}" onchange="altpPreco(${i},this.value)"></div></td>
    </tr>`).join(''); }
 function altpRefresh(){ const b=document.getElementById('altp-body'); if(b) b.innerHTML=altpRows(); }
-function altpMargem(i,v){ const l=ALTP.linhas[i]; if(!l) return; l.margem=+v||0; l.preco=Math.round(l.custo*(1+l.margem/100)*100)/100; altpRefresh(); }
-function altpPreco(i,v){ const l=ALTP.linhas[i]; if(!l) return; l.preco=Math.round((+v||0)*100)/100; l.margem = l.custo>0?Math.round((l.preco/l.custo-1)*1000)/10:0; altpRefresh(); }
+function altpAtualizaLinha(l){ const k=altpCalc(l.custo,l.preco); l.markup=k.markup; l.margem=k.margem; }
+function altpMarkup(i,v){ const l=ALTP.linhas[i]; if(!l) return; const m=+v||0; l.preco=Math.round(l.custo*(1+m/100)*100)/100; altpAtualizaLinha(l); l.markup=m; altpRefresh(); }
+function altpMargemLucro(i,v){ const l=ALTP.linhas[i]; if(!l) return; const m=+v||0;
+  if(m>=100){ toast('A margem de lucro precisa ser menor que 100%','err'); altpRefresh(); return; }
+  l.preco=Math.round((l.custo/(1-m/100))*100)/100; altpAtualizaLinha(l); l.margem=m; altpRefresh(); }
+function altpMargem(i,v){ altpMarkup(i,v); }   // nome antigo (o campo era o markup)
+function altpPreco(i,v){ const l=ALTP.linhas[i]; if(!l) return; l.preco=Math.round((+v||0)*100)/100; altpAtualizaLinha(l); altpRefresh(); }
 function altpSalvar(){ let n=0; ALTP.linhas.forEach(l=>{ const p=DB.get('produtos',l.produtoId); if(!p) return;
     let marca=(''+(l.marca||'')).trim().toUpperCase(); try{ marca=marcaCanon(marca); }catch(e){window.__es&&__es(e)}
     DB.update('produtos',l.produtoId,{preco:Math.round((+l.preco||0)*100)/100, marca:marca}); n++; });
