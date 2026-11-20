@@ -48,7 +48,7 @@ const CONFIG_EMPRESA = {
      Aparece no topo do menu e no rodapé das Configurações. Troque a cada publicação.
      MANTENHA O FORMATO 'vDD/MM-X' — é ele que o sistema usa para comparar as máquinas
      da loja e avisar quando alguma ficou para trás.                                  */
-  versao: 'v19/11-E',
+  versao: 'v20/11-A',
 
   /* 4) NUVEM (Supabase)  ------------------------------------------------------------
      Cole aqui a Project URL e a chave PUBLISHABLE do projeto Supabase DESTA empresa
@@ -16131,10 +16131,12 @@ function etiqFonteBox(m,fz){ const emp=DB._load().empresa||{}; const pxPerMm=96/
     <div style="width:${wPx}px;transform:scale(${sc.toFixed(3)});transform-origin:top left">${etiqLabel(etiqAmostra(), m, emp, fz)}</div></div>`; }
 function etiqFontePreview(){ const m=etiqModelo(); const prev=document.getElementById('et-fs-preview'); if(!prev) return;
   try{ prev.innerHTML=etiqFonteBox(m, etiqFonteFZ()); etiqFitAll(prev); }catch(e){window.__es&&__es(e)} }
-function etiqFonteBodyHTML(){ const m=etiqModelo(); const f=etiqFont(m); const d=etiqFontDefault(m);
-  return `<p class="t-mut" style="font-size:12.5px;margin-bottom:12px;line-height:1.5">Ajuste o tamanho (em pt) de <b>cada campo</b> — nome do produto, preço, código, nome da loja e, com o atacado ligado, o preço e a legenda de cada quadro — e escolha a <b>posição</b> das informações. A pré-visualização ao lado muda <b>na hora</b>. Os valores são salvos <b>por modelo</b> e valem para a impressão pelo navegador e para o PDF. Deixe em branco/0 para usar o padrão.</p>
+function etiqFonteBodyHTML(){ const m=etiqModelo(); const f=etiqFont(m); const d=etiqFontDefault(m); const a=etiqAtacFontesAuto(f); const at=etiqAtacInfo(etiqAmostra());
+  const cp=(id,rot,val,ph,tit)=>`<div class="field"><label>${rot}</label><input id="${id}" type="number" step="0.5" min="3" max="60" value="${val||''}" placeholder="${ph}" title="${tit||''}" oninput="etiqFontePreview()"></div>`;
+  const legA=esc((at&&at.cap)||'A PARTIR DE 10 UN'), legV=esc((at&&at.vcap)||'VAREJO / UN');
+  return `<p class="t-mut" style="font-size:12.5px;margin-bottom:10px;line-height:1.45">Tamanho da letra (em pt) de <b>cada campo</b> da etiqueta. A pré-visualização muda <b>na hora</b>; os valores são salvos <b>por modelo</b> e valem para o navegador e para o PDF. Em branco = automático.</p>
       <div style="display:flex;flex-wrap:wrap;gap:16px;align-items:start">
-        <div style="flex:1 1 220px;min-width:200px">
+        <div style="flex:1 1 300px;min-width:240px">
           <div class="field-row">
             <div class="field"><label>Nome do produto (pt)</label><input id="et-fs-nome" type="number" step="0.5" min="3" max="60" value="${f.nome}" placeholder="${d.nome}" oninput="etiqFontePreview()"></div>
             <div class="field"><label>Preço (pt)</label><input id="et-fs-preco" type="number" step="0.5" min="3" max="60" value="${f.preco}" placeholder="${d.preco}" oninput="etiqFontePreview()"></div></div>
@@ -16144,27 +16146,21 @@ function etiqFonteBodyHTML(){ const m=etiqModelo(); const f=etiqFont(m); const d
               <option value="left" ${f.align==='left'?'selected':''}>Esquerda</option>
               <option value="center" ${f.align==='center'?'selected':''}>Centralizada</option>
               <option value="right" ${f.align==='right'?'selected':''}>Direita</option></select></div></div>
+          <div style="border:1.5px solid var(--amber);border-radius:10px;padding:10px 12px;margin:4px 0 10px">
+            <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:8px">
+              <div style="flex:1;min-width:150px"><div style="font-size:12.5px;font-weight:700;display:flex;align-items:center;gap:6px">${ico('box')} Quadros de atacado e varejo</div>
+                <div class="t-mut" style="font-size:11px;margin-top:1px">Só nos produtos com preço de atacado.</div></div>
+              <button id="et-atac-btn" class="btn ${ETIQ.atacado===true?'btn-amber':'btn-ghost'} btn-sm" onclick="etiqAtacadoToggle()">${ETIQ.atacado===true?ico('check')+' Incluído':'Incluir preço de atacado'}</button></div>
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:0 10px;align-items:end">${cp('et-fs-atac','Preço de atacado (pt)',f.atac,a.val,'Valor em destaque no quadro preto')}${cp('et-fs-varejo','Preço de varejo (pt)',f.varejo,a.vval,'Valor no quadro claro')}
+              ${cp('et-fs-atacleg','Texto "'+legA+'" (pt)',f.atacLeg,a.cap,'Texto acima do preço de atacado')}${cp('et-fs-varejoleg','Texto "'+legV+'" (pt)',f.varejoLeg,a.cap,'Texto acima do preço de varejo')}</div>
+            <div class="t-mut" style="font-size:11px;line-height:1.4">Em branco = automático (o número em cinza). Se não couber na etiqueta, o sistema reduz todas as letras na mesma proporção para nada sair cortado.</div>
+          </div>
           <div class="field-row">
             <div class="field"><label>Nome da loja (pt)</label><input id="et-fs-loja" type="number" step="0.5" min="3" max="60" value="${f.loja||''}" placeholder="5" oninput="etiqFontePreview()" title="Linha pequena no topo com o nome da empresa (não aparece nas etiquetas baixas, até 25 mm)"></div>
-            <div class="field"></div></div>
-          <div class="t-mut" style="font-size:11.5px;margin-top:4px">Padrão deste modelo: nome ${d.nome} · preço ${d.preco} · cód ${d.cod} pt · centralizada</div>
-          <div style="border:1px solid var(--line);border-radius:10px;padding:10px 12px;margin-top:12px;display:flex;align-items:center;gap:10px;flex-wrap:wrap">
-            <div style="flex:1;min-width:150px"><div style="font-size:12.5px;font-weight:700;display:flex;align-items:center;gap:6px">${ico('scan')} Código de barras</div>
-              <div class="t-mut" style="font-size:11.5px;margin-top:2px">Inclui ou não o código de barras (Code128) na etiqueta.</div></div>
-            <button id="et-barras-btn" class="btn ${ETIQ.codBarras!==false?'btn-amber':'btn-ghost'} btn-sm" onclick="etiqBarrasToggle()">${ETIQ.codBarras!==false?ico('check')+' Incluído':'Incluir código de barras'}</button>
-          </div>
-          <div style="border:1px solid var(--line);border-radius:10px;padding:10px 12px;margin-top:10px;display:flex;align-items:center;gap:10px;flex-wrap:wrap">
-            <div style="flex:1;min-width:150px"><div style="font-size:12.5px;font-weight:700;display:flex;align-items:center;gap:6px">${ico('box')} Preço de atacado</div>
-              <div class="t-mut" style="font-size:11.5px;margin-top:2px">Mostra dois quadros lado a lado: o preço de ATACADO em destaque (fundo preto, "a partir de N un", quantidade mínima do cadastro) e o preço de VAREJO ao lado, em quadro claro com letras pretas. Só nos produtos que têm preço de atacado.</div></div>
-            <button id="et-atac-btn" class="btn ${ETIQ.atacado===true?'btn-amber':'btn-ghost'} btn-sm" onclick="etiqAtacadoToggle()">${ETIQ.atacado===true?ico('check')+' Incluído':'Incluir preço de atacado'}</button>
-            ${(function(){ const a=etiqAtacFontesAuto(f); const cp=(id,rot,val,ph,tit)=>'<div class="field"><label>'+rot+'</label><input id="'+id+'" type="number" step="0.5" min="3" max="60" value="'+(val||'')+'" placeholder="'+ph+'" title="'+tit+'" oninput="etiqFontePreview()"></div>';
-              return '<div style="flex:1 1 100%;border-top:1px dashed var(--line);margin-top:4px;padding-top:8px"><div style="font-size:12px;font-weight:700;margin-bottom:6px">Tamanho de cada campo dos dois quadros (pt)</div>'
-                +'<div class="field-row">'+cp('et-fs-atac','Preço de atacado',f.atac,a.val,'Valor em destaque no quadro preto')+cp('et-fs-varejo','Preço de varejo',f.varejo,a.vval,'Valor no quadro claro')+'</div>'
-                +'<div class="field-row">'+cp('et-fs-atacleg','Legenda "A partir de…"',f.atacLeg,a.cap,'Texto pequeno acima do preço de atacado')+cp('et-fs-varejoleg','Legenda "Varejo / un"',f.varejoLeg,a.cap,'Texto pequeno acima do preço de varejo')+'</div>'
-                +'<div class="t-mut" style="font-size:11.5px;line-height:1.45">Em branco = automático (o número em cinza, proporcional ao campo "Preço"). Se a soma não couber na etiqueta, o sistema reduz todas as letras na mesma proporção para nada sair cortado — a pré-visualização mostra como fica.</div></div>'; })()}
-          </div>
+            <div class="field"><label>Código de barras</label><button id="et-barras-btn" class="btn ${ETIQ.codBarras!==false?'btn-amber':'btn-ghost'} btn-sm" style="width:100%" onclick="etiqBarrasToggle()">${ETIQ.codBarras!==false?ico('check')+' Incluído':'Incluir código de barras'}</button></div></div>
+          <div class="t-mut" style="font-size:11.5px;margin-top:2px">Padrão deste modelo: nome ${d.nome} · preço ${d.preco} · cód ${d.cod} pt · centralizada</div>
         </div>
-        <div style="flex:0 0 auto;margin:0 auto">
+        <div style="flex:0 0 auto;margin:0 auto;position:sticky;top:0">
           <label class="t-mut" style="font-size:12px;font-weight:700">Pré-visualização ao vivo</label>
           <div style="border:1px dashed var(--line);border-radius:10px;padding:14px;background:#fff;margin-top:6px">
             <div id="et-fs-preview">${etiqFonteBox(m, f)}</div>
